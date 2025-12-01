@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Risk Manager (Flask)</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<div class="container">
+
+    <!-- LEFT PANEL -->
+    <div class="panel left">
+
+        <div class="header">CORE CONTROLS</div>
+
+        <form method="POST">
+
+            <div class="row">
+                <div class="col">
+                    <label>Total Balance (USD$)</label>
+                    <input value="{{balance}}" disabled>
+                </div>
+                <div class="col">
+                    <label>Margin Used</label>
+                    <input value="0.00" disabled>
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button name="symbol" value="BTCUSD" class="tab active">BTCUSD</button>
+                <button name="symbol" value="ETHUSD" class="tab">ETHUSD</button>
+                <button name="symbol" value="ADAUSD" class="tab">ADAUSD</button>
+            </div>
+
+            <div class="button-row">
+                <button name="side" value="LONG" class="tab active">LONG</button>
+                <button name="side" value="SHORT" class="tab">SHORT</button>
+            </div>
+
+            <div class="row">
+                <div class="col">
+                    <label>Entry Price</label>
+                    <input type="number" name="entry" step="0.00000001">
+                </div>
+
+                <div class="col">
+                    <label>SL Method</label>
+                    <select name="sl_type">
+                        <option>SL POINTS</option>
+                        <option>SL % MOVE</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="col">
+                <label>SL Value (Points)</label>
+                <input type="number" step="0.01" name="sl_value">
+            </div>
+
+            <div class="col">
+                <label>SL Price</label>
+                <input type="number" step="0.00000001" name="sl">
+            </div>
+
+            <div class="row">
+                <div class="col">
+                    <label>Position/Lot Size</label>
+                    <input type="number" name="user_units" step="0.00000001">
+                </div>
+
+                <div class="col">
+                    <label>Leverage</label>
+                    <input type="number" name="user_lev" step="0.01">
+                </div>
+            </div>
+
+            <div class="status">
+                READY: Units/Lot: 1.000 | Leverage: 3.0x | Risk: $100  
+                <br>Daily: 0/4 | BTCUSD: 0/2
+            </div>
+
+            <div class="button-row">
+                <button type="button" class="reset">RESET DAILY LIMITS</button>
+                <button type="submit" class="place">PLACE ORDER</button>
+            </div>
+
+        </form>
+    </div>
+
+
+    <!-- RIGHT PANEL -->
+    <div class="panel right">
+
+        <div class="header">CHART VIEW</div>
+        <div class="chart-box">
+            {{ chart_html | safe }}
+        </div>
+
+        <div class="header">TODAY'S TRADE LOG</div>
+
+        {% if trades %}
+        <table>
+            <tr>
+                <th>Time</th><th>Symbol</th><th>Side</th><th>Entry</th><th>Units</th><th>Leverage</th>
+            </tr>
+
+            {% for t in trades %}
+            <tr>
+                <td>{{t.time}}</td>
+                <td>{{t.symbol}}</td>
+                <td class="{% if t.side=='LONG' %}long{% else %}short{% endif %}">
+                    {{t.side}}
+                </td>
+                <td>{{t.entry}}</td>
+                <td>{{t.units}}</td>
+                <td>{{t.leverage}}</td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        {% else %}
+        <p class="no-trades">No trades today.</p>
+        {% endif %}
+
+    </div>
+
+</div>
+
+</body>
+</html>

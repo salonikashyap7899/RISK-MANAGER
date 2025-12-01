@@ -1,0 +1,155 @@
+body {
+    background: #0b0f12;
+    color: #e6e6e6;
+    margin: 0;
+    font-family: Arial, sans-serif;
+}
+
+/* Layout */
+.container {
+    padding: 20px;
+    display: flex;
+    flex-direction: row;
+    gap: 25px;
+}
+
+/* Panels */
+.panel {
+    padding: 15px;
+    border: 2px solid #064d64;
+    border-radius: 8px;
+    background: #0e1419;
+}
+
+.panel.left { width: 45%; }
+.panel.right { width: 55%; }
+
+/* Headers */
+.header {
+    background: #0b5d7a;
+    padding: 8px 10px;
+    border-radius: 5px;
+    color: white;
+    font-weight: bold;
+    margin-bottom: 10px;
+    border: 1px solid #0ca7d4;
+}
+
+/* Rows */
+.row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Inputs */
+label {
+    font-size: 13px;
+    opacity: 0.7;
+    margin-bottom: 3px;
+}
+
+input, select {
+    background: #101b22;
+    color: #00b7ff;
+    border: 1px solid #0d4a5e;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+/* Button Row */
+.button-row {
+    display: flex;
+    gap: 10px;
+    margin: 10px 0;
+}
+
+/* Tabs (Symbol + Long/Short) */
+.tab {
+    flex: 1;
+    padding: 10px 0;
+    background: #0d4a5e;
+    border: 1px solid #0ea8d5;
+    color: white;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.tab.active {
+    background: #00baff;
+    color: black;
+}
+
+/* Status Box */
+.status {
+    background: #111d23;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #1d3a45;
+    color: #a8ffcc;
+    margin: 10px 0;
+}
+
+/* Buttons */
+.reset {
+    flex: 1;
+    padding: 12px;
+    background: #3a3a3a;
+    color: white;
+    border: 1px solid #777;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.place {
+    flex: 2;
+    padding: 12px;
+    background: #009dff;
+    color: white;
+    border-radius: 4px;
+    border: 1px solid #11c0ff;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+/* Chart Box */
+.chart-box {
+    background: #0b0f12;
+    padding: 5px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+
+/* Table */
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+table th {
+    background: #0a5168;
+    color: white;
+    padding: 6px;
+    border: 1px solid #0ca7d4;
+}
+
+table td {
+    padding: 6px;
+    border: 1px solid #333;
+}
+
+.long { color: #00ff99; font-weight: bold; }
+.short { color: #ff5757; font-weight: bold; }
+
+.no-trades {
+    padding: 10px;
+    opacity: 0.8;
+}
