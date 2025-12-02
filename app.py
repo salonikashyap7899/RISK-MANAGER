@@ -1,6 +1,6 @@
-# app.py
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, render_template, request, session
 from datetime import datetime
+
 from logic import (
     initialize_session,
     calculate_position_sizing,
@@ -8,8 +8,42 @@ from logic import (
 )
 from calculations import calculate_targets_from_form
 
+
 app = Flask(__name__)
 app.secret_key = "replace-this-secret-key"
+
+
+# --------------------------
+# TradingView Chart Generator
+# --------------------------
+def generate_chart_html(symbol):
+    return f"""
+    <!-- TradingView BEGIN -->
+    <div class="tradingview-widget-container">
+      <div id="tradingview_chart"></div>
+
+      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+
+      <script type="text/javascript">
+        new TradingView.widget({{
+          "width": "100%",
+          "height": 500,
+          "symbol": "{symbol}",
+          "interval": "1",
+          "timezone": "Etc/UTC",
+          "theme": "dark",
+          "style": "1",
+          "locale": "en",
+          "enable_publishing": false,
+          "withdateranges": true,
+          "allow_symbol_change": false,
+          "container_id": "tradingview_chart"
+        }});
+      </script>
+
+    </div>
+    <!-- TradingView END -->
+    """
 
 
 @app.before_request
@@ -19,7 +53,7 @@ def before_request():
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    # Session store for trades & stats
+
     trades = session["trades"]
     stats = session["stats"]
 
@@ -29,32 +63,49 @@ def index():
     trade_status = None
     sizing = None
 
-    if request.method == "POST":
+    # --------------------------
+    # GET SELECTED SYMBOL
+    # --------------------------
+    selected_symbol = request.form.get("symbol", "BTCUSD")
+    tv_symbol = f"BINANCE:{selected_symbol}"  # TradingView format
+
+    # Build TradingView chart HTML
+    chart_html = generate_chart_html(tv_symbol)
+
+    # --------------------------
+    # Handle Order Form
+    # --------------------------
+    if request.method == "POST" and "entry" in request.form:
+
         form = request.form
 
-        # Parse form inputs
+        # Parse inputs
         symbol = form.get("symbol")
         side = form.get("side")
-        order_type = form.get("order_type")  # market/limit/stop_market/stop_limit
+        order_type = form.get("order_type") or "market"
         entry = float(form.get("entry") or 0.0)
 
-        sl_type = form.get("sl_type")  # 'points' or 'percent'
+        sl_type = form.get("sl_type")
         sl_value = float(form.get("sl_value") or 0.0)
 
-        # user provided units/leverage
         user_units = float(form.get("user_units") or 0.0)
         user_lev = float(form.get("user_lev") or 0.0)
 
-        # TP fields
         tp1_price = float(form.get("tp1_price") or 0.0)
         tp1_percent = int(form.get("tp1_percent") or 0)
         tp2_price = float(form.get("tp2_price") or 0.0)
+
         tp_list = calculate_targets_from_form(tp1_price, tp1_percent, tp2_price)
 
-        # Calculate suggested sizing for display BEFORE executing (safe readonly)
-        sizing = calculate_position_sizing(session.get("capital", 10000.0), entry, sl_type, sl_value)
+        # Sizing preview
+        sizing = calculate_position_sizing(
+            session.get("capital", 10000.0),
+            entry,
+            sl_type,
+            sl_value
+        )
 
-        # Execute/validate trade
+        # Execute trade simulation
         resp = execute_trade_action(
             balance=session.get("capital", 10000.0),
             symbol=symbol,
@@ -69,17 +120,20 @@ def index():
             sl_value=sl_value,
             order_type=order_type,
             tp_list=tp_list,
-            api_key=None,
-            api_secret=None
         )
 
         trade_status = resp
 
+    # --------------------------
+    # RENDER TEMPLATE
+    # --------------------------
     return render_template(
         "index.html",
         trade_status=trade_status,
         sizing=sizing,
         stats=stats_today,
+        trades=session["trades"],
+        chart_html=chart_html,
     )
 
 
