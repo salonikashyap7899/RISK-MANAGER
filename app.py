@@ -1,12 +1,19 @@
-from flask import Flask, render_template, request, session
+from flask import Flask, render_template, request, session, redirect, url_for
 from datetime import datetime
 
 from logic import (
     initialize_session,
     calculate_position_sizing,
     execute_trade_action,
+    DAILY_MAX_TRADES,
+    DAILY_MAX_PER_SYMBOL,
+    TOTAL_CAPITAL_DEFAULT,
 )
-from calculations import calculate_targets_from_form
+from calculations import calculate_targets_from_form, calculate_unutilized_capital
+
+
+# List of symbols from PyQt app
+BROKER_SYMBOLS = ["BTCUSD", "ETHUSD", "SOLUSD", "XAUUSD", "EURUSD"]
 
 
 app = Flask(__name__)
@@ -18,7 +25,6 @@ app.secret_key = "replace-this-secret-key"
 # --------------------------
 def generate_chart_html(symbol):
     return f"""
-    <!-- TradingView BEGIN -->
     <div class="tradingview-widget-container">
       <div id="tradingview_chart"></div>
 
@@ -42,7 +48,6 @@ def generate_chart_html(symbol):
       </script>
 
     </div>
-    <!-- TradingView END -->
     """
 
 
@@ -56,77 +61,105 @@ def index():
 
     trades = session["trades"]
     stats = session["stats"]
+    balance = session.get("capital", TOTAL_CAPITAL_DEFAULT)
 
     today = datetime.utcnow().date().isoformat()
     stats_today = stats.get(today, {"total": 0, "by_symbol": {}})
 
     trade_status = None
     sizing = None
-
-    # --------------------------
-    # GET SELECTED SYMBOL
-    # --------------------------
+    
+    # --- Default/Current values ---
     selected_symbol = request.form.get("symbol", "BTCUSD")
-    tv_symbol = f"BINANCE:{selected_symbol}"  # TradingView format
+    default_entry = request.form.get("entry", 27050.0)
+    default_sl_value = request.form.get("sl_value", 100.0)
+    default_sl_type = request.form.get("sl_type", "SL Points")
+    default_side = request.form.get("side", "LONG")
+    default_order_type = "MARKET"
 
-    # Build TradingView chart HTML
-    chart_html = generate_chart_html(tv_symbol)
+    # Margin Used calculation
+    margin_used = calculate_unutilized_capital(balance, trades)
 
     # --------------------------
-    # Handle Order Form
+    # Handle Order Form POST and Sizing Preview
     # --------------------------
-    if request.method == "POST" and "entry" in request.form:
+    if request.method == "POST":
 
         form = request.form
 
-        # Parse inputs
-        symbol = form.get("symbol")
-        side = form.get("side")
-        order_type = form.get("order_type") or "market"
-        entry = float(form.get("entry") or 0.0)
+        # Handle capital input update 
+        try:
+            capital_input = float(form.get("capital_input", balance)) 
+            if capital_input > 0:
+                session["capital"] = capital_input
+                session.modified = True
+                balance = capital_input 
+        except ValueError:
+            pass 
 
-        sl_type = form.get("sl_type")
-        sl_value = float(form.get("sl_value") or 0.0)
+        # Parse ALL form inputs for calculation
+        symbol = form.get("symbol", selected_symbol)
+        side = form.get("side", default_side)
+        entry = float(form.get("entry") or default_entry)
+        sl_type = form.get("sl_type", default_sl_type)
+        sl_value = float(form.get("sl_value") or default_sl_value)
 
         user_units = float(form.get("user_units") or 0.0)
         user_lev = float(form.get("user_lev") or 0.0)
-
+        
+        # TP Inputs
         tp1_price = float(form.get("tp1_price") or 0.0)
-        tp1_percent = int(form.get("tp1_percent") or 0)
+        tp1_percent = float(form.get("tp1_percent") or 0.0)
         tp2_price = float(form.get("tp2_price") or 0.0)
-
         tp_list = calculate_targets_from_form(tp1_price, tp1_percent, tp2_price)
 
-        # Sizing preview
+        # --- Sizing Calculation (run for preview/validation) ---
         sizing = calculate_position_sizing(
-            session.get("capital", 10000.0),
+            balance,
             entry,
             sl_type,
             sl_value
         )
+        
+        # --- Execute Trade ---
+        if 'place_order' in form or (sizing and sizing.get("error") is None and form.get("sl_type") is not None): 
+            
+            resp = execute_trade_action(
+                balance=balance,
+                symbol=symbol,
+                side=side,
+                entry=entry,
+                sl_type=sl_type, 
+                sl_value=sl_value, 
+                order_type=default_order_type,
+                tp_list=tp_list,
+                sizing=sizing,
+                user_units=user_units,
+                user_lev=user_lev,
+            )
 
-        # Execute trade simulation
-        resp = execute_trade_action(
-            balance=session.get("capital", 10000.0),
-            symbol=symbol,
-            side=side,
-            entry=entry,
-            sl=sl_value,
-            suggested_units=sizing.get("suggested_position") or sizing.get("suggested_lot"),
-            suggested_lev=sizing.get("suggested_leverage"),
-            user_units=user_units,
-            user_lev=user_lev,
-            sl_type=sl_type,
-            sl_value=sl_value,
-            order_type=order_type,
-            tp_list=tp_list,
+            trade_status = resp
+
+    # --------------------------
+    # GET or POST Final Preview
+    # --------------------------
+    if not sizing:
+        sizing = calculate_position_sizing(
+            balance,
+            float(request.form.get("entry", default_entry)),
+            request.form.get("sl_type", default_sl_type),
+            float(request.form.get("sl_value", default_sl_value))
         )
-
-        trade_status = resp
-
+        
+    # Variables for template persistence
+    selected_symbol = request.form.get("symbol", "BTCUSD")
+    
     # --------------------------
     # RENDER TEMPLATE
     # --------------------------
+    tv_symbol = f"BINANCE:{selected_symbol}"
+    chart_html = generate_chart_html(tv_symbol)
+
     return render_template(
         "index.html",
         trade_status=trade_status,
@@ -134,6 +167,25 @@ def index():
         stats=stats_today,
         trades=session["trades"],
         chart_html=chart_html,
+        
+        balance=balance,
+        margin_used=margin_used,
+        symbols=BROKER_SYMBOLS,
+        today=datetime.utcnow(),
+
+        # 🔥 FIX ADDED HERE
+        datetime=datetime,
+
+        selected_symbol=selected_symbol,
+        default_entry=request.form.get("entry", 27050.0),
+        default_sl_value=request.form.get("sl_value", 100.0),
+        default_sl_type=request.form.get("sl_type", "SL Points"),
+        default_side=request.form.get("side", "LONG"),
+        default_units=request.form.get("user_units", 0.0),
+        default_lev=request.form.get("user_lev", 0.0),
+
+        daily_max_trades=DAILY_MAX_TRADES,
+        daily_max_per_symbol=DAILY_MAX_PER_SYMBOL,
     )
 
 

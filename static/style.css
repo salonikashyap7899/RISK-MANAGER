@@ -1,7 +1,7 @@
-html, body {
+/* html, body {
     height: 100%;
-    overflow: hidden; /* ⛔ Disable scrolling */
-}
+    overflow: hidden; 
+} */
 
 
 body {
@@ -29,6 +29,12 @@ body {
 
 .panel.left { width: 45%; }
 .panel.right { width: 55%; }
+
+/* .panel.right{
+    height: 70vh;
+    display: flex;
+    flex-direction: column;
+} */
 
 /* Headers */
 .header {
@@ -129,9 +135,10 @@ input, select {
 /* Chart Box */
 .chart-box {
     background: #0b0f12;
-    padding: 5px;
+    padding: 1px;
     border-radius: 5px;
-    margin-bottom: 20px;
+    margin-bottom: 10%;
+ 
 }
 
 /* Table */
