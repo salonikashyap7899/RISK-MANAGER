@@ -6,7 +6,7 @@
     <style>
         .container { display: flex; max-width: 1400px; margin: 20px auto; gap: 20px; font-family: sans-serif; }
         .panel { flex: 1; padding: 20px; border: 1px solid #333; background: #1e1e1e; color: #fff; border-radius: 8px; }
-        .panel.left { max-width: 400px; }
+        .panel.left { max-width: 420px; }
         .header { font-size: 1.2em; font-weight: bold; margin-bottom: 15px; color: #00aaff; }
         .row { display: flex; gap: 10px; margin-bottom: 10px; }
         .col { flex: 1; display: flex; flex-direction: column; }
@@ -15,8 +15,9 @@
         .button-row { display: flex; gap: 5px; margin-bottom: 10px; }
         .tab { flex: 1; padding: 8px; border: none; background: #4a4a4a; color: #fff; border-radius: 4px; cursor: pointer; }
         .tab.active { background: #00aaff; }
-        .status { padding: 10px; border: 2px solid #00aaff; background: #252525; border-radius: 6px; margin-bottom: 15px; font-size: 0.9em; line-height: 1.4; }
-        .place { background: #00aaff; font-weight: bold; }
+        .status { padding: 12px; border: 2px solid #00aaff; background: #252525; border-radius: 6px; margin-bottom: 12px; font-size: 0.9em; line-height: 1.4; }
+        .place { background: #00aaff; font-weight: bold; padding: 10px 14px; border-radius: 6px; cursor: pointer; color: #000; }
+        .place:disabled { opacity: 0.5; cursor: not-allowed; }
         .reset { background: #ff6347; }
         .chart-box { min-height: 400px; background: #000; margin-bottom: 15px; }
         table { width: 100%; border-collapse: collapse; }
@@ -27,7 +28,10 @@
         .message { padding: 10px; margin-bottom: 15px; border-radius: 4px; font-weight: bold; }
         .success { background-color: #7aff0022; border: 1px solid #7aff00; color: #7aff00; }
         .error { background-color: #ff634722; border: 1px solid #ff6347; color: #ff6347; }
-        small { display: block; font-size: 0.75em; margin-top: 2px; }
+        small { display: block; font-size: 0.75em; margin-top: 2px; color: #ccc; }
+        .muted { color: #999; font-size: 0.85em; }
+        .formula { background:#111; padding:8px; border-radius:6px; margin-top:8px; font-size:0.85em; color:#ddd; }
+        .formula b { color:#ffcc00; }
     </style>
 </head>
 
@@ -60,13 +64,28 @@
                 </div>
             </div>
 
-            <div class="button-row">
+            <div class="row" style="margin-bottom:6px;">
+                <div class="col">
+                    <label>Unutilised Capital</label>
+                    {% set unutil = (balance - (margin_used or 0.0)) | round(2) %}
+                    <input value="${{ unutil }}" disabled>
+                    <small class="muted">Unutilised = Balance − Margin Used</small>
+                </div>
+                <div class="col">
+                    <label>1% of Unutilised (Risk)</label>
+                    {% set onepct = (unutil * 0.01) | round(2) %}
+                    <input value="${{ onepct }}" disabled>
+                    <small class="muted">This = 1% of unutilised capital — used to compute suggested lot</small>
+                </div>
+            </div>
+
+            <div class="button-row" style="margin-bottom:6px;">
                 {% for sym in symbols %}
                 <button name="symbol" value="{{sym}}" class="tab {% if sym == selected_symbol %}active{% endif %}">{{sym}}</button>
                 {% endfor %}
             </div>
 
-            <div class="button-row">
+            <div class="button-row" style="margin-bottom:10px;">
                 <button name="side" value="LONG" class="tab {% if default_side == 'LONG' %}active{% endif %}">LONG</button>
                 <button name="side" value="SHORT" class="tab {% if default_side == 'SHORT' %}active{% endif %}">SHORT</button>
             </div>
@@ -89,7 +108,8 @@
             <div class="row">
                 <div class="col">
                     <label>SL Value ({{ 'Points' if default_sl_type == 'SL Points' else '% Movement' }})</label>
-                    <input type="number" step="0.01" name="sl_value" value="{{default_sl_value}}">
+                    <input type="number" step="0.01" name="sl_value" value="{{default_sl_value}}" min="0">
+                    <small class="muted">SL is mandatory — you cannot place a trade without SL.</small>
                 </div>
                 
                 <div class="col">
@@ -114,7 +134,7 @@
                 </div>
             </div>
 
-            <div class="col">
+            <div class="col" style="margin-bottom:10px;">
                 <label>TP 2 Price (Full Exit)</label>
                 <input type="number" name="tp2_price" step="0.00000001" value="{{ request.form.tp2_price or 0.0 }}">
             </div>
@@ -134,28 +154,45 @@
             </div>
 
             <div class="status">
-                {% set suggested_units = sizing.suggested_units | round(4) | default('0.0000') %}
-                {% set suggested_lev = sizing.suggested_leverage | round(1) | default('0.0') %}
-                {% set risk_amount = (sizing.risk_amount or 0.0) | round(2) %}
+                {% set suggested_units = (sizing.suggested_units or 0.0) | round(4) %}
+                {% set suggested_lev = (sizing.suggested_leverage or 0.0) | round(2) %}
+                {% set risk_amount = (sizing.risk_amount or onepct or 0.0) | round(2) %}
                 
                 {% set total_trades = stats.total | default(0) %}
                 {% set symbol_trades = stats.by_symbol.get(selected_symbol, 0) %}
 
                 {% if sizing.error %}
                     <span style="color: #ff6347; font-weight: bold;">RISK ERROR:</span> {{ sizing.error }}
+                    <div class="formula">
+                        <b>Why blocked:</b> SL must be set and sizing must be valid to place an order.
+                    </div>
                 {% else %}
                     <span style="color: #7aff00; font-weight: bold;">READY:</span> Units/Lot: {{ suggested_units }} | Leverage: {{ suggested_lev }}x | Max Risk: <span style="font-weight: bold;">${{ risk_amount }}</span>
+                    <div class="formula">
+                        <div><b>Formulas used</b> (visible for transparency):</div>
+                        {% if default_sl_type == 'SL Points' %}
+                            <div>• <b>Risk</b> = 1% of Unutilised = ${{ onepct }}</div>
+                            <div>• <b>SL distance</b> = SL Points + 20</div>
+                            <div>• <b>Suggested Lot</b> = Risk ÷ (SL Points + 20) = <b>{{ suggested_units }}</b></div>
+                        {% else %}
+                            <div>• <b>Risk</b> = 1% of Unutilised = ${{ onepct }}</div>
+                            <div>• <b>SL distance</b> = SL% + 0.2%</div>
+                            <div>• <b>Suggested Lot</b> = Risk ÷ (SL% + 0.2) = <b>{{ suggested_units }}</b></div>
+                            <div>• <b>Max Leverage</b> = 100 ÷ SL% = <b>{{ sizing.max_leverage_info or ( (100.0 / (default_sl_value|float)) ~ 'x' ) }}</b></div>
+                        {% endif %}
+                        <div style="margin-top:6px; color:#ccc;">Overrides are allowed (lot & leverage) but cannot exceed suggested values.</div>
+                    </div>
                 {% endif %}
 
                 <br>Daily Trades: <span style="font-weight: bold;">{{total_trades}}/{{daily_max_trades}}</span> | {{selected_symbol}} Trades: <span style="font-weight: bold;">{{symbol_trades}}/{{daily_max_per_symbol}}</span>
             </div>
 
-            <div class="button-row">
-                <button type="submit" class="place" name="place_order" 
-                    {% if sizing.error or total_trades >= daily_max_trades or symbol_trades >= daily_max_per_symbol %}
-                        disabled
-                    {% endif %}
+            <div style="display:flex; gap:8px; margin-top:10px;">
+                <button type="submit" class="place" name="place_order"
+                    {% if sizing.error or total_trades >= daily_max_trades or symbol_trades >= daily_max_per_symbol %} disabled {% endif %}
                 >PLACE ORDER</button>
+
+                <button type="submit" name="reset" class="reset" style="padding:10px;border-radius:6px;">RESET</button>
             </div>
 
         </form>
