@@ -22,8 +22,23 @@ app.secret_key = "replace-this-secret-key"
 
 # --------------------------
 # TradingView Chart Generator
+# app.py
+# ...
+# --------------------------
+# TradingView Chart Generator
+# --------------------------
+# app.py
+# ...
+# --------------------------
+# TradingView Chart Generator
+# --------------------------
+# app.py
+# ...
+# --------------------------
+# TradingView Chart Generator
 # --------------------------
 def generate_chart_html(symbol):
+    # Set height to "100%" so it respects the height defined in the index.html CSS (.chart-box)
     return f"""
     <div class="tradingview-widget-container">
       <div id="tradingview_chart"></div>
@@ -33,7 +48,7 @@ def generate_chart_html(symbol):
       <script type="text/javascript">
         new TradingView.widget({{
           "width": "100%",
-          "height": 500,
+          "height": "100%",
           "symbol": "{symbol}",
           "interval": "1",
           "timezone": "Etc/UTC",
@@ -49,6 +64,8 @@ def generate_chart_html(symbol):
 
     </div>
     """
+# ...
+# ...
 
 
 @app.before_request
@@ -79,6 +96,10 @@ def index():
 
     # Margin Used calculation
     margin_used = calculate_unutilized_capital(balance, trades)
+    
+    # 🔥 CRITICAL FIX: Calculate unutilised capital
+    unutilised_capital = balance - margin_used
+
 
     # --------------------------
     # Handle Order Form POST and Sizing Preview
@@ -94,6 +115,8 @@ def index():
                 session["capital"] = capital_input
                 session.modified = True
                 balance = capital_input 
+                # Recalculate unutilised capital if balance changed
+                unutilised_capital = balance - margin_used
         except ValueError:
             pass 
 
@@ -115,17 +138,17 @@ def index():
 
         # --- Sizing Calculation (run for preview/validation) ---
         sizing = calculate_position_sizing(
-            balance,
+            unutilised_capital, # 🔥 FIX: Use unutilised capital for risk
             entry,
             sl_type,
             sl_value
         )
         
-        # --- Execute Trade ---
-        if 'place_order' in form or (sizing and sizing.get("error") is None and form.get("sl_type") is not None): 
+        # --- Execute Trade ONLY if PLACE ORDER button clicked ---
+        if 'place_order' in form:
             
             resp = execute_trade_action(
-                balance=balance,
+                balance=unutilised_capital, # 🔥 FIX: Pass unutilised capital for risk check
                 symbol=symbol,
                 side=side,
                 entry=entry,
@@ -144,8 +167,10 @@ def index():
     # GET or POST Final Preview
     # --------------------------
     if not sizing:
+        # Recalculate unutilised capital just in case the balance was updated
+        unutilised_capital = balance - margin_used # 🔥 FIX: Ensure variable is defined
         sizing = calculate_position_sizing(
-            balance,
+            unutilised_capital, # 🔥 FIX: Use unutilised capital for risk
             float(request.form.get("entry", default_entry)),
             request.form.get("sl_type", default_sl_type),
             float(request.form.get("sl_value", default_sl_value))

@@ -1,38 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Risk Manager (Flask)</title>
+    <title>Risk Manager </title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <style>
-        .container { display: flex; max-width: 1400px; margin: 20px auto; gap: 20px; font-family: sans-serif; }
-        .panel { flex: 1; padding: 20px; border: 1px solid #333; background: #1e1e1e; color: #fff; border-radius: 8px; }
-        .panel.left { max-width: 420px; }
-        .header { font-size: 1.2em; font-weight: bold; margin-bottom: 15px; color: #00aaff; }
-        .row { display: flex; gap: 10px; margin-bottom: 10px; }
-        .col { flex: 1; display: flex; flex-direction: column; }
-        label { font-size: 0.8em; color: #ccc; margin-bottom: 3px; }
-        input, select { padding: 8px; border: 1px solid #555; background: #2b2b2b; color: #fff; border-radius: 4px; }
-        .button-row { display: flex; gap: 5px; margin-bottom: 10px; }
-        .tab { flex: 1; padding: 8px; border: none; background: #4a4a4a; color: #fff; border-radius: 4px; cursor: pointer; }
-        .tab.active { background: #00aaff; }
-        .status { padding: 12px; border: 2px solid #00aaff; background: #252525; border-radius: 6px; margin-bottom: 12px; font-size: 0.9em; line-height: 1.4; }
-        .place { background: #00aaff; font-weight: bold; padding: 10px 14px; border-radius: 6px; cursor: pointer; color: #000; }
-        .place:disabled { opacity: 0.5; cursor: not-allowed; }
-        .reset { background: #ff6347; }
-        .chart-box { min-height: 400px; background: #000; margin-bottom: 15px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 8px; border: 1px solid #444; text-align: left; font-size: 0.85em; }
-        th { background: #3a3a3a; color: #fff; }
-        .long { color: #7aff00; font-weight: bold; }
-        .short { color: #ff6347; font-weight: bold; }
-        .message { padding: 10px; margin-bottom: 15px; border-radius: 4px; font-weight: bold; }
-        .success { background-color: #7aff0022; border: 1px solid #7aff00; color: #7aff00; }
-        .error { background-color: #ff634722; border: 1px solid #ff6347; color: #ff6347; }
-        small { display: block; font-size: 0.75em; margin-top: 2px; color: #ccc; }
-        .muted { color: #999; font-size: 0.85em; }
-        .formula { background:#111; padding:8px; border-radius:6px; margin-top:8px; font-size:0.85em; color:#ddd; }
-        .formula b { color:#ffcc00; }
-    </style>
+    <!-- Layout overrides moved to static/style.css to keep single-source styling -->
 </head>
 
 <body>
@@ -93,12 +64,12 @@
             <div class="row">
                 <div class="col">
                     <label>Entry Price</label>
-                    <input type="number" name="entry" step="0.00000001" value="{{default_entry}}">
+                    <input type="number" name="entry" step="0.00000001" value="{{default_entry}}" onchange="this.form.submit();" onblur="this.form.submit();">
                 </div>
 
                 <div class="col">
                     <label>SL Method</label>
-                    <select name="sl_type" onchange="this.form.submit()">
+                    <select name="sl_type" onchange="this.form.submit();">
                         <option value="SL Points" {% if default_sl_type == 'SL Points' %}selected{% endif %}>SL Points</option>
                         <option value="SL % Movement" {% if default_sl_type == 'SL % Movement' %}selected{% endif %}>SL % Movement</option>
                     </select>
@@ -108,17 +79,19 @@
             <div class="row">
                 <div class="col">
                     <label>SL Value ({{ 'Points' if default_sl_type == 'SL Points' else '% Movement' }})</label>
-                    <input type="number" step="0.01" name="sl_value" value="{{default_sl_value}}" min="0">
-                    <small class="muted">SL is mandatory — you cannot place a trade without SL.</small>
+                    <input type="number" step="0.01" name="sl_value" value="{{default_sl_value}}" min="0" onchange="this.form.submit();">
+                    <small class="muted">SL is mandatory — required to trade.</small>
                 </div>
                 
                 <div class="col">
                     <label>Max Leverage</label>
-                    <input value="{{ sizing.max_leverage_info or 'N/A' }}" disabled style="color: #ffcc00; font-weight: bold;">
-                    {% if default_sl_type == 'SL % Movement' %}
-                        <small style="color: #ffcc00;">* Based on SL% (100 / SL%)</small>
+                    {% if default_sl_type == 'SL % Movement' and default_sl_value > 0 %}
+                        <input value="{{ (100.0 / default_sl_value) | round(1) }}x" disabled style="color: #ffcc00; font-weight: bold;">
+                        <small style="color: #ffcc00;">= 100 ÷ SL%</small>
                     {% else %}
-                        <small>&nbsp;</small> {% endif %}
+                        <input value="N/A" disabled>
+                        <small>&nbsp;</small>
+                    {% endif %}
                 </div>
             </div>
 
@@ -134,7 +107,7 @@
                 </div>
             </div>
 
-            <div class="col" style="margin-bottom:10px;">
+            <div class="col" style="margin-bottom:8px;">
                 <label>TP 2 Price (Full Exit)</label>
                 <input type="number" name="tp2_price" step="0.00000001" value="{{ request.form.tp2_price or 0.0 }}">
             </div>
@@ -152,7 +125,14 @@
                     <small style="color:#7aff00;">Suggested: {{sizing.suggested_leverage | round(1) | default('0.0')}}x</small>
                 </div>
             </div>
+            
+            <div style="display:flex; gap:8px; margin-top:5px; margin-bottom: 5px;">
+                <button type="submit" class="place" name="place_order"
+                    {% if sizing.error or stats.total >= daily_max_trades or stats.by_symbol.get(selected_symbol, 0) >= daily_max_per_symbol %} disabled {% endif %}
+                >PLACE ORDER</button>
 
+                <button type="button" class="reset" style="border-radius:6px; cursor: pointer;" onclick="location.href='/';">RESET</button>
+            </div>
             <div class="status">
                 {% set suggested_units = (sizing.suggested_units or 0.0) | round(4) %}
                 {% set suggested_lev = (sizing.suggested_leverage or 0.0) | round(2) %}
@@ -162,37 +142,33 @@
                 {% set symbol_trades = stats.by_symbol.get(selected_symbol, 0) %}
 
                 {% if sizing.error %}
-                    <span style="color: #ff6347; font-weight: bold;">RISK ERROR:</span> {{ sizing.error }}
+                    <span style="color: #ff6347; font-weight: bold;">❌ ERROR:</span> {{ sizing.error }}
                     <div class="formula">
-                        <b>Why blocked:</b> SL must be set and sizing must be valid to place an order.
+                        <b>Reason:</b> SL must be set and > 0 to place a trade.
                     </div>
+                {% elif stats.total >= daily_max_trades %}
+                    <span style="color: #ff6347; font-weight: bold;">❌ DAILY LIMIT:</span> Max 4 trades per day reached.
+                {% elif stats.by_symbol.get(selected_symbol, 0) >= daily_max_per_symbol %}
+                    <span style="color: #ff6347; font-weight: bold;">❌ SYMBOL LIMIT:</span> Max 2 trades per symbol per day reached.
                 {% else %}
-                    <span style="color: #7aff00; font-weight: bold;">READY:</span> Units/Lot: {{ suggested_units }} | Leverage: {{ suggested_lev }}x | Max Risk: <span style="font-weight: bold;">${{ risk_amount }}</span>
+                    <span style="color: #7aff00; font-weight: bold;">✅ READY:</span> Units/Lot: <b>{{ suggested_units }}</b> | Leverage: <b>{{ suggested_lev }}x</b> | Max Risk: <b>${{ risk_amount }}</b>
                     <div class="formula">
-                        <div><b>Formulas used</b> (visible for transparency):</div>
+                        <div><b>📐 Formulas Used:</b></div>
                         {% if default_sl_type == 'SL Points' %}
-                            <div>• <b>Risk</b> = 1% of Unutilised = ${{ onepct }}</div>
-                            <div>• <b>SL distance</b> = SL Points + 20</div>
-                            <div>• <b>Suggested Lot</b> = Risk ÷ (SL Points + 20) = <b>{{ suggested_units }}</b></div>
+                            <div>• <b>Risk (1%):</b> ${{ onepct }}</div>
+                            <div>• <b>SL Distance:</b> {{ default_sl_value | round(0) }} Pts + 20 Pts = {{ (default_sl_value + 20) | round(0) }} Pts</div>
+                            <div>• <b>Lot Suggested:</b> ${{ onepct }} ÷ {{ (default_sl_value + 20) | round(0) }} = <b>{{ suggested_units }}</b></div>
                         {% else %}
-                            <div>• <b>Risk</b> = 1% of Unutilised = ${{ onepct }}</div>
-                            <div>• <b>SL distance</b> = SL% + 0.2%</div>
-                            <div>• <b>Suggested Lot</b> = Risk ÷ (SL% + 0.2) = <b>{{ suggested_units }}</b></div>
-                            <div>• <b>Max Leverage</b> = 100 ÷ SL% = <b>{{ sizing.max_leverage_info or ( (100.0 / (default_sl_value|float)) ~ 'x' ) }}</b></div>
+                            <div>• <b>Risk (1%):</b> ${{ onepct }}</div>
+                            <div>• <b>SL Distance:</b> {{ default_sl_value | round(2) }}% + 0.2% = {{ (default_sl_value + 0.2) | round(2) }}%</div>
+                            <div>• <b>Lot Suggested:</b> ${{ onepct }} ÷ {{ (default_sl_value + 0.2) | round(2) }}% = <b>{{ suggested_units }}</b></div>
+                            <div>• <b>Leverage Max:</b> 100 ÷ {{ default_sl_value | round(2) }}% = <b>{{ sizing.max_leverage_info }}</b></div>
                         {% endif %}
-                        <div style="margin-top:6px; color:#ccc;">Overrides are allowed (lot & leverage) but cannot exceed suggested values.</div>
+                        <div style="margin-top:6px; color:#aaa; font-size:0.85em;"><b>Note:</b> Lot & Leverage cannot exceed suggested values. Overrides must be ≤ suggestions.</div>
                     </div>
                 {% endif %}
 
                 <br>Daily Trades: <span style="font-weight: bold;">{{total_trades}}/{{daily_max_trades}}</span> | {{selected_symbol}} Trades: <span style="font-weight: bold;">{{symbol_trades}}/{{daily_max_per_symbol}}</span>
-            </div>
-
-            <div style="display:flex; gap:8px; margin-top:10px;">
-                <button type="submit" class="place" name="place_order"
-                    {% if sizing.error or total_trades >= daily_max_trades or symbol_trades >= daily_max_per_symbol %} disabled {% endif %}
-                >PLACE ORDER</button>
-
-                <button type="submit" name="reset" class="reset" style="padding:10px;border-radius:6px;">RESET</button>
             </div>
 
         </form>
@@ -207,7 +183,8 @@
         </div>
 
         <div class="header">TODAY'S TRADE LOG</div>
-
+        
+        <div class="trade-log-section">
         {% set today_iso = today.date().isoformat() %}
         
         {% set today_trades = trades | selectattr('date', 'equalto', today_iso) | list %}
@@ -244,10 +221,11 @@
         {% else %}
         <p class="no-trades" style="color:#ccc;">No trades today.</p>
         {% endif %}
-
+        </div>
     </div>
 
 </div>
+
 <script>const datetime = { fromisoformat: (s) => new Date(s) };</script>
 </body>
 </html>

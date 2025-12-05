@@ -32,7 +32,7 @@ def calculate_position_sizing(balance, entry, sl_type, sl_value):
     except:
         return {"error": "Invalid Entry or SL"}
 
-    # 1% RISK from unutilized capital
+    # 1% RISK from unutilized capital (The input 'balance' is now the unutilised capital from app.py)
     risk_amount = balance * (RISK_PERCENT / 100.0)
 
     # --------------------------
@@ -41,10 +41,14 @@ def calculate_position_sizing(balance, entry, sl_type, sl_value):
     if sl_type == "SL Points":
         if sl_value <= 0:
             return {"error": "SL Required"}
+        
+        # SL Points: lot = (1% of unutilised) / (SL Points + 20)
         sl_distance = sl_value + 20
         suggested_units = risk_amount / sl_distance
+        
+        # For SL Points, leverage is calculated from position: (units * entry) / balance
         suggested_lev = (suggested_units * entry) / balance if balance > 0 else 0
-        suggested_lev = ceil(suggested_lev * 2) / 2
+        suggested_lev = ceil(suggested_lev * 2) / 2  # Round up to nearest 0.5x
 
         return {
             "suggested_units": suggested_units,
@@ -57,14 +61,15 @@ def calculate_position_sizing(balance, entry, sl_type, sl_value):
     # --------------------------
     # SL % MOVEMENT MODE
     # --------------------------
-    if sl_type == "SL % Movement":
+    elif sl_type == "SL % Movement":
         if sl_value <= 0:
             return {"error": "SL Required"}
 
-        sl_distance = sl_value + 0.2       # as per your rules
+        # SL %: lot = (1% of unutilised) / (SL% + 0.2%)
+        sl_distance = sl_value + 0.2
         suggested_units = risk_amount / sl_distance
 
-        # Max leverage (100 ÷ SL%)
+        # SL %: leverage = 100 / SL%
         suggested_lev = 100 / sl_value
 
         return {
