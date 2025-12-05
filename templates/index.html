@@ -22,7 +22,8 @@
 
         <form method="POST">
             <input type="hidden" name="capital_input" value="{{balance}}">
-            <input type="hidden" name="side" value="{{default_side}}">
+            <input type="hidden" name="side" id="side_hidden" value="{{default_side}}">
+            <input type="hidden" name="symbol" id="symbol_hidden" value="{{selected_symbol}}">
 
             <div class="row">
                 <div class="col">
@@ -52,13 +53,13 @@
 
             <div class="button-row" style="margin-bottom:6px;">
                 {% for sym in symbols %}
-                <button name="symbol" value="{{sym}}" class="tab {% if sym == selected_symbol %}active{% endif %}">{{sym}}</button>
+                <button type="button" name="symbol" value="{{sym}}" class="tab {% if sym == selected_symbol %}active{% endif %}" onclick="document.getElementById('symbol_hidden').value='{{sym}}'; this.form.submit();">{{sym}}</button>
                 {% endfor %}
             </div>
 
             <div class="button-row" style="margin-bottom:10px;">
-                <button name="side" value="LONG" class="tab {% if default_side == 'LONG' %}active{% endif %}">LONG</button>
-                <button name="side" value="SHORT" class="tab {% if default_side == 'SHORT' %}active{% endif %}">SHORT</button>
+                <button type="button" name="side" value="LONG" class="tab {% if default_side == 'LONG' %}active{% endif %}" onclick="document.getElementById('side_hidden').value='LONG'; this.form.submit();">LONG</button>
+                <button type="button" name="side" value="SHORT" class="tab {% if default_side == 'SHORT' %}active{% endif %}" onclick="document.getElementById('side_hidden').value='SHORT'; this.form.submit();">SHORT</button>
             </div>
 
             <div class="row">
@@ -85,8 +86,9 @@
                 
                 <div class="col">
                     <label>Max Leverage</label>
-                    {% if default_sl_type == 'SL % Movement' and default_sl_value > 0 %}
-                        <input value="{{ (100.0 / default_sl_value) | round(1) }}x" disabled style="color: #ffcc00; font-weight: bold;">
+                    {% set sl_val = default_sl_value | float %}
+                    {% if default_sl_type == 'SL % Movement' and sl_val > 0 %}
+                        <input value="{{ (100.0 / sl_val) | round(1) }}x" disabled style="color: #ffcc00; font-weight: bold;">
                         <small style="color: #ffcc00;">= 100 ÷ SL%</small>
                     {% else %}
                         <input value="N/A" disabled>
@@ -154,15 +156,16 @@
                     <span style="color: #7aff00; font-weight: bold;">✅ READY:</span> Units/Lot: <b>{{ suggested_units }}</b> | Leverage: <b>{{ suggested_lev }}x</b> | Max Risk: <b>${{ risk_amount }}</b>
                     <div class="formula">
                         <div><b>📐 Formulas Used:</b></div>
+                        {% set sl_val = default_sl_value | float %}
                         {% if default_sl_type == 'SL Points' %}
                             <div>• <b>Risk (1%):</b> ${{ onepct }}</div>
-                            <div>• <b>SL Distance:</b> {{ default_sl_value | round(0) }} Pts + 20 Pts = {{ (default_sl_value + 20) | round(0) }} Pts</div>
-                            <div>• <b>Lot Suggested:</b> ${{ onepct }} ÷ {{ (default_sl_value + 20) | round(0) }} = <b>{{ suggested_units }}</b></div>
+                            <div>• <b>SL Distance:</b> {{ sl_val | round(0) }} Pts + 20 Pts = {{ (sl_val + 20) | round(0) }} Pts</div>
+                            <div>• <b>Lot Suggested:</b> ${{ onepct }} ÷ {{ (sl_val + 20) | round(0) }} = <b>{{ suggested_units }}</b></div>
                         {% else %}
                             <div>• <b>Risk (1%):</b> ${{ onepct }}</div>
-                            <div>• <b>SL Distance:</b> {{ default_sl_value | round(2) }}% + 0.2% = {{ (default_sl_value + 0.2) | round(2) }}%</div>
-                            <div>• <b>Lot Suggested:</b> ${{ onepct }} ÷ {{ (default_sl_value + 0.2) | round(2) }}% = <b>{{ suggested_units }}</b></div>
-                            <div>• <b>Leverage Max:</b> 100 ÷ {{ default_sl_value | round(2) }}% = <b>{{ sizing.max_leverage_info }}</b></div>
+                            <div>• <b>SL Distance:</b> {{ sl_val | round(2) }}% + 0.2% = {{ (sl_val + 0.2) | round(2) }}%</div>
+                            <div>• <b>Lot Suggested:</b> ${{ onepct }} ÷ {{ (sl_val + 0.2) | round(2) }}% = <b>{{ suggested_units }}</b></div>
+                            <div>• <b>Leverage Max:</b> 100 ÷ {{ sl_val | round(2) }}% = <b>{{ sizing.max_leverage_info }}</b></div>
                         {% endif %}
                         <div style="margin-top:6px; color:#aaa; font-size:0.85em;"><b>Note:</b> Lot & Leverage cannot exceed suggested values. Overrides must be ≤ suggestions.</div>
                     </div>
