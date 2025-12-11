@@ -11,7 +11,7 @@
 
     <div class="panel left">
 
-        <div class="header">CORE CONTROLS & BINANCE TRADING</div>
+        <div class="header">CORE CONTROLS</div>
         
         {% if trade_status %}
         <div class="message {{ 'success' if trade_status.success else 'error' }}">
@@ -23,17 +23,6 @@
             <input type="hidden" name="capital_input" value="{{balance}}">
             <input type="hidden" name="side" id="side_hidden" value="{{default_side}}">
             <input type="hidden" name="symbol" id="symbol_hidden" value="{{selected_symbol}}">
-
-            <div class="row" style="margin-bottom: 15px;">
-                <div class="col">
-                    <label style="color:#ffcc00;">Binance API Key</label>
-                    <input type="text" name="api_key" placeholder="Read-Write API Key">
-                </div>
-                <div class="col">
-                    <label style="color:#ffcc00;">Binance Secret Key</label>
-                    <input type="password" name="api_secret" placeholder="Secret Key">
-                </div>
-            </div>
 
             <div class="row">
                 <div class="col">
@@ -57,7 +46,7 @@
                     <label>1% of Unutilised (Risk)</label>
                     {% set onepct = (unutil * 0.01) | round(2) %}
                     <input value="${{ onepct }}" disabled>
-                    <small class="muted">This = 1% of unutilised capital</small>
+                    <small class="muted">This = 1% of unutilised capital — used to compute suggested lot</small>
                 </div>
             </div>
 
@@ -159,21 +148,22 @@
                         <b>Reason:</b> SL must be set and > 0 to place a trade.
                     </div>
                 {% elif stats.total >= daily_max_trades %}
-                    <span style="color: #ff6347; font-weight: bold;">❌ DAILY LIMIT:</span> Max 4 trades per day reached.
+                    <span style="color: #ff6347; font-weight: bold;">❌ DAILY LIMIT:</span> Max {{ daily_max_trades }} trades per day reached.
                 {% elif stats.by_symbol.get(selected_symbol, 0) >= daily_max_per_symbol %}
-                    <span style="color: #ff6347; font-weight: bold;">❌ SYMBOL LIMIT:</span> Max 2 trades per symbol per day reached.
+                    <span style="color: #ff6347; font-weight: bold;">❌ SYMBOL LIMIT:</span> Max {{ daily_max_per_symbol }} daily trades allowed for {{ selected_symbol }}.
                 {% else %}
                     <span style="color: #7aff00; font-weight: bold;">✅ READY:</span> Units/Lot: <b>{{ suggested_units }}</b> | Leverage: <b>{{ suggested_lev }}x</b> | Max Risk: <b>${{ risk_amount }}</b>
                     <div class="formula">
                         <div><b>📐 Formulas Used:</b></div>
                         {% set sl_val = default_sl_value | float %}
                         {% if default_sl_type == 'SL Points' %}
-                            <div>• **Risk (1%):** ${{ onepct }}</div>
-                            <div>• **SL Distance (Pts):** {{ sl_val | round(0) }} Pts + 20 Pts = {{ (sl_val + 20) | round(0) }} Pts</div>
-                            <div>• **Lot Suggested:** ${{ onepct }} ÷ {{ (sl_val + 20) | round(0) }} = **{{ suggested_units }}**</div>
                             {% set sl_pts_buffer = sl_val + 20 %}
                             {% set default_entry_float = default_entry | float %}
                             {% set sl_pct_lev = (sl_pts_buffer / default_entry_float * 100) | round(2) if default_entry_float > 0 else 0.0 %}
+
+                            <div>• **Risk (1%):** ${{ onepct }}</div>
+                            <div>• **SL Distance (Pts):** {{ sl_val | round(0) }} Pts + 20 Pts = {{ sl_pts_buffer | round(0) }} Pts</div>
+                            <div>• **Lot Suggested:** ${{ onepct }} ÷ {{ sl_pts_buffer | round(0) }} = **{{ suggested_units }}**</div>
                             <div>• **SL % for Lev:** ({{ sl_pts_buffer | round(0) }} Pts ÷ Entry Price) × 100 = {{ sl_pct_lev }}%</div>
                             <div>• **Leverage Suggested:** 100 ÷ {{ sl_pct_lev }}% = **{{ sizing.max_leverage_info }}**</div>
                         {% else %}
