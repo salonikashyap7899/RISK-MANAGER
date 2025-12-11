@@ -42,19 +42,23 @@ def calculate_position_sizing(balance, entry, sl_type, sl_value):
         if sl_value <= 0:
             return {"error": "SL Required"}
         
-        # SL Points: lot = (1% of unutilised) / (SL Points + 20)
-        sl_distance = sl_value + 20
-        suggested_units = risk_amount / sl_distance
+        # Risk Calculation: Lot Suggested = (1% of unutilised) / (SL Points + 20 Pts)
+        sl_distance_pts = sl_value + 20
+        suggested_units = risk_amount / sl_distance_pts # This is lot size
         
-        # For SL Points, leverage is calculated from position: (units * entry) / balance
-        suggested_lev = (suggested_units * entry) / balance if balance > 0 else 0
+        # Leverage Calculation (Point 3a):
+        # 1. SL % Movement (with buffer) = ((SL Points + 20) / Entry Price) * 100
+        sl_percent_for_lev = (sl_distance_pts / entry) * 100 if entry > 0 else 0
+        
+        # 2. Leverage = 100 / SL % Movement (derived from SL Points)
+        suggested_lev = 100 / sl_percent_for_lev if sl_percent_for_lev > 0 else 0
         suggested_lev = ceil(suggested_lev * 2) / 2  # Round up to nearest 0.5x
 
         return {
-            "suggested_units": suggested_units,
+            "suggested_units": suggested_units, # This is Lot Size
             "suggested_leverage": suggested_lev,
             "risk_amount": risk_amount,
-            "max_leverage_info": "N/A",
+            "max_leverage_info": f"{suggested_lev:.1f}x",
             "error": None
         }
 
@@ -65,15 +69,20 @@ def calculate_position_sizing(balance, entry, sl_type, sl_value):
         if sl_value <= 0:
             return {"error": "SL Required"}
 
-        # SL %: lot = (1% of unutilised) / (SL% + 0.2%)
-        sl_distance = sl_value + 0.2
-        suggested_units = risk_amount / sl_distance
+        # Leverage Calculation (Point 3b): Use SL% Movement + 0.2% buffer
+        sl_distance_pct = sl_value + 0.2
+        suggested_lev = 100 / sl_distance_pct
+        suggested_lev = ceil(suggested_lev * 2) / 2  # Round up to nearest 0.5x
 
-        # SL %: leverage = 100 / SL%
-        suggested_lev = 100 / sl_value
+        # Position Size Calculation (Point 2): 
+        # Notional = (1% Risk / (SL% Distance / 100))
+        suggested_notional = risk_amount / (sl_distance_pct / 100)
+        
+        # Units (Lot) = Notional / Entry Price
+        suggested_units = suggested_notional / entry if entry > 0 else 0 
 
         return {
-            "suggested_units": suggested_units,
+            "suggested_units": suggested_units, # This is Position Size/Notional in terms of units
             "suggested_leverage": suggested_lev,
             "risk_amount": risk_amount,
             "max_leverage_info": f"{suggested_lev:.1f}x",

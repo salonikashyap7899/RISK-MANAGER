@@ -97,7 +97,7 @@ def index():
     # Margin Used calculation
     margin_used = calculate_unutilized_capital(balance, trades)
     
-    # 🔥 CRITICAL FIX: Calculate unutilised capital
+    # 櫨 CRITICAL FIX: Calculate unutilised capital
     unutilised_capital = balance - margin_used
 
 
@@ -138,7 +138,7 @@ def index():
 
         # --- Sizing Calculation (run for preview/validation) ---
         sizing = calculate_position_sizing(
-            unutilised_capital, # 🔥 FIX: Use unutilised capital for risk
+            unutilised_capital, # 櫨 FIX: Use unutilised capital for risk
             entry,
             sl_type,
             sl_value
@@ -148,7 +148,7 @@ def index():
         if 'place_order' in form:
             
             resp = execute_trade_action(
-                balance=unutilised_capital, # 🔥 FIX: Pass unutilised capital for risk check
+                balance=unutilised_capital, # 櫨 FIX: Pass unutilised capital for risk check
                 symbol=symbol,
                 side=side,
                 entry=entry,
@@ -168,9 +168,9 @@ def index():
     # --------------------------
     if not sizing:
         # Recalculate unutilised capital just in case the balance was updated
-        unutilised_capital = balance - margin_used # 🔥 FIX: Ensure variable is defined
+        unutilised_capital = balance - margin_used # 櫨 FIX: Ensure variable is defined
         sizing = calculate_position_sizing(
-            unutilised_capital, # 🔥 FIX: Use unutilised capital for risk
+            unutilised_capital, # 櫨 FIX: Use unutilised capital for risk
             float(request.form.get("entry", default_entry)),
             request.form.get("sl_type", default_sl_type),
             float(request.form.get("sl_value", default_sl_value))
@@ -198,14 +198,14 @@ def index():
         symbols=BROKER_SYMBOLS,
         today=datetime.utcnow(),
 
-        # 🔥 FIX ADDED HERE
+        # 櫨 FIX ADDED HERE
         datetime=datetime,
 
         selected_symbol=selected_symbol,
-        default_entry=request.form.get("entry", 27050.0),
-        default_sl_value=request.form.get("sl_value", 100.0),
-        default_sl_type=request.form.get("sl_type", "SL Points"),
-        default_side=request.form.get("side", "LONG"),
+        default_entry=request.form.get("entry", default_entry),
+        default_sl_value=request.form.get("sl_value", default_sl_value),
+        default_sl_type=request.form.get("sl_type", default_sl_type),
+        default_side=request.form.get("side", default_side),
         default_units=request.form.get("user_units", 0.0),
         default_lev=request.form.get("user_lev", 0.0),
 

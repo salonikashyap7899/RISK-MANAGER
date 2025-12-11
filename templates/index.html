@@ -3,8 +3,7 @@
 <head>
     <title>Risk Manager </title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <!-- Layout overrides moved to static/style.css to keep single-source styling -->
-</head>
+    </head>
 
 <body>
 
@@ -87,9 +86,9 @@
                 <div class="col">
                     <label>Max Leverage</label>
                     {% set sl_val = default_sl_value | float %}
-                    {% if default_sl_type == 'SL % Movement' and sl_val > 0 %}
-                        <input value="{{ (100.0 / sl_val) | round(1) }}x" disabled style="color: #ffcc00; font-weight: bold;">
-                        <small style="color: #ffcc00;">= 100 ÷ SL%</small>
+                    {% if sizing.max_leverage_info and sizing.max_leverage_info != 'N/A' %}
+                        <input value="{{ sizing.max_leverage_info }}" disabled style="color: #ffcc00; font-weight: bold;">
+                        <small style="color: #ffcc00;">Calculated from SL distance</small>
                     {% else %}
                         <input value="N/A" disabled>
                         <small>&nbsp;</small>
@@ -158,14 +157,23 @@
                         <div><b>📐 Formulas Used:</b></div>
                         {% set sl_val = default_sl_value | float %}
                         {% if default_sl_type == 'SL Points' %}
-                            <div>• <b>Risk (1%):</b> ${{ onepct }}</div>
-                            <div>• <b>SL Distance:</b> {{ sl_val | round(0) }} Pts + 20 Pts = {{ (sl_val + 20) | round(0) }} Pts</div>
-                            <div>• <b>Lot Suggested:</b> ${{ onepct }} ÷ {{ (sl_val + 20) | round(0) }} = <b>{{ suggested_units }}</b></div>
+                            <div>• **Risk (1%):** ${{ onepct }}</div>
+                            <div>• **SL Distance (Pts):** {{ sl_val | round(0) }} Pts + 20 Pts = {{ (sl_val + 20) | round(0) }} Pts</div>
+                            <div>• **Lot Suggested:** ${{ onepct }} ÷ {{ (sl_val + 20) | round(0) }} = **{{ suggested_units }}**</div>
+                            {% set sl_pts_buffer = sl_val + 20 %}
+                            {% set default_entry_float = default_entry | float %}
+                            {% set sl_pct_lev = (sl_pts_buffer / default_entry_float * 100) | round(2) if default_entry_float > 0 else 0.0 %}
+                            <div>• **SL % for Lev:** ({{ sl_pts_buffer | round(0) }} Pts ÷ Entry Price) × 100 = {{ sl_pct_lev }}%</div>
+                            <div>• **Leverage Suggested:** 100 ÷ {{ sl_pct_lev }}% = **{{ sizing.max_leverage_info }}**</div>
                         {% else %}
-                            <div>• <b>Risk (1%):</b> ${{ onepct }}</div>
-                            <div>• <b>SL Distance:</b> {{ sl_val | round(2) }}% + 0.2% = {{ (sl_val + 0.2) | round(2) }}%</div>
-                            <div>• <b>Lot Suggested:</b> ${{ onepct }} ÷ {{ (sl_val + 0.2) | round(2) }}% = <b>{{ suggested_units }}</b></div>
-                            <div>• <b>Leverage Max:</b> 100 ÷ {{ sl_val | round(2) }}% = <b>{{ sizing.max_leverage_info }}</b></div>
+                            {% set sl_dist_pct = (sl_val + 0.2) | round(2) %}
+                            {% set risk_div_sl = (onepct / (sl_dist_pct / 100)) | round(2) %}
+                            
+                            <div>• **Risk (1%):** ${{ onepct }}</div>
+                            <div>• **SL Distance (%):** {{ sl_val | round(2) }}% + 0.2% = {{ sl_dist_pct }}%</div>
+                            <div>• **Notional Suggested (Position Size):** (${{ onepct }} ÷ ({{ sl_dist_pct }}% ÷ 100)) = ${{ risk_div_sl }}</div>
+                            <div>• **Units Suggested (Lot):** ${{ risk_div_sl }} ÷ Entry Price = **{{ suggested_units }}**</div>
+                            <div>• **Leverage Max:** 100 ÷ {{ sl_dist_pct }}% = **{{ sizing.max_leverage_info }}**</div>
                         {% endif %}
                         <div style="margin-top:6px; color:#aaa; font-size:0.85em;"><b>Note:</b> Lot & Leverage cannot exceed suggested values. Overrides must be ≤ suggestions.</div>
                     </div>
