@@ -1,10 +1,31 @@
+# app.py (FINAL UPGRADED VERSION)
 from flask import Flask, render_template, request, session, redirect, url_for
 from datetime import datetime
+import os 
+
+# NEW: Import Binance Client
+try:
+    from binance.client import Client
+except ImportError:
+    print("Warning: python-binance library not found. Trading will be simulated.")
+    # Define a dummy class if not installed to prevent crash
+    class Client:
+        def __init__(self, api_key, api_secret, testnet=False):
+            self.testnet = testnet
+            print(f"Binance Client is a placeholder. Install python-binance for live trading. Testnet: {testnet}")
+        def futures_create_order(self, **kwargs):
+            return {"orderId": 99999, "status": "SIMULATED", "side": kwargs.get('side')}
+        def futures_change_leverage(self, **kwargs):
+            pass
+        def futures_change_margin_type(self, **kwargs):
+            pass
+
 
 from logic import (
     initialize_session,
     calculate_position_sizing,
     execute_trade_action,
+    place_binance_order, 
     DAILY_MAX_TRADES,
     DAILY_MAX_PER_SYMBOL,
     TOTAL_CAPITAL_DEFAULT,
@@ -19,21 +40,21 @@ BROKER_SYMBOLS = ["BTCUSD", "ETHUSD", "SOLUSD", "XAUUSD", "EURUSD"]
 app = Flask(__name__)
 app.secret_key = "replace-this-secret-key"
 
+# --- Binance API Configuration ---
+# WARNING: Storing keys in code is risky. Use environment variables or a secret manager.
+BINANCE_API_KEY = os.environ.get('BINANCE_API_KEY', 'YOUR_API_KEY_HERE')
+BINANCE_API_SECRET = os.environ.get('BINANCE_API_SECRET', 'YOUR_API_SECRET_HERE')
+BINANCE_TESTNET = True # Set to False for real trading on the live exchange
 
-# --------------------------
-# TradingView Chart Generator
-# app.py
-# ...
-# --------------------------
-# TradingView Chart Generator
-# --------------------------
-# app.py
-# ...
-# --------------------------
-# TradingView Chart Generator
-# --------------------------
-# app.py
-# ...
+# Initialize Binance Client
+BINANCE_CLIENT = None
+if BINANCE_API_KEY != 'YOUR_API_KEY_HERE' and BINANCE_API_SECRET != 'YOUR_API_SECRET_HERE':
+    try:
+        BINANCE_CLIENT = Client(BINANCE_API_KEY, BINANCE_API_SECRET, testnet=BINANCE_TESTNET)
+    except Exception as e:
+        print(f"Error initializing Binance Client: {e}")
+        
+
 # --------------------------
 # TradingView Chart Generator
 # --------------------------
@@ -64,8 +85,6 @@ def generate_chart_html(symbol):
 
     </div>
     """
-# ...
-# ...
 
 
 @app.before_request
@@ -97,7 +116,7 @@ def index():
     # Margin Used calculation
     margin_used = calculate_unutilized_capital(balance, trades)
     
-    # 櫨 CRITICAL FIX: Calculate unutilised capital
+    # Calculate unutilised capital
     unutilised_capital = balance - margin_used
 
 
@@ -138,7 +157,7 @@ def index():
 
         # --- Sizing Calculation (run for preview/validation) ---
         sizing = calculate_position_sizing(
-            unutilised_capital, # 櫨 FIX: Use unutilised capital for risk
+            unutilised_capital, 
             entry,
             sl_type,
             sl_value
@@ -147,30 +166,51 @@ def index():
         # --- Execute Trade ONLY if PLACE ORDER button clicked ---
         if 'place_order' in form:
             
-            resp = execute_trade_action(
-                balance=unutilised_capital, # 櫨 FIX: Pass unutilised capital for risk check
+            # --- BINANCE INTEGRATION STEP 1: Execute on Exchange ---
+            binance_resp = place_binance_order(
+                client=BINANCE_CLIENT, 
                 symbol=symbol,
                 side=side,
                 entry=entry,
-                sl_type=sl_type, 
-                sl_value=sl_value, 
-                order_type=default_order_type,
+                sl_value=sl_value,
                 tp_list=tp_list,
                 sizing=sizing,
                 user_units=user_units,
-                user_lev=user_lev,
+                user_lev=user_lev
             )
 
-            trade_status = resp
+            # If exchange order failed, stop here and report error
+            if not binance_resp["success"]:
+                 trade_status = binance_resp
+                 # Skip the internal trade execution if API failed
+            else:
+                # --- INTERNAL TRADE EXECUTION (Your original logic) ---
+                resp = execute_trade_action(
+                    balance=unutilised_capital, 
+                    symbol=symbol,
+                    side=side,
+                    entry=entry,
+                    sl_type=sl_type, 
+                    sl_value=sl_value, 
+                    order_type=default_order_type,
+                    tp_list=tp_list,
+                    sizing=sizing,
+                    user_units=user_units,
+                    user_lev=user_lev,
+                )
+                
+                # Append Binance order ID/Status to the message
+                resp["message"] += f" | Binance Status: {binance_resp['status']}"
+                trade_status = resp
+
 
     # --------------------------
     # GET or POST Final Preview
     # --------------------------
     if not sizing:
-        # Recalculate unutilised capital just in case the balance was updated
-        unutilised_capital = balance - margin_used # 櫨 FIX: Ensure variable is defined
+        unutilised_capital = balance - margin_used 
         sizing = calculate_position_sizing(
-            unutilised_capital, # 櫨 FIX: Use unutilised capital for risk
+            unutilised_capital, 
             float(request.form.get("entry", default_entry)),
             request.form.get("sl_type", default_sl_type),
             float(request.form.get("sl_value", default_sl_value))
@@ -198,7 +238,6 @@ def index():
         symbols=BROKER_SYMBOLS,
         today=datetime.utcnow(),
 
-        # 櫨 FIX ADDED HERE
         datetime=datetime,
 
         selected_symbol=selected_symbol,

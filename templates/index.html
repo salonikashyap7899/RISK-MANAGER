@@ -3,7 +3,85 @@
 <head>
     <title>Risk Manager </title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    </head>
+    <style>
+        /* Note: It's best practice to move CSS to a separate file, but for a single-file solution, 
+           this style ensures the layout works as intended. You need to ensure you have a static/style.css file */
+        .container {
+            display: flex;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .panel {
+            background: #2b3a4a;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            color: #fff;
+        }
+        .left { flex: 1; min-width: 500px; }
+        .right { flex: 2; }
+        .header {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #ffcc00;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #3c4c5c;
+            padding-bottom: 5px;
+        }
+        .row { display: flex; gap: 15px; margin-bottom: 10px; }
+        .col { flex: 1; display: flex; flex-direction: column; }
+        label { margin-bottom: 5px; font-size: 0.9em; color: #ccc; }
+        input, select {
+            padding: 8px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            background: #3c4c5c;
+            color: #fff;
+            font-size: 1em;
+        }
+        .button-row { display: flex; gap: 5px; margin-bottom: 10px; }
+        .tab {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 4px;
+            background: #4a6078;
+            color: #fff;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .tab.active, .tab:hover { background: #5a738c; }
+        .message.success { background: #1e4d2b; color: #7aff00; padding: 10px; border-radius: 4px; margin-bottom: 15px; border-left: 5px solid #7aff00; }
+        .message.error { background: #4d1e1e; color: #ff6347; padding: 10px; border-radius: 4px; margin-bottom: 15px; border-left: 5px solid #ff6347; }
+        .status {
+            background: #3c4c5c;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+        }
+        .formula {
+            margin-top: 10px;
+            padding: 10px;
+            background: #2b3a4a;
+            border-radius: 4px;
+            font-size: 0.9em;
+            line-height: 1.5;
+            color: #ccc;
+        }
+        .formula div { margin-bottom: 3px; }
+        .place { background: #7aff00; color: #000; font-weight: bold; }
+        .reset { background: #4a6078; color: #fff; }
+        .trade-log-section { max-height: 400px; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #3c4c5c; }
+        th { background: #3c4c5c; color: #ffcc00; }
+        .long { color: #7aff00; font-weight: bold; }
+        .short { color: #ff6347; font-weight: bold; }
+        .chart-box { height: 400px; margin-bottom: 20px; }
+        small { font-size: 0.75em; color: #aaa; margin-top: 2px; }
+    </style>
+</head>
 
 <body>
 
@@ -11,7 +89,7 @@
 
     <div class="panel left">
 
-        <div class="header">CORE CONTROLS</div>
+        <div class="header">CORE CONTROLS & BINANCE TRADING</div>
         
         {% if trade_status %}
         <div class="message {{ 'success' if trade_status.success else 'error' }}">
@@ -23,6 +101,17 @@
             <input type="hidden" name="capital_input" value="{{balance}}">
             <input type="hidden" name="side" id="side_hidden" value="{{default_side}}">
             <input type="hidden" name="symbol" id="symbol_hidden" value="{{selected_symbol}}">
+
+            <div class="row" style="margin-bottom: 15px;">
+                <div class="col">
+                    <label style="color:#ffcc00;">Binance API Key</label>
+                    <input type="text" name="api_key" placeholder="Read-Write API Key">
+                </div>
+                <div class="col">
+                    <label style="color:#ffcc00;">Binance Secret Key</label>
+                    <input type="password" name="api_secret" placeholder="Secret Key">
+                </div>
+            </div>
 
             <div class="row">
                 <div class="col">
@@ -46,7 +135,7 @@
                     <label>1% of Unutilised (Risk)</label>
                     {% set onepct = (unutil * 0.01) | round(2) %}
                     <input value="${{ onepct }}" disabled>
-                    <small class="muted">This = 1% of unutilised capital — used to compute suggested lot</small>
+                    <small class="muted">This = 1% of unutilised capital</small>
                 </div>
             </div>
 

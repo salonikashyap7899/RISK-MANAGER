@@ -1,8 +1,25 @@
-# logic.py (FINAL UPGRADED VERSION)
+# logic.py (FINAL UPGRADED VERSION with Binance)
 from flask import session
 from datetime import datetime
 from math import ceil
 
+# NEW: Import Client and constants from python-binance for type hinting/order types
+try:
+    from binance.enums import *
+    # If using binance futures
+    ORDER_TYPE_MARKET = 'MARKET'
+    ORDER_TYPE_STOP_MARKET = 'STOP_MARKET'
+    ORDER_TYPE_TAKE_PROFIT_MARKET = 'TAKE_PROFIT_MARKET'
+    SIDE_BUY = 'BUY'
+    SIDE_SELL = 'SELL'
+except ImportError:
+    # Define minimal placeholders if the library isn't installed
+    ORDER_TYPE_MARKET = 'MARKET_SIMULATED'
+    ORDER_TYPE_STOP_MARKET = 'STOP_MARKET_SIMULATED'
+    ORDER_TYPE_TAKE_PROFIT_MARKET = 'TAKE_PROFIT_MARKET_SIMULATED'
+    SIDE_BUY = 'BUY'
+    SIDE_SELL = 'SELL'
+    
 DAILY_MAX_TRADES = 4
 DAILY_MAX_PER_SYMBOL = 2
 RISK_PERCENT = 1.0          # 1%
@@ -32,7 +49,7 @@ def calculate_position_sizing(balance, entry, sl_type, sl_value):
     except:
         return {"error": "Invalid Entry or SL"}
 
-    # 1% RISK from unutilized capital (The input 'balance' is now the unutilised capital from app.py)
+    # 1% RISK from unutilized capital
     risk_amount = balance * (RISK_PERCENT / 100.0)
 
     # --------------------------
@@ -42,7 +59,7 @@ def calculate_position_sizing(balance, entry, sl_type, sl_value):
         if sl_value <= 0:
             return {"error": "SL Required"}
         
-        # Risk Calculation: Lot Suggested = (1% of unutilised) / (SL Points + 20 Pts)
+        # Lot Suggested = (1% of unutilised) / (SL Points + 20 Pts)
         sl_distance_pts = sl_value + 20
         suggested_units = risk_amount / sl_distance_pts # This is lot size
         
@@ -93,7 +110,91 @@ def calculate_position_sizing(balance, entry, sl_type, sl_value):
 
 
 # ===========================================
-#     TRADE EXECUTION RULES
+#     BINANCE API INTEGRATION
+# ===========================================
+
+def place_binance_order(client, symbol, side, entry, sl_value, tp_list, sizing, user_units, user_lev):
+    if not client:
+        return {"success": False, "message": "BINANCE ERROR: Client not initialized. API keys missing or `python-binance` not installed.", "status": "FAILED"}
+
+    # 1. Determine Position Size (Units) and Leverage to use
+    suggested_units = sizing.get("suggested_units", 0.0)
+    # Use user input if provided and less than or equal to suggested
+    units_to_use = user_units if user_units > 0 and user_units <= suggested_units else suggested_units
+    
+    suggested_lev = sizing.get("suggested_leverage", 0.0)
+    # Use user input if provided and less than or equal to suggested
+    lev_to_use = user_lev if user_lev > 0 and user_lev <= suggested_lev else suggested_lev
+    
+    if units_to_use <= 0 or lev_to_use <= 0:
+         return {"success": False, "message": "BINANCE ERROR: Calculated position size or leverage is zero/invalid.", "status": "FAILED"}
+    
+    # 2. Map Side and Symbol
+    binance_side = SIDE_BUY if side == "LONG" else SIDE_SELL
+    binance_symbol = symbol.replace('USD', 'USDT') # Assuming USDT Futures pairs
+
+    try:
+        # --- Futures-Specific Steps ---
+        # 3a. Set Leverage 
+        client.futures_change_leverage(symbol=binance_symbol, leverage=int(lev_to_use))
+        
+        # 3b. Set Margin Type 
+        client.futures_change_margin_type(symbol=binance_symbol, marginType='ISOLATED')
+
+        # 4. Place MARKET Order (Entry)
+        order_resp = client.futures_create_order(
+            symbol=binance_symbol,
+            side=binance_side,
+            type=ORDER_TYPE_MARKET,
+            quantity=round(units_to_use, 4) # Rounding is often needed for exchange precision
+        )
+        
+        # 5. Place Stop Loss Order (A reverse order)
+        # SL is calculated here based on the original SL value (points or percentage)
+        sl_price = entry
+        if sizing["sl_mode"] == "SL Points":
+            sl_price = entry - sl_value if side == "LONG" else entry + sl_value
+        else: # SL % Movement
+            sl_price = entry * (1 - sl_value/100) if side == "LONG" else entry * (1 + sl_value/100)
+
+        sl_side = SIDE_SELL if side == "LONG" else SIDE_BUY
+
+        sl_resp = client.futures_create_order(
+            symbol=binance_symbol,
+            side=sl_side,
+            type=ORDER_TYPE_STOP_MARKET,
+            quantity=round(units_to_use, 4),
+            stopPrice=round(sl_price, 4), 
+            timeInForce='GTC'
+        )
+        
+        # 6. Place Take Profit Orders 
+        tp_messages = []
+        for tp in tp_list:
+            if tp.get("price") > 0 and tp.get("percent_position") > 0:
+                tp_resp = client.futures_create_order(
+                    symbol=binance_symbol,
+                    side=sl_side, 
+                    type=ORDER_TYPE_TAKE_PROFIT_MARKET,
+                    quantity=round(units_to_use * (tp['percent_position'] / 100), 4),
+                    stopPrice=round(tp['price'], 4), 
+                    timeInForce='GTC'
+                )
+                tp_messages.append(f"TP Placed (ID: {tp_resp.get('orderId')})")
+
+        return {
+            "success": True, 
+            "message": f"Entry ID: {order_resp.get('orderId')} | SL ID: {sl_resp.get('orderId')} | TPs: {len(tp_messages)}", 
+            "status": order_resp.get('status', 'EXECUTED')
+        }
+
+    except Exception as e:
+        # Catch specific Binance errors if needed
+        return {"success": False, "message": f"BINANCE API FAILURE: {e}", "status": "FAILED"}
+
+
+# ===========================================
+#     TRADE EXECUTION RULES (Internal Log)
 # ===========================================
 def execute_trade_action(
     balance, symbol, side, entry, sl_type, sl_value, order_type,
@@ -174,6 +275,6 @@ def execute_trade_action(
 
     return {
         "success": True,
-        "message": f"Order Placed: {units_to_use:.4f} units @ {lev_to_use:.1f}x",
+        "message": f"Order Placed (Internal): {units_to_use:.4f} units @ {lev_to_use:.1f}x",
         "trade": trade
     }
