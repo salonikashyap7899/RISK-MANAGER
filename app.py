@@ -7,6 +7,7 @@ from calculations import calculate_unutilized_capital, calculate_targets_from_fo
 
 app = Flask(__name__)
 app.secret_key = "trading_secret_key"
+
 BROKER_SYMBOLS = ["BTCUSD", "ETHUSD", "SOLUSD", "XAUUSD", "EURUSD"] #
 
 @app.route("/", methods=["GET", "POST"])
@@ -34,3 +35,6 @@ def index():
 
 if __name__ == "__main__":
     app.run(debug=True)
+    # Use the port Railway provides, or default to 5000
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
