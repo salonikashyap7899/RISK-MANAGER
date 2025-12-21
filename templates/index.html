@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Risk Terminal</title>
+    <title>Risk Manager</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <div class="container">
     <div class="panel left">
-        <div class="header">CORE CONTROLS (LIVE DATA)</div>
+        <div class="header">CORE CONTROLS</div>
         {% if trade_status %}<div class="message {{ 'success' if trade_status.success else 'error' }}">{{ trade_status.message }}</div>{% endif %}
 
         <form method="POST">
@@ -15,7 +15,7 @@
             <input type="hidden" name="symbol" id="symbol_hidden" value="{{selected_symbol}}">
 
             <div class="row">
-                <div class="col"><label>Binance Balance</label><input type="text" value="${{balance | round(2)}}" disabled></div>
+                <div class="col"><label>Total Balance</label><input value="${{balance | round(2)}}" disabled></div>
                 <div class="col"><label>Margin Used</label><input value="${{margin_used | round(2)}}" disabled></div>
             </div>
 
@@ -29,38 +29,56 @@
             </div>
 
             <div class="row">
-                <div class="col"><label>Entry Price</label><input type="number" name="entry" value="{{default_entry}}" step="any"></div>
+                <div class="col"><label>Entry Price</label><input type="number" name="entry" value="{{default_entry}}" step="any" onchange="this.form.submit();"></div>
                 <div class="col">
-                    <label>SL Mode</label>
+                    <label>SL Method</label>
                     <select name="sl_type" onchange="this.form.submit();">
-                        <option value="SL Points" {{ 'selected' if default_sl_type == 'SL Points' }}>Points</option>
-                        <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>%</option>
+                        <option value="SL Points" {{ 'selected' if default_sl_type == 'SL Points' }}>SL Points</option>
+                        <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>SL % Movement</option>
                     </select>
                 </div>
-                <div class="col"><label>SL Value</label><input type="number" name="sl_value" value="{{default_sl_value}}" step="any"></div>
             </div>
 
-            <div class="status">
-                {% if sizing.error %}
-                    <span style="color: #ff6347;">❌ {{ sizing.error }}</span>
-                {% else %}
-                    <span style="color: #7aff00;">✅ READY</span><br>
-                    Lot: <b>{{ sizing.suggested_units }}</b> | Lev: <b>{{ sizing.suggested_leverage }}x</b> | Risk: <b>${{ sizing.risk_amount }}</b>
-                {% endif %}
+            <div class="row">
+                <div class="col"><label>SL Value</label><input type="number" name="sl_value" value="{{default_sl_value}}" step="any" onchange="this.form.submit();"></div>
+                <div class="col"><label>Max Leverage</label><input value="{{ sizing.max_leverage_info or 'N/A' }}" disabled style="color:#ffcc00;"></div>
+            </div>
+
+            <div class="row">
+                <div class="col"><label>Position Override</label><input type="number" name="user_units" step="any"><small style="color:#7aff00;">Sug: {{sizing.suggested_units}}</small></div>
+                <div class="col"><label>Lev Override</label><input type="number" name="user_lev" step="any"><small style="color:#7aff00;">Sug: {{sizing.suggested_leverage}}x</small></div>
             </div>
 
             <button type="submit" name="place_order" class="place">PLACE BINANCE ORDER</button>
+
+            <div class="status">
+                {% if sizing.error %}
+                    <span style="color:#ff6347;">❌ ERROR: {{ sizing.error }}</span>
+                {% else %}
+                    <span style="color:#7aff00;">✅ READY</span>
+                    <div class="formula">
+                        <b>📐 Formulas Used:</b><br>
+                        {% if default_sl_type == 'SL Points' %}
+                            • SL Distance: {{ default_sl_value }} + 20 Pts<br>
+                            • Lot: Risk / (SL + 20)
+                        {% else %}
+                            • SL Distance: {{ default_sl_value }}% + 0.2%<br>
+                            • Notional: Risk / (SL% / 100)
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
         </form>
     </div>
 
     <div class="panel right">
-        <div class="chart-box">{{ chart_html | safe }}</div>
+        <div class="chart-box" style="height:300px;">{{ chart_html | safe }}</div>
+        <div class="header">LIVE LOG</div>
         <div class="trade-log-section">
-            <div class="header">LIVE TRADE LOG</div>
             <table>
-                <tr><th>Time</th><th>Sym</th><th>Side</th><th>Entry</th><th>Units</th><th>Lev</th></tr>
+                <tr><th>Time</th><th>Sym</th><th>Side</th><th>Entry</th><th>Units</th></tr>
                 {% for t in trades | reverse %}
-                <tr><td>{{ datetime.fromisoformat(t.timestamp).strftime('%H:%M') }}</td><td>{{t.symbol}}</td><td class="{{t.side.lower()}}">{{t.side}}</td><td>{{t.entry_price}}</td><td>{{t.units}}</td><td>{{t.leverage}}x</td></tr>
+                <tr><td>{{ datetime.fromisoformat(t.timestamp).strftime('%H:%M') }}</td><td>{{t.symbol}}</td><td class="{{t.side.lower()}}">{{t.side}}</td><td>{{t.entry_price}}</td><td>{{t.units}}</td></tr>
                 {% endfor %}
             </table>
         </div>
