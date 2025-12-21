@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Advanced Risk Terminal</title>
+    <title>Risk Terminal</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <div class="container">
     <div class="panel left">
-        <div class="header">CORE CONTROLS & RISK</div>
+        <div class="header">CORE CONTROLS (LIVE DATA)</div>
         {% if trade_status %}<div class="message {{ 'success' if trade_status.success else 'error' }}">{{ trade_status.message }}</div>{% endif %}
 
         <form method="POST">
@@ -15,26 +15,26 @@
             <input type="hidden" name="symbol" id="symbol_hidden" value="{{selected_symbol}}">
 
             <div class="row">
-                <div class="col"><label>Binance Balance (USDT)</label><input type="text" value="${{balance | round(2)}}" disabled></div>
-                <div class="col"><label>Margin in Use</label><input value="${{margin_used | round(2)}}" disabled></div>
+                <div class="col"><label>Binance Balance</label><input type="text" value="${{balance | round(2)}}" disabled></div>
+                <div class="col"><label>Margin Used</label><input value="${{margin_used | round(2)}}" disabled></div>
             </div>
 
             <div class="button-row">
-                {% for sym in symbols %}<div class="tab sym-tab {{ 'active' if sym == selected_symbol }}" onclick="setSymbol('{{sym}}')">{{sym}}</div>{% endfor %}
+                {% for sym in symbols %}<button type="button" class="tab {{ 'active' if sym == selected_symbol }}" onclick="document.getElementById('symbol_hidden').value='{{sym}}'; this.form.submit();">{{sym}}</button>{% endfor %}
             </div>
 
             <div class="button-row">
-                <div class="tab side-tab long {{ 'active' if default_side == 'LONG' }}" onclick="setSide('LONG')">LONG</div>
-                <div class="tab side-tab short {{ 'active' if default_side == 'SHORT' }}" onclick="setSide('SHORT')">SHORT</div>
+                <button type="button" class="tab {{ 'active' if default_side == 'LONG' }}" onclick="document.getElementById('side_hidden').value='LONG'; this.form.submit();">LONG</button>
+                <button type="button" class="tab {{ 'active' if default_side == 'SHORT' }}" onclick="document.getElementById('side_hidden').value='SHORT'; this.form.submit();">SHORT</button>
             </div>
 
             <div class="row">
                 <div class="col"><label>Entry Price</label><input type="number" name="entry" value="{{default_entry}}" step="any"></div>
                 <div class="col">
-                    <label>Stop Loss Mode</label>
-                    <select name="sl_type">
+                    <label>SL Mode</label>
+                    <select name="sl_type" onchange="this.form.submit();">
                         <option value="SL Points" {{ 'selected' if default_sl_type == 'SL Points' }}>Points</option>
-                        <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>% Movement</option>
+                        <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>%</option>
                     </select>
                 </div>
                 <div class="col"><label>SL Value</label><input type="number" name="sl_value" value="{{default_sl_value}}" step="any"></div>
@@ -42,28 +42,14 @@
 
             <div class="status">
                 {% if sizing.error %}
-                    <span style="color: #ff6347;">❌ STATUS: {{ sizing.error }}</span>
+                    <span style="color: #ff6347;">❌ {{ sizing.error }}</span>
                 {% else %}
-                    <span style="color: #7aff00;">✅ SYSTEM READY</span><br>
-                    Units: <b>{{ sizing.suggested_units }}</b> | Leverage: <b>{{ sizing.suggested_leverage }}x</b> | Risk: <b>${{ sizing.risk_amount }}</b>
+                    <span style="color: #7aff00;">✅ READY</span><br>
+                    Lot: <b>{{ sizing.suggested_units }}</b> | Lev: <b>{{ sizing.suggested_leverage }}x</b> | Risk: <b>${{ sizing.risk_amount }}</b>
                 {% endif %}
             </div>
 
-            <div class="header" style="margin-top:10px;">ORDER OVERRIDE & TPS</div>
-            <div class="row">
-                <div class="col"><label>Manual Units</label><input type="number" name="user_units" placeholder="Auto" step="any"></div>
-                <div class="col"><label>Manual Leverage</label><input type="number" name="user_lev" placeholder="Auto"></div>
-            </div>
-            <div class="row">
-                <div class="col"><label>TP1 Price</label><input type="number" name="tp1_price" step="any"></div>
-                <div class="col"><label>TP1 Size %</label><input type="number" name="tp1_pct" value="50"></div>
-                <div class="col"><label>TP2 Price</label><input type="number" name="tp2_price" step="any"></div>
-            </div>
-
-            <div class="row" style="margin-top:15px;">
-                <button type="submit" name="place_order" class="place">PLACE BINANCE ORDER</button>
-                <button type="button" class="reset" onclick="window.location.href='/'">RESET</button>
-            </div>
+            <button type="submit" name="place_order" class="place">PLACE BINANCE ORDER</button>
         </form>
     </div>
 
@@ -72,26 +58,13 @@
         <div class="trade-log-section">
             <div class="header">LIVE TRADE LOG</div>
             <table>
-                <tr><th>Time</th><th>Symbol</th><th>Side</th><th>Entry</th><th>Units</th><th>Lev</th><th>Risk</th></tr>
+                <tr><th>Time</th><th>Sym</th><th>Side</th><th>Entry</th><th>Units</th><th>Lev</th></tr>
                 {% for t in trades | reverse %}
-                <tr>
-                    <td>{{ datetime.fromisoformat(t.timestamp).strftime('%H:%M') }}</td>
-                    <td>{{t.symbol}}</td>
-                    <td class="{{t.side.lower()}}">{{t.side}}</td>
-                    <td>{{t.entry_price}}</td>
-                    <td>{{t.units}}</td>
-                    <td>{{t.leverage}}x</td>
-                    <td>${{t.risk_usd}}</td>
-                </tr>
+                <tr><td>{{ datetime.fromisoformat(t.timestamp).strftime('%H:%M') }}</td><td>{{t.symbol}}</td><td class="{{t.side.lower()}}">{{t.side}}</td><td>{{t.entry_price}}</td><td>{{t.units}}</td><td>{{t.leverage}}x</td></tr>
                 {% endfor %}
             </table>
         </div>
     </div>
 </div>
-
-<script>
-function setSide(s){ document.getElementById('side_hidden').value = s; document.forms[0].submit(); }
-function setSymbol(s){ document.getElementById('symbol_hidden').value = s; document.forms[0].submit(); }
-</script>
 </body>
 </html>
