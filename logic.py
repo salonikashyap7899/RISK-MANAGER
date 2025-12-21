@@ -1,177 +1,131 @@
-# logic.py (FINAL CORRECTED VERSION)
+# logic.py
 from flask import session
 from datetime import datetime
 from math import ceil
+from binance.client import Client
+import config
 
-# NEW: Import centralized configuration
-import config 
-
-# REMOVED ORIGINAL CONSTANT DEFINITIONS:
-# DAILY_MAX_TRADES = 4
-# DAILY_MAX_PER_SYMBOL = 2
-# RISK_PERCENT = 1.0          # 1%
-# TOTAL_CAPITAL_DEFAULT = 10000.0
-
+# Initialize Binance Client
+client = Client(config.BINANCE_KEY, config.BINANCE_SECRET)
 
 def initialize_session():
     if "trades" not in session:
         session["trades"] = []
     if "stats" not in session:
         session["stats"] = {}
-    if "capital" not in session:
-        session["capital"] = config.TOTAL_CAPITAL_DEFAULT # Use config.TOTAL_CAPITAL_DEFAULT
 
+def get_binance_data():
+    """Fetches real account balance and margin from Binance Futures."""
+    try:
+        acc = client.futures_account()
+        balance = float(acc.get('totalWalletBalance', 0))
+        margin = float(acc.get('totalInitialMargin', 0))
+        return balance, margin
+    except Exception as e:
+        print(f"Binance API Error: {e}")
+        return config.TOTAL_CAPITAL_DEFAULT, 0.0
 
-def _today_iso():
-    return datetime.utcnow().date().isoformat()
-
-
-# ===========================================
-#     POSITION SIZING (All Rules Applied)
-# ===========================================
 def calculate_position_sizing(balance, entry, sl_type, sl_value):
+    """The Proprietary Sizing Logic (Kept in Backend)"""
     try:
         entry = float(entry)
         sl_value = float(sl_value)
+        risk_amount = balance * (config.RISK_PERCENT / 100.0)
+
+        # Your unique logic with buffers
+        if sl_type == "SL Points":
+            sl_distance = sl_value + 20 
+            suggested_units = risk_amount / sl_distance
+            suggested_lev = (suggested_units * entry) / balance if balance > 0 else 0
+        else:
+            sl_distance = sl_value + 0.2
+            suggested_units = risk_amount / ((sl_distance / 100) * entry)
+            suggested_lev = 100 / sl_value
+
+        return {
+            "suggested_units": round(suggested_units, 4),
+            "suggested_leverage": ceil(suggested_lev * 2) / 2,
+            "risk_amount": round(risk_amount, 2),
+            "error": None if sl_value > 0 else "SL Required"
+        }
     except:
-        return {"error": "Invalid Entry or SL"}
+        return {"error": "Invalid Input Data"}
 
-    # 1% RISK from unutilized capital
-    risk_amount = balance * (config.RISK_PERCENT / 100.0) # Use config.RISK_PERCENT
+def execute_trade_action(symbol, side, entry, sl_type, sl_value, tp_list, sizing, user_units, user_lev):
+    """Executes real trades on Binance."""
+    today = datetime.utcnow().date().isoformat()
+    stats = session.get("stats", {}).get(today, {"total": 0, "by_symbol": {}})
 
-    # --------------------------
-    # SL POINTS MODE (Logic from your uploaded logic.py is maintained)
-    # --------------------------
-    if sl_type == "SL Points":
-        if sl_value <= 0:
-            return {"error": "SL Required"}
+    # Limit Checks
+    if stats["total"] >= config.DAILY_MAX_TRADES:
+        return {"success": False, "message": "Daily Limit Reached"}
+    
+    # Binance uses USDT pairs (e.g., BTCUSDT)
+    binance_symbol = symbol.replace("USD", "USDT")
+    
+    try:
+        units = float(user_units) if float(user_units) > 0 else sizing["suggested_units"]
+        leverage = int(user_lev) if float(user_lev) > 0 else int(sizing["suggested_leverage"])
+
+        # 1. Update Leverage on Binance
+        client.futures_change_leverage(symbol=binance_symbol, leverage=leverage)
+
+        # 2. Main Market Order
+        order_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
+        main_order = client.futures_create_order(
+            symbol=binance_symbol,
+            side=order_side,
+            type=Client.FUTURE_ORDER_TYPE_MARKET,
+            quantity=round(units, 3) 
+        )
+
+        # 3. Stop Loss Order
+        stop_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
+        if sl_type == "SL Points":
+            sl_price = entry - sl_value if side == "LONG" else entry + sl_value
+        else:
+            sl_price = entry * (1 - sl_value/100) if side == "LONG" else entry * (1 + sl_value/100)
+
+        client.futures_create_order(
+            symbol=binance_symbol,
+            side=stop_side,
+            type=Client.FUTURE_ORDER_TYPE_STOP_MARKET,
+            stopPrice=round(sl_price, 2),
+            closePosition=True
+        )
+
+        # 4. Take Profit Orders
+        for tp in tp_list:
+            if tp['price'] > 0:
+                client.futures_create_order(
+                    symbol=binance_symbol,
+                    side=stop_side,
+                    type=Client.FUTURE_ORDER_TYPE_TAKE_PROFIT_MARKET,
+                    stopPrice=round(tp['price'], 2),
+                    quantity=round(units * (tp['percent_position'] / 100), 3)
+                )
+
+        # Log for UI
+        session["trades"].append({
+            "timestamp": datetime.utcnow().isoformat(),
+            "date": today,
+            "symbol": symbol,
+            "side": side,
+            "entry_price": entry,
+            "stop_loss": sl_value,
+            "sl_mode": sl_type,
+            "units": units,
+            "leverage": leverage,
+            "risk_usd": sizing["risk_amount"]
+        })
         
-        # SL Points: lot = (1% of unutilised) / (SL Points + 20)
-        sl_distance = sl_value + 20
-        suggested_units = risk_amount / sl_distance
-        
-        # For SL Points, leverage is calculated from position: (units * entry) / balance
-        suggested_lev = (suggested_units * entry) / balance if balance > 0 else 0
-        suggested_lev = ceil(suggested_lev * 2) / 2  # Round up to nearest 0.5x
+        # Update Session Stats
+        if today not in session["stats"]: session["stats"][today] = {"total": 0, "by_symbol": {}}
+        session["stats"][today]["total"] += 1
+        session["stats"][today]["by_symbol"][symbol] = session["stats"][today]["by_symbol"].get(symbol, 0) + 1
+        session.modified = True
 
-        return {
-            "suggested_units": suggested_units,
-            "suggested_leverage": suggested_lev,
-            "risk_amount": risk_amount,
-            "max_leverage_info": "N/A",
-            "error": None,
-            "sl_mode": sl_type # Add sl_mode for consistency
-        }
+        return {"success": True, "message": f"SUCCESS: {side} {symbol} Executed on Binance"}
 
-    # --------------------------
-    # SL % MOVEMENT MODE (Logic from your uploaded logic.py is maintained)
-    # --------------------------
-    elif sl_type == "SL % Movement":
-        if sl_value <= 0:
-            return {"error": "SL Required"}
-
-        # SL %: lot = (1% of unutilised) / (SL% + 0.2%)
-        sl_distance = sl_value + 0.2
-        suggested_units = risk_amount / sl_distance
-
-        # SL %: leverage = 100 / SL%
-        suggested_lev = 100 / sl_value
-        suggested_lev = ceil(suggested_lev * 2) / 2  # Round up to nearest 0.5x
-
-        return {
-            "suggested_units": suggested_units,
-            "suggested_leverage": suggested_lev,
-            "risk_amount": risk_amount,
-            "max_leverage_info": f"{suggested_lev:.1f}x",
-            "error": None,
-            "sl_mode": sl_type # Add sl_mode for consistency
-        }
-
-    return {"error": "Invalid SL Type"}
-
-
-# ===========================================
-#     TRADE EXECUTION RULES
-# ===========================================
-def execute_trade_action(
-    balance, symbol, side, entry, sl_type, sl_value, order_type,
-    tp_list, sizing, user_units, user_lev
-):
-    initialize_session()
-
-    # SL mandatory rule
-    if float(sl_value) <= 0:
-        return {"success": False, "message": "SL REQUIRED — Trade cannot be placed."}
-
-    # Daily limits
-    today = _today_iso()
-    trades = session["trades"]
-
-    todays = [t for t in trades if t["date"] == today]
-    if len(todays) >= config.DAILY_MAX_TRADES: # Use config.DAILY_MAX_TRADES
-        return {"success": False, "message": "Daily 4 trades limit reached."}
-
-    symbol_trades = [t for t in todays if t["symbol"] == symbol]
-    if len(symbol_trades) >= config.DAILY_MAX_PER_SYMBOL: # Use config.DAILY_MAX_PER_SYMBOL
-        return {
-            "success": False,
-            "message": f"Max 2 daily trades allowed for {symbol}."
-        }
-
-    if not sizing or sizing.get("error"):
-        return {"success": False, "message": sizing.get("error", "Invalid sizing")}
-
-    suggested_units = sizing["suggested_units"]
-    suggested_lev = sizing["suggested_leverage"]
-    risk_amount = sizing["risk_amount"]
-
-    # Override rules
-    units_to_use = user_units if user_units > 0 else suggested_units
-    lev_to_use = user_lev if user_lev > 0 else suggested_lev
-
-    # Reject if > suggested
-    if user_units > suggested_units:
-        return {
-            "success": False,
-            "message": f"Lot Size cannot exceed suggested: {suggested_units:.4f}"
-        }
-
-    if user_lev > suggested_lev:
-        return {
-            "success": False,
-            "message": f"Leverage cannot exceed suggested: {suggested_lev:.1f}x"
-        }
-
-    # Final Trade Record
-    trade = {
-        "timestamp": datetime.utcnow().isoformat(),
-        "date": today,
-        "symbol": symbol,
-        "side": side,
-        "order_type": order_type,
-        "entry_price": float(entry),
-        "stop_loss": float(sl_value),
-        "sl_mode": sl_type,
-        "units": units_to_use,
-        "leverage": lev_to_use,
-        "tp_list": tp_list or [],
-        "risk_usd": risk_amount,
-        "status": "open"
-    }
-
-    session["trades"].append(trade)
-
-    # Update stats
-    stats = session["stats"]
-    daily = stats.get(today, {"total": 0, "by_symbol": {}})
-    daily["total"] += 1
-    daily["by_symbol"][symbol] = daily["by_symbol"].get(symbol, 0) + 1
-    stats[today] = daily
-    session["stats"] = stats
-    session.modified = True
-
-    return {
-        "success": True,
-        "message": f"Order Placed: {units_to_use:.4f} units @ {lev_to_use:.1f}x",
-        "trade": trade
-    }
+    except Exception as e:
+        return {"success": False, "message": f"BINANCE ERROR: {str(e)}"}

@@ -1,243 +1,97 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Risk Manager </title>
+    <title>Advanced Risk Terminal</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    </head>
-
+</head>
 <body>
-
 <div class="container">
-
     <div class="panel left">
-
-        <div class="header">CORE CONTROLS</div>
-        
-        {% if trade_status %}
-        <div class="message {{ 'success' if trade_status.success else 'error' }}">
-            {{ trade_status.message }}
-        </div>
-        {% endif %}
+        <div class="header">CORE CONTROLS & RISK</div>
+        {% if trade_status %}<div class="message {{ 'success' if trade_status.success else 'error' }}">{{ trade_status.message }}</div>{% endif %}
 
         <form method="POST">
-            <input type="hidden" name="capital_input" value="{{balance}}">
             <input type="hidden" name="side" id="side_hidden" value="{{default_side}}">
             <input type="hidden" name="symbol" id="symbol_hidden" value="{{selected_symbol}}">
 
             <div class="row">
-                <div class="col">
-                    <label>Total Balance (USD$)</label>
-                    <input type="number" name="balance_display" value="{{balance | round(2)}}" step="0.01" disabled>
-                </div>
-                <div class="col">
-                    <label>Margin Used</label>
-                    <input value="${{margin_used | round(2)}}" disabled>
-                </div>
+                <div class="col"><label>Binance Balance (USDT)</label><input type="text" value="${{balance | round(2)}}" disabled></div>
+                <div class="col"><label>Margin in Use</label><input value="${{margin_used | round(2)}}" disabled></div>
             </div>
 
-            <div class="row" style="margin-bottom:6px;">
-                <div class="col">
-                    <label>Unutilised Capital</label>
-                    {% set unutil = (balance - (margin_used or 0.0)) | round(2) %}
-                    <input value="${{ unutil }}" disabled>
-                    <small class="muted">Unutilised = Balance − Margin Used</small>
-                </div>
-                <div class="col">
-                    <label>1% of Unutilised (Risk)</label>
-                    {% set onepct = (unutil * 0.01) | round(2) %}
-                    <input value="${{ onepct }}" disabled>
-                    <small class="muted">This = 1% of unutilised capital — used to compute suggested lot</small>
-                </div>
+            <div class="button-row">
+                {% for sym in symbols %}<div class="tab sym-tab {{ 'active' if sym == selected_symbol }}" onclick="setSymbol('{{sym}}')">{{sym}}</div>{% endfor %}
             </div>
 
-            <div class="button-row" style="margin-bottom:6px;">
-                {% for sym in symbols %}
-                <button type="button" name="symbol" value="{{sym}}" class="tab {% if sym == selected_symbol %}active{% endif %}" onclick="document.getElementById('symbol_hidden').value='{{sym}}'; this.form.submit();">{{sym}}</button>
-                {% endfor %}
-            </div>
-
-            <div class="button-row" style="margin-bottom:10px;">
-                <button type="button" name="side" value="LONG" class="tab {% if default_side == 'LONG' %}active{% endif %}" onclick="document.getElementById('side_hidden').value='LONG'; this.form.submit();">LONG</button>
-                <button type="button" name="side" value="SHORT" class="tab {% if default_side == 'SHORT' %}active{% endif %}" onclick="document.getElementById('side_hidden').value='SHORT'; this.form.submit();">SHORT</button>
+            <div class="button-row">
+                <div class="tab side-tab long {{ 'active' if default_side == 'LONG' }}" onclick="setSide('LONG')">LONG</div>
+                <div class="tab side-tab short {{ 'active' if default_side == 'SHORT' }}" onclick="setSide('SHORT')">SHORT</div>
             </div>
 
             <div class="row">
+                <div class="col"><label>Entry Price</label><input type="number" name="entry" value="{{default_entry}}" step="any"></div>
                 <div class="col">
-                    <label>Entry Price</label>
-                    <input type="number" name="entry" step="0.00000001" value="{{default_entry}}" onchange="this.form.submit();" onblur="this.form.submit();">
-                </div>
-
-                <div class="col">
-                    <label>SL Method</label>
-                    <select name="sl_type" onchange="this.form.submit();">
-                        <option value="SL Points" {% if default_sl_type == 'SL Points' %}selected{% endif %}>SL Points</option>
-                        <option value="SL % Movement" {% if default_sl_type == 'SL % Movement' %}selected{% endif %}>SL % Movement</option>
+                    <label>Stop Loss Mode</label>
+                    <select name="sl_type">
+                        <option value="SL Points" {{ 'selected' if default_sl_type == 'SL Points' }}>Points</option>
+                        <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>% Movement</option>
                     </select>
                 </div>
+                <div class="col"><label>SL Value</label><input type="number" name="sl_value" value="{{default_sl_value}}" step="any"></div>
             </div>
 
-            <div class="row">
-                <div class="col">
-                    <label>SL Value ({{ 'Points' if default_sl_type == 'SL Points' else '% Movement' }})</label>
-                    <input type="number" step="0.01" name="sl_value" value="{{default_sl_value}}" min="0" onchange="this.form.submit();">
-                    <small class="muted">SL is mandatory — required to trade.</small>
-                </div>
-                
-                <div class="col">
-                    <label>Max Leverage</label>
-                    {% set sl_val = default_sl_value | float %}
-                    {% if sizing.max_leverage_info and sizing.max_leverage_info != 'N/A' %}
-                        <input value="{{ sizing.max_leverage_info }}" disabled style="color: #ffcc00; font-weight: bold;">
-                        <small style="color: #ffcc00;">Calculated from SL distance</small>
-                    {% else %}
-                        <input value="N/A" disabled>
-                        <small>&nbsp;</small>
-                    {% endif %}
-                </div>
-            </div>
-
-            <div class="row">
-                <div class="col">
-                    <label>TP 1 Price</label>
-                    <input type="number" name="tp1_price" step="0.00000001" value="{{ request.form.tp1_price or 0.0 }}">
-                </div>
-
-                <div class="col">
-                    <label>TP 1 % Position</label>
-                    <input type="number" name="tp1_percent" step="0.1" value="{{ request.form.tp1_percent or 0.0 }}">
-                </div>
-            </div>
-
-            <div class="col" style="margin-bottom:8px;">
-                <label>TP 2 Price (Full Exit)</label>
-                <input type="number" name="tp2_price" step="0.00000001" value="{{ request.form.tp2_price or 0.0 }}">
-            </div>
-
-            <div class="row">
-                <div class="col">
-                    <label>Position/Lot Size (Override)</label>
-                    <input type="number" name="user_units" step="0.00000001" value="{{default_units}}">
-                    <small style="color:#7aff00;">Suggested: {{sizing.suggested_units | round(4) | default('0.0000')}}</small>
-                </div>
-
-                <div class="col">
-                    <label>Leverage (Override)</label>
-                    <input type="number" name="user_lev" step="0.01" value="{{default_lev}}">
-                    <small style="color:#7aff00;">Suggested: {{sizing.suggested_leverage | round(1) | default('0.0')}}x</small>
-                </div>
-            </div>
-            
-            <div style="display:flex; gap:8px; margin-top:5px; margin-bottom: 5px;">
-                <button type="submit" class="place" name="place_order"
-                    {% if sizing.error or stats.total >= daily_max_trades or stats.by_symbol.get(selected_symbol, 0) >= daily_max_per_symbol %} disabled {% endif %}
-                >PLACE ORDER</button>
-
-                <button type="button" class="reset" style="border-radius:6px; cursor: pointer;" onclick="location.href='/';">RESET</button>
-            </div>
             <div class="status">
-                {% set suggested_units = (sizing.suggested_units or 0.0) | round(4) %}
-                {% set suggested_lev = (sizing.suggested_leverage or 0.0) | round(2) %}
-                {% set risk_amount = (sizing.risk_amount or onepct or 0.0) | round(2) %}
-                
-                {% set total_trades = stats.total | default(0) %}
-                {% set symbol_trades = stats.by_symbol.get(selected_symbol, 0) %}
-
                 {% if sizing.error %}
-                    <span style="color: #ff6347; font-weight: bold;">❌ ERROR:</span> {{ sizing.error }}
-                    <div class="formula">
-                        <b>Reason:</b> SL must be set and > 0 to place a trade.
-                    </div>
-                {% elif stats.total >= daily_max_trades %}
-                    <span style="color: #ff6347; font-weight: bold;">❌ DAILY LIMIT:</span> Max {{ daily_max_trades }} trades per day reached.
-                {% elif stats.by_symbol.get(selected_symbol, 0) >= daily_max_per_symbol %}
-                    <span style="color: #ff6347; font-weight: bold;">❌ SYMBOL LIMIT:</span> Max {{ daily_max_per_symbol }} daily trades allowed for {{ selected_symbol }}.
+                    <span style="color: #ff6347;">❌ STATUS: {{ sizing.error }}</span>
                 {% else %}
-                    <span style="color: #7aff00; font-weight: bold;">✅ READY:</span> Units/Lot: <b>{{ suggested_units }}</b> | Leverage: <b>{{ suggested_lev }}x</b> | Max Risk: <b>${{ risk_amount }}</b>
-                    <div class="formula">
-                        <div><b>📐 Formulas Used:</b></div>
-                        {% set sl_val = default_sl_value | float %}
-                        {% if default_sl_type == 'SL Points' %}
-                            {% set sl_pts_buffer = sl_val + 20 %}
-                            {% set default_entry_float = default_entry | float %}
-                            {% set sl_pct_lev = (sl_pts_buffer / default_entry_float * 100) | round(2) if default_entry_float > 0 else 0.0 %}
-
-                            <div>• **Risk (1%):** ${{ onepct }}</div>
-                            <div>• **SL Distance (Pts):** {{ sl_val | round(0) }} Pts + 20 Pts = {{ sl_pts_buffer | round(0) }} Pts</div>
-                            <div>• **Lot Suggested:** ${{ onepct }} ÷ {{ sl_pts_buffer | round(0) }} = **{{ suggested_units }}**</div>
-                            <div>• **SL % for Lev:** ({{ sl_pts_buffer | round(0) }} Pts ÷ Entry Price) × 100 = {{ sl_pct_lev }}%</div>
-                            <div>• **Leverage Suggested:** 100 ÷ {{ sl_pct_lev }}% = **{{ sizing.max_leverage_info }}**</div>
-                        {% else %}
-                            {% set sl_dist_pct = (sl_val + 0.2) | round(2) %}
-                            {% set risk_div_sl = (onepct / (sl_dist_pct / 100)) | round(2) %}
-                            
-                            <div>• **Risk (1%):** ${{ onepct }}</div>
-                            <div>• **SL Distance (%):** {{ sl_val | round(2) }}% + 0.2% = {{ sl_dist_pct }}%</div>
-                            <div>• **Notional Suggested (Position Size):** (${{ onepct }} ÷ ({{ sl_dist_pct }}% ÷ 100)) = ${{ risk_div_sl }}</div>
-                            <div>• **Units Suggested (Lot):** ${{ risk_div_sl }} ÷ Entry Price = **{{ suggested_units }}**</div>
-                            <div>• **Leverage Max:** 100 ÷ {{ sl_dist_pct }}% = **{{ sizing.max_leverage_info }}**</div>
-                        {% endif %}
-                        <div style="margin-top:6px; color:#aaa; font-size:0.85em;"><b>Note:</b> Lot & Leverage cannot exceed suggested values. Overrides must be ≤ suggestions.</div>
-                    </div>
+                    <span style="color: #7aff00;">✅ SYSTEM READY</span><br>
+                    Units: <b>{{ sizing.suggested_units }}</b> | Leverage: <b>{{ sizing.suggested_leverage }}x</b> | Risk: <b>${{ sizing.risk_amount }}</b>
                 {% endif %}
-
-                <br>Daily Trades: <span style="font-weight: bold;">{{total_trades}}/{{daily_max_trades}}</span> | {{selected_symbol}} Trades: <span style="font-weight: bold;">{{symbol_trades}}/{{daily_max_per_symbol}}</span>
             </div>
 
+            <div class="header" style="margin-top:10px;">ORDER OVERRIDE & TPS</div>
+            <div class="row">
+                <div class="col"><label>Manual Units</label><input type="number" name="user_units" placeholder="Auto" step="any"></div>
+                <div class="col"><label>Manual Leverage</label><input type="number" name="user_lev" placeholder="Auto"></div>
+            </div>
+            <div class="row">
+                <div class="col"><label>TP1 Price</label><input type="number" name="tp1_price" step="any"></div>
+                <div class="col"><label>TP1 Size %</label><input type="number" name="tp1_pct" value="50"></div>
+                <div class="col"><label>TP2 Price</label><input type="number" name="tp2_price" step="any"></div>
+            </div>
+
+            <div class="row" style="margin-top:15px;">
+                <button type="submit" name="place_order" class="place">PLACE BINANCE ORDER</button>
+                <button type="button" class="reset" onclick="window.location.href='/'">RESET</button>
+            </div>
         </form>
     </div>
 
-
     <div class="panel right">
-
-        <div class="header">CHART VIEW ({{selected_symbol}})</div>
-        <div class="chart-box">
-            {{ chart_html | safe }}
-        </div>
-
-        <div class="header">TODAY'S TRADE LOG</div>
-        
+        <div class="chart-box">{{ chart_html | safe }}</div>
         <div class="trade-log-section">
-        {% set today_iso = today.date().isoformat() %}
-        
-        {% set today_trades = trades | selectattr('date', 'equalto', today_iso) | list %}
-        
-        {% if today_trades %}
-        <table>
-            <tr>
-                <th>Time</th><th>Symbol</th><th>Side</th><th>Entry</th><th>SL Value</th><th>Units</th><th>Leverage</th><th>Risk ($)</th>
-            </tr>
-
-            {% for t in today_trades | reverse %}
-            <tr>
-                <td>{{ datetime.fromisoformat(t.timestamp).strftime('%H:%M:%S') }}</td>
-                <td>{{t.symbol}}</td>
-                <td class="{% if t.side=='LONG' %}long{% else %}short{% endif %}">
-                    {{t.side}}
-                </td>
-                <td>{{t.entry_price | round(4)}}</td>
-                <td>
-                    {{ t.stop_loss | round(2) }} 
-                    {% if t.sl_mode == 'SL % Movement' %}
-                        %
-                    {% else %}
-                        Pts
-                    {% endif %}
-                </td>
-                <td>{{t.units | round(4)}}</td>
-                <td>{{t.leverage | round(1)}}x</td>
-                <td>${{t.risk_usd | round(2)}}</td>
-            </tr>
-            {% endfor %}
-        </table>
-
-        {% else %}
-        <p class="no-trades" style="color:#ccc;">No trades today.</p>
-        {% endif %}
+            <div class="header">LIVE TRADE LOG</div>
+            <table>
+                <tr><th>Time</th><th>Symbol</th><th>Side</th><th>Entry</th><th>Units</th><th>Lev</th><th>Risk</th></tr>
+                {% for t in trades | reverse %}
+                <tr>
+                    <td>{{ datetime.fromisoformat(t.timestamp).strftime('%H:%M') }}</td>
+                    <td>{{t.symbol}}</td>
+                    <td class="{{t.side.lower()}}">{{t.side}}</td>
+                    <td>{{t.entry_price}}</td>
+                    <td>{{t.units}}</td>
+                    <td>{{t.leverage}}x</td>
+                    <td>${{t.risk_usd}}</td>
+                </tr>
+                {% endfor %}
+            </table>
         </div>
     </div>
-
 </div>
 
-<script>const datetime = { fromisoformat: (s) => new Date(s) };</script>
+<script>
+function setSide(s){ document.getElementById('side_hidden').value = s; document.forms[0].submit(); }
+function setSymbol(s){ document.getElementById('symbol_hidden').value = s; document.forms[0].submit(); }
+</script>
 </body>
 </html>
