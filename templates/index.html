@@ -8,7 +8,6 @@
 <div class="container">
     <div class="panel left">
         <div class="header">CORE CONTROLS</div>
-        
         {% if trade_status %}<div class="message {{ 'success' if trade_status.success else 'error' }}">{{ trade_status.message }}</div>{% endif %}
 
         <form method="POST">
@@ -16,14 +15,13 @@
             <input type="hidden" name="prev_symbol" value="{{selected_symbol}}">
 
             <div class="row">
-                <div class="col"><label>Total Balance</label><input value="${{balance | round(2)}}" disabled></div>
-                <div class="col"><label>Margin Used</label><input value="${{margin_used | round(2)}}" disabled></div>
+                <div class="col"><label>Unutilized Margin (1% Risk Pool)</label><input value="${{unutilized | round(2)}}" disabled style="color: #7aff00; font-weight: bold;"></div>
             </div>
 
             <div class="row">
                 <div class="col">
-                    <label>Exchange Symbol</label>
-                    <select name="symbol" onchange="this.form.submit()" style="width:100%; background:#0a5168; color:white;">
+                    <label>Exchange Symbol (Toggle)</label>
+                    <select name="symbol" onchange="this.form.submit()" style="width:100%; background:#101b22; color:#00b7ff;">
                         {% for sym in symbols %}
                         <option value="{{sym}}" {{ 'selected' if sym == selected_symbol }}>{{sym}}</option>
                         {% endfor %}
@@ -70,32 +68,46 @@
                         <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>SL % Movement</option>
                     </select>
                 </div>
-                <div class="col"><label>SL Value</label><input type="number" name="sl_value" value="{{default_sl_value}}" step="any" onchange="this.form.submit();"></div>
+                <div class="col"><label>SL Value (Mandatory)</label><input type="number" name="sl_value" value="{{default_sl_value}}" step="any" onchange="this.form.submit();" required></div>
             </div>
 
             <div class="row">
-                <div class="col"><label>Pos Override</label><input type="number" name="user_units" step="any"><small style="color:#7aff00;">Sug: {{sizing.suggested_units}}</small></div>
+                <div class="col"><label>Position Override</label><input type="number" name="user_units" step="any"><small style="color:#7aff00;">Sug: {{sizing.suggested_units}}</small></div>
                 <div class="col"><label>Lev Override</label><input type="number" name="user_lev" step="any"><small style="color:#7aff00;">Sug: {{sizing.suggested_leverage}}x</small></div>
             </div>
 
-            <button type="submit" name="place_order" class="place">EXECUTE EXCHANGE ORDER</button>
+            <button type="submit" name="place_order" class="place" {% if default_sl_value <= 0 %} disabled style="filter: grayscale(1); cursor: not-allowed;" {% endif %}>
+                {% if default_sl_value <= 0 %} SET STOP LOSS TO PLACE ORDER {% else %} PLACE BINANCE ORDER {% endif %}
+            </button>
+
+            <div class="status">
+                {% if sizing.error %}
+                    <span style="color:#ff6347;">❌ ERROR: {{ sizing.error }}</span>
+                {% else %}
+                    <span style="color:#7aff00;">✅ READY (1% RISK ON ${{unutilized | round(2)}})</span>
+                    <div class="formula">
+                        <b>📐 Restored Leverage Formula:</b><br>
+                        • Risk Amount: ${{ sizing.risk_amount }}<br>
+                        • Leverage: (Units × Entry) / Unutilized Margin<br>
+                        {% if default_sl_type == 'SL Points' %}
+                            • SL Distance: {{ default_sl_value }} + 20 Pts
+                        {% else %}
+                            • SL Distance: {{ default_sl_value }}% + 0.2%
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
         </form>
     </div>
 
     <div class="panel right">
-        <div class="chart-box" style="height:400px; border: 1px solid #064d64;">{{ chart_html | safe }}</div>
-        <div class="header">LIVE TRADE LOG</div>
+        <div class="chart-box" style="height:400px;">{{ chart_html | safe }}</div>
+        <div class="header">LIVE LOG</div>
         <div class="trade-log-section">
             <table>
                 <tr><th>Time</th><th>Sym</th><th>Side</th><th>Entry</th><th>Units</th></tr>
                 {% for t in trades | reverse %}
-                <tr>
-                    <td>{{ datetime.fromisoformat(t.timestamp).strftime('%H:%M') }}</td>
-                    <td>{{t.symbol}}</td>
-                    <td class="{{t.side.lower()}}">{{t.side}}</td>
-                    <td>{{t.entry_price}}</td>
-                    <td>{{t.units}}</td>
-                </tr>
+                <tr><td>{{ datetime.fromisoformat(t.timestamp).strftime('%H:%M') }}</td><td>{{t.symbol}}</td><td class="{{t.side.lower()}}">{{t.side}}</td><td>{{t.entry_price}}</td><td>{{t.units}}</td></tr>
                 {% endfor %}
             </table>
         </div>
