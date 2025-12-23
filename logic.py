@@ -5,12 +5,22 @@ from math import ceil
 from binance.client import Client
 import config 
 
+# Initialize Binance Client
 client = Client(config.BINANCE_KEY, config.BINANCE_SECRET)
 
 def initialize_session():
     if "trades" not in session: session["trades"] = []
     if "stats" not in session: session["stats"] = {}
     if "capital" not in session: session["capital"] = config.TOTAL_CAPITAL_DEFAULT
+
+def get_all_exchange_symbols():
+    """Fetches all active USDT futures symbols from the exchange."""
+    try:
+        info = client.futures_exchange_info()
+        symbols = [s['symbol'] for s in info['symbols'] if s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT']
+        return sorted(symbols)
+    except:
+        return ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 
 def get_live_balance():
     try:
@@ -21,10 +31,8 @@ def get_live_balance():
         return None, None
 
 def get_live_price(symbol):
-    """Fetches real-time price from Binance Futures exchange."""
     try:
-        b_symbol = symbol.replace("USD", "USDT")
-        ticker = client.futures_symbol_ticker(symbol=b_symbol)
+        ticker = client.futures_symbol_ticker(symbol=symbol)
         return float(ticker['price'])
     except:
         return None
@@ -40,6 +48,7 @@ def calculate_position_sizing(balance, entry, sl_type, sl_value):
         else:
             sl_distance = sl_value + 0.2 
             suggested_units = risk_amount / (sl_distance / 100 * entry) if sl_distance > 0 else 0
+        
         suggested_lev = (suggested_units * entry) / balance if balance > 0 else 0
         return {
             "suggested_units": round(suggested_units, 4),
@@ -51,32 +60,36 @@ def calculate_position_sizing(balance, entry, sl_type, sl_value):
     except:
         return {"error": "Invalid Input"}
 
-def execute_trade_action(balance, symbol, side, entry, sl_type, sl_value, sizing, user_units, user_lev, margin_mode, tp1, tp2):
+def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_value, sizing, u_units, u_lev, margin_mode, tp1, tp1_pct, tp2):
     try:
-        b_symbol = symbol.replace("USD", "USDT")
-        units = float(user_units) if float(user_units) > 0 else sizing["suggested_units"]
-        lev = int(user_lev) if int(user_lev) > 0 else int(sizing["suggested_leverage"])
+        units = u_units if u_units > 0 else sizing["suggested_units"]
+        lev = int(u_lev if u_lev > 0 else sizing["suggested_leverage"])
 
-        # 1. Set Margin Type and Leverage
+        # 1. Set Margin Type & Leverage
         try:
-            client.futures_change_margin_type(symbol=b_symbol, marginType=margin_mode.upper())
+            client.futures_change_margin_type(symbol=symbol, marginType=margin_mode.upper())
         except: pass 
-        client.futures_change_leverage(symbol=b_symbol, leverage=lev)
+        client.futures_change_leverage(symbol=symbol, leverage=lev)
         
-        # 2. Place Main Market Order
+        # 2. Entry Order
         b_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
-        client.futures_create_order(symbol=b_symbol, side=b_side, type='MARKET', quantity=abs(round(units, 3)))
-        
-        # 3. Place TP Orders (Limit Orders)
+        if order_type == "MARKET":
+            client.futures_create_order(symbol=symbol, side=b_side, type='MARKET', quantity=abs(round(units, 3)))
+        else: # LIMIT
+            client.futures_create_order(symbol=symbol, side=b_side, type='LIMIT', timeInForce='GTC', quantity=abs(round(units, 3)), price=str(entry))
+
+        # 3. Take Profit Scaling
         tp_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
         if tp1 > 0:
-            client.futures_create_order(symbol=b_symbol, side=tp_side, type='LIMIT', timeInForce='GTC', quantity=abs(round(units/2, 3)), price=str(tp1))
+            qty1 = abs(round(units * (tp1_pct / 100), 3))
+            client.futures_create_order(symbol=symbol, side=tp_side, type='LIMIT', timeInForce='GTC', quantity=qty1, price=str(tp1))
         if tp2 > 0:
-            client.futures_create_order(symbol=b_symbol, side=tp_side, type='LIMIT', timeInForce='GTC', quantity=abs(round(units/2, 3)), price=str(tp2))
+            qty2 = abs(round(units - (units * (tp1_pct / 100)), 3))
+            client.futures_create_order(symbol=symbol, side=tp_side, type='LIMIT', timeInForce='GTC', quantity=qty2, price=str(tp2))
 
         trade = {"timestamp": datetime.utcnow().isoformat(), "symbol": symbol, "side": side, "entry_price": entry, "units": units}
         session["trades"].append(trade)
         session.modified = True
-        return {"success": True, "message": f"SUCCESS: {side} {symbol} Executed"}
+        return {"success": True, "message": f"SUCCESS: {order_type} {side} {symbol}"}
     except Exception as e:
         return {"success": False, "message": f"API ERROR: {str(e)}"}
