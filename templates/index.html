@@ -79,16 +79,19 @@
                 {% if default_sl_value <= 0 %} LOCK: SET SL FIRST {% else %} EXECUTE EXCHANGE ORDER {% endif %}
             </button>
 
-            <div class="status-box">
-                {% if not sizing.error %}
-                    <div class="formula" style="background: #06212a; padding: 10px; border-radius: 4px;">
-                        <b>📐 Suggestion Logic:</b><br>
-                        • Risk Amount: ${{ sizing.risk_amount }} (1% Pool)<br>
-                        • Sug. Leverage: {{ sizing.suggested_leverage }}x<br>
-                        • Leverage Formula: (Units × Entry) / Unutilized Capital
-                    </div>
-                {% endif %}
-            </div>
+           <div class="status-box">
+    {% if not sizing.error %}
+        <div class="formula" style="background: #06212a; padding: 10px; border-radius: 4px; border: 1px solid #0ca7d4; margin-top: 10px;">
+            <b style="color: #00b7ff;">📐 Precision Logic:</b><br>
+            <span style="font-size: 0.85em;">
+                • <b>Risk:</b> ${{ sizing.risk_amount }} (1%)<br>
+                • <b>Max Lev:</b> {{ sizing.suggested_leverage }}x [100 / (SL% + 0.2)]<br>
+                • <b>Pos Size:</b> {{ sizing.suggested_units }} units<br>
+                • <b>Formula:</b> (Risk / (SL% + 0.2)) × 100
+            </span>
+        </div>
+    {% endif %}
+</div>
         </form>
     </div>
 
