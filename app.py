@@ -18,7 +18,7 @@ def index():
     margin_used = live_margin if live_margin is not None else 0.0
     unutilized = max(0, balance - margin_used)
 
-    # Carry over trade status from session (set during POST redirect)
+    # Pop message from session so it only shows once
     trade_status = session.pop('trade_status', None)
 
     selected_symbol = request.form.get("symbol", "BTCUSDT")
@@ -42,7 +42,6 @@ def index():
         tp1_pct = int(request.form.get("tp1_pct") or 50)
         tp2 = float(request.form.get("tp2") or 0)
         
-        # Execute Trade
         status = execute_trade_action(
             unutilized, selected_symbol, side, entry, order_type, 
             sl_type, sl_val, sizing, 
@@ -51,7 +50,7 @@ def index():
             margin_mode, tp1, tp1_pct, tp2
         )
         
-        # Store status and REDIRECT to prevent duplicate orders on refresh
+        # Save result and REDIRECT immediately to prevent refresh-reorders
         session['trade_status'] = status
         return redirect(url_for('index'))
 
@@ -73,9 +72,9 @@ def index():
                          order_type=order_type, 
                          datetime=datetime, 
                          chart_html=chart_html,
-                         tp1=float(request.form.get("tp1") or 0),
-                         tp1_pct=int(request.form.get("tp1_pct") or 50),
-                         tp2=float(request.form.get("tp2") or 0))
+                         tp1=tp1 if 'tp1' in locals() else 0.0,
+                         tp1_pct=tp1_pct if 'tp1_pct' in locals() else 50,
+                         tp2=tp2 if 'tp2' in locals() else 0.0)
 
 if __name__ == "__main__":
     app.run(debug=True)

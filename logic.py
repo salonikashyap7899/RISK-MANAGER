@@ -59,7 +59,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
     if day_stats["symbols"].get(symbol, 0) >= 2: return {"success": False, "message": f"{symbol} limit (2) reached."}
 
     try:
-        # Check and set Position Mode (One-Way)
+        # Check Position Mode (One-Way)
         try:
             mode = client.futures_get_position_mode()
             if mode.get('dualSidePosition'):
@@ -79,18 +79,31 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
 
         # 1. Place Main Entry Order
         if order_type == "MARKET":
-            client.futures_create_order(symbol=symbol, side=b_side, type='MARKET', quantity=abs(units))
+            main_res = client.futures_create_order(symbol=symbol, side=b_side, type='MARKET', quantity=abs(units))
         else:
-            client.futures_create_order(symbol=symbol, side=b_side, type='LIMIT', timeInForce='GTC', quantity=abs(units), price=str(entry))
+            main_res = client.futures_create_order(symbol=symbol, side=b_side, type='LIMIT', timeInForce='GTC', quantity=abs(units), price=str(entry))
 
-        # 2. Place Stop Loss (using STOP_MARKET to avoid code -4120)
+        # 2. Update stats and log IMMEDIATELY after main order succeeds
+        day_stats["total"] += 1
+        day_stats["symbols"][symbol] = day_stats["symbols"].get(symbol, 0) + 1
+        session["stats"][today] = day_stats
+        session["trades"].append({
+            "timestamp": datetime.utcnow().isoformat(), 
+            "symbol": symbol, 
+            "side": side, 
+            "entry_price": entry, 
+            "units": units
+        })
+        session.modified = True # Force session save
+
+        # 3. Place Stop Loss (STOP_MARKET is required for automated exit)
         if sl_val > 0:
             client.futures_create_order(
                 symbol=symbol, side=exit_side, type='STOP_MARKET', 
                 stopPrice=str(sl_val), closePosition=True
             )
 
-        # 3. Place Take Profit 1 (using TAKE_PROFIT_MARKET)
+        # 4. Place Take Profit 1
         if tp1 > 0:
             tp1_qty = round(abs(units) * (tp1_pct / 100), precision)
             client.futures_create_order(
@@ -98,7 +111,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                 stopPrice=str(tp1), quantity=tp1_qty
             )
 
-        # 4. Place Take Profit 2
+        # 5. Place Take Profit 2
         if tp2 > 0:
             tp2_qty = round(abs(units) - round(abs(units) * (tp1_pct / 100), precision), precision)
             if tp2_qty > 0:
@@ -107,14 +120,9 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                     stopPrice=str(tp2), quantity=tp2_qty
                 )
 
-        day_stats["total"] += 1
-        day_stats["symbols"][symbol] = day_stats["symbols"].get(symbol, 0) + 1
-        session["stats"][today] = day_stats
-        session["trades"].append({"timestamp": datetime.utcnow().isoformat(), "symbol": symbol, "side": side, "entry_price": entry, "units": units})
-        session.modified = True
-        return {"success": True, "message": f"SUCCESS: {side} {symbol} placed with SL & TP."}
+        return {"success": True, "message": f"SUCCESS: {side} {symbol} active with SL/TP."}
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        return {"success": False, "message": f"Trade Error: {str(e)}"}
 
 def get_all_exchange_symbols():
     try:
