@@ -19,16 +19,14 @@ def get_all_exchange_symbols():
         return ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 
 def get_live_balance():
-    """Fetches real USDT balance from your live wallet."""
+    """Fetches ACTUAL live USDT balance from your wallet."""
     try:
         acc = client.futures_account()
-        # Look for USDT specifically in the assets list
-        usdt_data = next((item for item in acc.get('assets', []) if item["asset"] == "USDT"), None)
-        if usdt_data:
-            # availableBalance is your actual spendable money
-            available = float(usdt_data.get('availableBalance', 0))
-            margin_locked = float(usdt_data.get('initialMargin', 0))
-            return (available + margin_locked), margin_locked
+        usdt_asset = next((item for item in acc.get('assets', []) if item["asset"] == "USDT"), None)
+        if usdt_asset:
+            available = float(usdt_asset.get('availableBalance', 0))
+            margin_used = float(usdt_asset.get('initialMargin', 0))
+            return (available + margin_used), margin_used
         return None, None
     except:
         return None, None
@@ -42,9 +40,9 @@ def get_live_price(symbol):
 
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     """
-    Formulas implemented:
-    Max Leverage = 100 / (SL% + 0.2%) [Cap at 100]
-    Pos Size = {Risk / (SL% + 0.2%)} * 100
+    Requested Formulas:
+    Max Leverage = 100 / (SL% + 0.2%) [Capped at 100]
+    Pos Size = {Risk Amount / (SL% + 0.2%)} * 100
     """
     try:
         if sl_value <= 0: return {"error": "SL Required"}
@@ -52,19 +50,15 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
         entry = float(entry)
         risk_amount = unutilized_margin * 0.01
         
-        # Determine SL percentage
-        if sl_type == "SL Points":
-            sl_pct = (sl_value / entry) * 100
-        else:
-            sl_pct = sl_value
-
+        # Determine SL percentage for movement
+        sl_pct = (sl_value / entry * 100) if sl_type == "SL Points" else sl_value
         movement_factor = sl_pct + 0.2
         
         # 1. Position Sizing Formula
         notional_value = (risk_amount / movement_factor) * 100
         suggested_units = notional_value / entry
         
-        # 2. Suggested Leverage Formula
+        # 2. Leverage Formula
         raw_lev = 100 / movement_factor
         suggested_lev = min(100.0, floor(raw_lev))
         
@@ -81,11 +75,9 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
     today = datetime.utcnow().date().isoformat()
     day_stats = session["stats"].get(today, {"total": 0, "symbols": {}})
     
-    # 4 Global Trade Limit
+    # LIMIT CHECK: Global (4) and Per-Symbol (2)
     if day_stats["total"] >= 4:
         return {"success": False, "message": "REJECTED: Daily limit of 4 trades reached."}
-    
-    # 2 Per Symbol Trade Limit
     if day_stats["symbols"].get(symbol, 0) >= 2:
         return {"success": False, "message": f"REJECTED: Limit (2/day) reached for {symbol}."}
 
@@ -93,21 +85,30 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         units = u_units if u_units > 0 else sizing["suggested_units"]
         lev = int(u_lev if u_lev > 0 else sizing["suggested_leverage"])
 
+        # FIX FOR ERROR -4061: Force One-Way Mode
+        try: client.futures_change_position_mode(dualSidePosition=False)
+        except: pass 
+        
+        try: client.futures_change_margin_type(symbol=symbol, marginType=margin_mode.upper())
+        except: pass 
+        
         client.futures_change_leverage(symbol=symbol, leverage=lev)
         
-        # Execution code remains the same as your current project
         b_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
+        
+        # Place Order
         if order_type == "MARKET":
             client.futures_create_order(symbol=symbol, side=b_side, type='MARKET', quantity=abs(round(units, 3)))
         else:
             client.futures_create_order(symbol=symbol, side=b_side, type='LIMIT', timeInForce='GTC', quantity=abs(round(units, 3)), price=str(entry))
 
-        # Update stats after success
+        # Update Session Stats
         day_stats["total"] += 1
         day_stats["symbols"][symbol] = day_stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = day_stats
-        session["trades"].append({"timestamp": datetime.utcnow().isoformat(), "symbol": symbol, "side": side, "entry_price": entry, "units": units})
+        session["trades"].append({"timestamp": datetime.utcnow().isoformat(), "symbol": symbol, "side": side, "entry_price": entry, "units": round(units, 3)})
         session.modified = True
+        
         return {"success": True, "message": f"SUCCESS: {side} {symbol} placed."}
     except Exception as e:
         return {"success": False, "message": str(e)}
