@@ -1,5 +1,5 @@
 # app.py
-from flask import Flask, render_template, request, session, jsonify, redirect, url_for
+from flask import Flask, render_template, request, session, redirect, url_for
 from datetime import datetime
 import config 
 from logic import (initialize_session, calculate_position_sizing, execute_trade_action, 
@@ -18,6 +18,9 @@ def index():
     margin_used = live_margin if live_margin is not None else 0.0
     unutilized = max(0, balance - margin_used)
 
+    # Carry over trade status from session (set during POST redirect)
+    trade_status = session.pop('trade_status', None)
+
     selected_symbol = request.form.get("symbol", "BTCUSDT")
     prev_symbol = request.form.get("prev_symbol", "")
     order_type = request.form.get("order_type", "MARKET")
@@ -33,16 +36,12 @@ def index():
     margin_mode = request.form.get("margin_mode", "ISOLATED")
 
     sizing = calculate_position_sizing(unutilized, entry, sl_type, sl_val)
-    
-    # Check for trade status passed via session (from redirect)
-    trade_status = session.pop('trade_status', None)
 
     if request.method == "POST" and 'place_order' in request.form:
-        # Capture TP values from form
         tp1 = float(request.form.get("tp1") or 0)
-        tp2 = float(request.form.get("tp2") or 0)
         tp1_pct = int(request.form.get("tp1_pct") or 50)
-
+        tp2 = float(request.form.get("tp2") or 0)
+        
         status = execute_trade_action(
             unutilized, selected_symbol, side, entry, order_type, 
             sl_type, sl_val, sizing, 
@@ -51,11 +50,11 @@ def index():
             margin_mode, tp1, tp1_pct, tp2
         )
         
-        # Save status and redirect to prevent double-orders on refresh
+        # Store status in session and REDIRECT to prevent duplicate orders on refresh
         session['trade_status'] = status
         return redirect(url_for('index'))
 
-    chart_html = f'<script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script><script type="text/javascript">new TradingView.widget({{"autosize": true, "symbol": "BINANCE:{selected_symbol}", "interval": "1", "theme": "dark", "style": "1", "container_id": "tv_chart"}});</script><div id="tv_chart" style="height:100%;"></div>'
+    chart_html = f'<script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script><script type="text/javascript">new TradingView.widget({{"autosize": true, \"symbol\": \"BINANCE:{selected_symbol}\", \"interval\": \"1\", \"theme\": \"dark\", \"style\": \"1\", \"container_id\": \"tv_chart\"}});</script><div id=\"tv_chart\" style=\"height:100%;\"></div>'
 
     return render_template("index.html", 
                          trade_status=trade_status, 

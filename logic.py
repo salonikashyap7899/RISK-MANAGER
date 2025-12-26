@@ -40,11 +40,9 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
         risk_amount = unutilized_margin * 0.01
         sl_pct = (abs(sl_value - float(entry)) / float(entry) * 100) if sl_type == "SL Points" else sl_value
         movement = sl_pct + 0.2
-        
         notional = (risk_amount / movement) * 100
         suggested_units = notional / float(entry)
         suggested_lev = min(100, floor(100 / movement))
-        
         return {
             "suggested_units": suggested_units,
             "suggested_leverage": int(max(1, suggested_lev)),
@@ -61,7 +59,12 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
     if day_stats["symbols"].get(symbol, 0) >= 2: return {"success": False, "message": f"{symbol} limit (2) reached."}
 
     try:
-        client.futures_change_position_mode(dualSidePosition=False)
+        # FIX FOR ERROR -4059: Only change if necessary and ignore if already set or busy
+        try:
+            mode = client.futures_get_position_mode()
+            if mode.get('dualSidePosition'): # If in Hedge Mode, change to One-Way
+                client.futures_change_position_mode(dualSidePosition=False)
+        except Exception: pass 
         
         lev = int(u_lev if u_lev > 0 else sizing["suggested_leverage"])
         client.futures_change_leverage(symbol=symbol, leverage=lev)
@@ -70,57 +73,46 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
 
         precision = get_symbol_precision(symbol)
         units = round(u_units if u_units > 0 else sizing["suggested_units"], precision)
-
-        # Main Entry Side
+        
         b_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
-        # Exit Side (Opposite of entry)
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
-        # 1. Place Main Order
+        # 1. Place Main Entry Order
         if order_type == "MARKET":
             client.futures_create_order(symbol=symbol, side=b_side, type='MARKET', quantity=abs(units))
         else:
             client.futures_create_order(symbol=symbol, side=b_side, type='LIMIT', timeInForce='GTC', quantity=abs(units), price=str(entry))
 
-        # 2. Place Stop Loss (Visible on Binance)
+        # 2. Place Stop Loss (Trigger Order)
         if sl_value > 0:
             client.futures_create_order(
-                symbol=symbol,
-                side=exit_side,
-                type='STOP_MARKET',
-                stopPrice=str(sl_value),
-                closePosition=True
+                symbol=symbol, side=exit_side, type='STOP_MARKET', 
+                stopPrice=str(sl_value), closePosition=True
             )
 
         # 3. Place Take Profit 1
         if tp1 > 0:
-            tp1_units = round(units * (tp1_pct / 100), precision)
+            tp1_qty = round(abs(units) * (tp1_pct / 100), precision)
             client.futures_create_order(
-                symbol=symbol,
-                side=exit_side,
-                type='TAKE_PROFIT_MARKET',
-                stopPrice=str(tp1),
-                quantity=abs(tp1_units)
+                symbol=symbol, side=exit_side, type='TAKE_PROFIT_MARKET', 
+                stopPrice=str(tp1), quantity=tp1_qty
             )
 
-        # 4. Place Take Profit 2 (Remaining units)
+        # 4. Place Take Profit 2
         if tp2 > 0:
-            tp2_units = round(units - (units * (tp1_pct / 100)), precision)
-            client.futures_create_order(
-                symbol=symbol,
-                side=exit_side,
-                type='TAKE_PROFIT_MARKET',
-                stopPrice=str(tp2),
-                quantity=abs(tp2_units)
-            )
+            tp2_qty = round(abs(units) - round(abs(units) * (tp1_pct / 100), precision), precision)
+            if tp2_qty > 0:
+                client.futures_create_order(
+                    symbol=symbol, side=exit_side, type='TAKE_PROFIT_MARKET', 
+                    stopPrice=str(tp2), quantity=tp2_qty
+                )
 
-        # Update stats
         day_stats["total"] += 1
         day_stats["symbols"][symbol] = day_stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = day_stats
         session["trades"].append({"timestamp": datetime.utcnow().isoformat(), "symbol": symbol, "side": side, "entry_price": entry, "units": units})
         session.modified = True
-        return {"success": True, "message": f"SUCCESS: {side} {symbol} with SL/TP placed."}
+        return {"success": True, "message": f"SUCCESS: {side} {symbol} placed with SL/TP."}
     except Exception as e:
         return {"success": False, "message": str(e)}
 
