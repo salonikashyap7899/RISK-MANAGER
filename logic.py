@@ -11,17 +11,25 @@ def initialize_session():
     if "trades" not in session: session["trades"] = []
     if "stats" not in session: session["stats"] = {}
 
-def get_symbol_precision(symbol):
+def get_asset_rules(symbol):
+    """Fetches both Price and Quantity precision for a specific symbol."""
     try:
         info = client.futures_exchange_info()
         for s in info['symbols']:
             if s['symbol'] == symbol:
+                # Get Price Precision
+                price_precision = s['pricePrecision']
+                # Get Quantity Precision (from LOT_SIZE filter)
+                qty_precision = 0
                 for f in s['filters']:
                     if f['filterType'] == 'LOT_SIZE':
                         step_size = f['stepSize']
-                        return step_size.find('1') - step_size.find('.')
-        return 3
-    except: return 3
+                        qty_precision = step_size.find('1') - step_size.find('.')
+                        if qty_precision < 0: qty_precision = 0
+                return price_precision, qty_precision
+        return 2, 3 # Fallback defaults
+    except:
+        return 2, 3
 
 def get_live_balance():
     try:
@@ -59,7 +67,10 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
     if day_stats["symbols"].get(symbol, 0) >= 2: return {"success": False, "message": f"{symbol} limit (2) reached."}
 
     try:
-        # Check Position Mode (One-Way)
+        # Step 1: Fetch Precision Rules
+        p_prec, q_prec = get_asset_rules(symbol)
+
+        # Step 2: Set Mode and Leverage
         try:
             mode = client.futures_get_position_mode()
             if mode.get('dualSidePosition'):
@@ -71,19 +82,21 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         try: client.futures_change_margin_type(symbol=symbol, marginType=margin_mode.upper())
         except: pass
 
-        precision = get_symbol_precision(symbol)
-        units = round(u_units if u_units > 0 else sizing["suggested_units"], precision)
+        # Step 3: Round Units and Prices Correctly
+        units = round(u_units if u_units > 0 else sizing["suggested_units"], q_prec)
+        entry_price = round(float(entry), p_prec)
+        sl_price = round(float(sl_val), p_prec)
         
         b_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
-        # 1. Place Main Entry Order
+        # Step 4: Place Main Entry
         if order_type == "MARKET":
-            main_res = client.futures_create_order(symbol=symbol, side=b_side, type='MARKET', quantity=abs(units))
+            client.futures_create_order(symbol=symbol, side=b_side, type='MARKET', quantity=abs(units))
         else:
-            main_res = client.futures_create_order(symbol=symbol, side=b_side, type='LIMIT', timeInForce='GTC', quantity=abs(units), price=str(entry))
+            client.futures_create_order(symbol=symbol, side=b_side, type='LIMIT', timeInForce='GTC', quantity=abs(units), price=str(entry_price))
 
-        # 2. Update stats and log IMMEDIATELY after main order succeeds
+        # Step 5: Update Stats and Log Immediately
         day_stats["total"] += 1
         day_stats["symbols"][symbol] = day_stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = day_stats
@@ -91,38 +104,29 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
             "timestamp": datetime.utcnow().isoformat(), 
             "symbol": symbol, 
             "side": side, 
-            "entry_price": entry, 
+            "entry_price": entry_price, 
             "units": units
         })
-        session.modified = True # Force session save
+        session.modified = True
 
-        # 3. Place Stop Loss (STOP_MARKET is required for automated exit)
-        if sl_val > 0:
-            client.futures_create_order(
-                symbol=symbol, side=exit_side, type='STOP_MARKET', 
-                stopPrice=str(sl_val), closePosition=True
-            )
+        # Step 6: Place Algo Orders with Correct Precision
+        if sl_price > 0:
+            client.futures_create_order(symbol=symbol, side=exit_side, type='STOP_MARKET', stopPrice=str(sl_price), closePosition=True)
 
-        # 4. Place Take Profit 1
         if tp1 > 0:
-            tp1_qty = round(abs(units) * (tp1_pct / 100), precision)
-            client.futures_create_order(
-                symbol=symbol, side=exit_side, type='TAKE_PROFIT_MARKET', 
-                stopPrice=str(tp1), quantity=tp1_qty
-            )
+            tp1_p = round(float(tp1), p_prec)
+            tp1_qty = round(abs(units) * (tp1_pct / 100), q_prec)
+            client.futures_create_order(symbol=symbol, side=exit_side, type='TAKE_PROFIT_MARKET', stopPrice=str(tp1_p), quantity=tp1_qty)
 
-        # 5. Place Take Profit 2
         if tp2 > 0:
-            tp2_qty = round(abs(units) - round(abs(units) * (tp1_pct / 100), precision), precision)
+            tp2_p = round(float(tp2), p_prec)
+            tp2_qty = round(abs(units) - round(abs(units) * (tp1_pct / 100), q_prec), q_prec)
             if tp2_qty > 0:
-                client.futures_create_order(
-                    symbol=symbol, side=exit_side, type='TAKE_PROFIT_MARKET', 
-                    stopPrice=str(tp2), quantity=tp2_qty
-                )
+                client.futures_create_order(symbol=symbol, side=exit_side, type='TAKE_PROFIT_MARKET', stopPrice=str(tp2_p), quantity=tp2_qty)
 
-        return {"success": True, "message": f"SUCCESS: {side} {symbol} active with SL/TP."}
+        return {"success": True, "message": f"SUCCESS: {side} {symbol} placed."}
     except Exception as e:
-        return {"success": False, "message": f"Trade Error: {str(e)}"}
+        return {"success": False, "message": f"Precision Error: {str(e)}"}
 
 def get_all_exchange_symbols():
     try:
