@@ -1,56 +1,46 @@
 from flask import session
 from datetime import datetime
 from math import floor
-from decimal import Decimal, ROUND_DOWN
+from decimal import Decimal
 from binance.client import Client
 import config
 
 client = Client(config.BINANCE_KEY, config.BINANCE_SECRET)
 
-# =========================
-# PRECISION HELPERS
-# =========================
+# ======================================================
+# PRECISION (TICK SIZE SAFE — FIXES -4014)
+# ======================================================
 
-def get_symbol_precisions(symbol):
+def get_symbol_steps(symbol):
     info = client.futures_exchange_info()
     for s in info["symbols"]:
         if s["symbol"] == symbol:
-            qty_p = price_p = 0
+            qty_step = price_step = None
             for f in s["filters"]:
                 if f["filterType"] == "LOT_SIZE":
-                    qty_p = abs(Decimal(f["stepSize"]).as_tuple().exponent)
+                    qty_step = Decimal(f["stepSize"])
                 if f["filterType"] == "PRICE_FILTER":
-                    price_p = abs(Decimal(f["tickSize"]).as_tuple().exponent)
-            return qty_p, price_p
-    return 3, 4  # safe fallback
+                    price_step = Decimal(f["tickSize"])
+            return qty_step, price_step
+    return Decimal("0.001"), Decimal("0.0001")  # safe fallback
 
-def rq(val, precision):
-    return float(
-        Decimal(val).quantize(
-            Decimal(f"1e-{precision}"),
-            rounding=ROUND_DOWN
-        )
-    )
+def round_qty(value, step):
+    return float((Decimal(value) // step) * step)
 
-def rp(val, precision):
-    return float(
-        Decimal(val).quantize(
-            Decimal(f"1e-{precision}"),
-            rounding=ROUND_DOWN
-        )
-    )
+def round_price(value, step):
+    return float((Decimal(value) // step) * step)
 
-# =========================
+# ======================================================
 # SESSION
-# =========================
+# ======================================================
 
 def initialize_session():
     session.setdefault("trades", [])
     session.setdefault("stats", {})
 
-# =========================
+# ======================================================
 # BALANCE
-# =========================
+# ======================================================
 
 def get_live_balance():
     try:
@@ -62,15 +52,11 @@ def get_live_balance():
     except:
         return None, None
 
-# =========================
-# POSITION SIZING (RESTORED)
-# =========================
+# ======================================================
+# POSITION SIZING (UNCHANGED LOGIC)
+# ======================================================
 
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
-    """
-    SAME logic as your original project
-    No changes made
-    """
     try:
         if sl_value <= 0:
             return {"error": "SL Required"}
@@ -83,24 +69,22 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
             sl_pct = sl_value
 
         movement = sl_pct + 0.2
-
         notional = (risk_amount / movement) * 100
         suggested_units = notional / float(entry)
-        suggested_leverage = min(100, floor(100 / movement))
+        suggested_lev = min(100, floor(100 / movement))
 
         return {
             "suggested_units": suggested_units,
-            "suggested_leverage": int(max(1, suggested_leverage)),
+            "suggested_leverage": int(max(1, suggested_lev)),
             "risk_amount": round(risk_amount, 2),
             "error": None
         }
-
     except:
         return {"error": "Invalid sizing calculation"}
 
-# =========================
-# EXECUTE TRADE
-# =========================
+# ======================================================
+# EXECUTE TRADE (ALL BINANCE ERRORS FIXED)
+# ======================================================
 
 def execute_trade_action(balance, symbol, side, entry, order_type,
                          sl_type, sl_value, sizing,
@@ -114,28 +98,30 @@ def execute_trade_action(balance, symbol, side, entry, order_type,
         return {"success": False, "message": "Daily trade limit reached"}
 
     try:
-        # ---- One-way mode (safe) ----
+        # ---------- POSITION MODE (FIX -4059) ----------
         try:
             if client.futures_get_position_mode()["dualSidePosition"]:
                 client.futures_change_position_mode(dualSidePosition=False)
         except:
             pass
 
-        # ---- Leverage ----
+        # ---------- LEVERAGE ----------
         lev = int(u_lev if u_lev > 0 else sizing["suggested_leverage"])
         client.futures_change_leverage(symbol=symbol, leverage=lev)
 
-        # ---- Precision ----
-        qty_p, price_p = get_symbol_precisions(symbol)
+        # ---------- PRECISION ----------
+        qty_step, price_step = get_symbol_steps(symbol)
         units = u_units if u_units > 0 else sizing["suggested_units"]
-        qty = rq(abs(units), qty_p)
+        qty = round_qty(abs(units), qty_step)
 
         buy = Client.SIDE_BUY
         sell = Client.SIDE_SELL
         main_side = buy if side == "LONG" else sell
         exit_side = sell if side == "LONG" else buy
 
-        # ===== MAIN ORDER =====
+        # ==================================================
+        # MAIN ORDER (MARKET / LIMIT)
+        # ==================================================
         if order_type == "MARKET":
             client.futures_create_order(
                 symbol=symbol,
@@ -148,12 +134,14 @@ def execute_trade_action(balance, symbol, side, entry, order_type,
                 symbol=symbol,
                 side=main_side,
                 type="LIMIT",
-                price=rp(entry, price_p),
+                price=round_price(entry, price_step),
                 quantity=qty,
                 timeInForce="GTC"
             )
 
-        # ===== STOP LOSS (LIMIT) =====
+        # ==================================================
+        # STOP LOSS (LIMIT ONLY — FIX -4120)
+        # ==================================================
         if sl_value > 0:
             if sl_type == "SL Points":
                 sl_price = entry - sl_value if side == "LONG" else entry + sl_value
@@ -164,40 +152,45 @@ def execute_trade_action(balance, symbol, side, entry, order_type,
                 symbol=symbol,
                 side=exit_side,
                 type="LIMIT",
-                price=rp(sl_price, price_p),
+                price=round_price(sl_price, price_step),
                 quantity=qty,
                 timeInForce="GTC",
                 reduceOnly=True
             )
 
-        # ===== TP1 =====
+        # ==================================================
+        # TAKE PROFIT 1 (LIMIT)
+        # ==================================================
         if tp1 > 0:
-            tp1_qty = rq(qty * (tp1_pct / 100), qty_p)
+            tp1_qty = round_qty(qty * (tp1_pct / 100), qty_step)
             if tp1_qty > 0:
                 client.futures_create_order(
                     symbol=symbol,
                     side=exit_side,
                     type="LIMIT",
-                    price=rp(tp1, price_p),
+                    price=round_price(tp1, price_step),
                     quantity=tp1_qty,
                     timeInForce="GTC",
                     reduceOnly=True
                 )
 
-        # ===== TP2 =====
+        # ==================================================
+        # TAKE PROFIT 2 (LIMIT)
+        # ==================================================
         if tp2 > 0:
-            tp2_qty = rq(qty * ((100 - tp1_pct) / 100), qty_p)
+            tp2_qty = round_qty(qty * ((100 - tp1_pct) / 100), qty_step)
             if tp2_qty > 0:
                 client.futures_create_order(
                     symbol=symbol,
                     side=exit_side,
                     type="LIMIT",
-                    price=rp(tp2, price_p),
+                    price=round_price(tp2, price_step),
                     quantity=tp2_qty,
                     timeInForce="GTC",
                     reduceOnly=True
                 )
 
+        # ---------- LOGGING ----------
         stats["total"] += 1
         session["stats"][today] = stats
         session["trades"].append({
@@ -213,9 +206,9 @@ def execute_trade_action(balance, symbol, side, entry, order_type,
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-# =========================
+# ======================================================
 # UTIL
-# =========================
+# ======================================================
 
 def get_all_exchange_symbols():
     try:
