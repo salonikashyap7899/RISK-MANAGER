@@ -2,13 +2,14 @@ from flask import session
 from datetime import datetime
 from math import floor
 from decimal import Decimal
+from time import sleep
 from binance.client import Client
 import config
 
 client = Client(config.BINANCE_KEY, config.BINANCE_SECRET)
 
 # ======================================================
-# PRECISION (TICK SIZE SAFE — FIXES -4014)
+# PRECISION (TICK SIZE SAFE)
 # ======================================================
 
 def get_symbol_steps(symbol):
@@ -22,7 +23,7 @@ def get_symbol_steps(symbol):
                 if f["filterType"] == "PRICE_FILTER":
                     price_step = Decimal(f["tickSize"])
             return qty_step, price_step
-    return Decimal("0.001"), Decimal("0.0001")  # safe fallback
+    return Decimal("0.001"), Decimal("0.0001")
 
 def round_qty(value, step):
     return float((Decimal(value) // step) * step)
@@ -46,14 +47,12 @@ def get_live_balance():
     try:
         acc = client.futures_account()
         usdt = next(i for i in acc["assets"] if i["asset"] == "USDT")
-        available = float(usdt["availableBalance"])
-        margin = float(usdt["initialMargin"])
-        return available + margin, margin
+        return float(usdt["availableBalance"]) + float(usdt["initialMargin"]), float(usdt["initialMargin"])
     except:
         return None, None
 
 # ======================================================
-# POSITION SIZING (UNCHANGED LOGIC)
+# POSITION SIZING (UNCHANGED)
 # ======================================================
 
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
@@ -62,28 +61,40 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
             return {"error": "SL Required"}
 
         risk_amount = unutilized_margin * 0.01
-
-        if sl_type == "SL Points":
-            sl_pct = (sl_value / float(entry)) * 100
-        else:
-            sl_pct = sl_value
-
+        sl_pct = (sl_value / entry * 100) if sl_type == "SL Points" else sl_value
         movement = sl_pct + 0.2
+
         notional = (risk_amount / movement) * 100
-        suggested_units = notional / float(entry)
-        suggested_lev = min(100, floor(100 / movement))
+        units = notional / entry
+        leverage = min(100, floor(100 / movement))
 
         return {
-            "suggested_units": suggested_units,
-            "suggested_leverage": int(max(1, suggested_lev)),
+            "suggested_units": units,
+            "suggested_leverage": int(max(1, leverage)),
             "risk_amount": round(risk_amount, 2),
             "error": None
         }
     except:
-        return {"error": "Invalid sizing calculation"}
+        return {"error": "Invalid sizing"}
 
 # ======================================================
-# EXECUTE TRADE (ALL BINANCE ERRORS FIXED)
+# WAIT FOR POSITION (FIX -2022)
+# ======================================================
+
+def wait_for_position(symbol, side, timeout=5):
+    for _ in range(timeout * 5):
+        positions = client.futures_position_information(symbol=symbol)
+        for p in positions:
+            amt = float(p["positionAmt"])
+            if side == "LONG" and amt > 0:
+                return abs(amt)
+            if side == "SHORT" and amt < 0:
+                return abs(amt)
+        sleep(0.2)
+    return 0
+
+# ======================================================
+# EXECUTE TRADE (ALL ERRORS FIXED)
 # ======================================================
 
 def execute_trade_action(balance, symbol, side, entry, order_type,
@@ -98,7 +109,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type,
         return {"success": False, "message": "Daily trade limit reached"}
 
     try:
-        # ---------- POSITION MODE (FIX -4059) ----------
+        # ---------- POSITION MODE ----------
         try:
             if client.futures_get_position_mode()["dualSidePosition"]:
                 client.futures_change_position_mode(dualSidePosition=False)
@@ -119,9 +130,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type,
         main_side = buy if side == "LONG" else sell
         exit_side = sell if side == "LONG" else buy
 
-        # ==================================================
-        # MAIN ORDER (MARKET / LIMIT)
-        # ==================================================
+        # ================= MAIN ORDER =================
         if order_type == "MARKET":
             client.futures_create_order(
                 symbol=symbol,
@@ -139,30 +148,33 @@ def execute_trade_action(balance, symbol, side, entry, order_type,
                 timeInForce="GTC"
             )
 
-        # ==================================================
-        # STOP LOSS (LIMIT ONLY — FIX -4120)
-        # ==================================================
+        # ---------- WAIT FOR POSITION (CRITICAL) ----------
+        filled_qty = wait_for_position(symbol, side)
+        if filled_qty <= 0:
+            return {"success": False, "message": "Position not confirmed, TP/SL skipped"}
+
+        # ================= STOP LOSS =================
         if sl_value > 0:
-            if sl_type == "SL Points":
-                sl_price = entry - sl_value if side == "LONG" else entry + sl_value
-            else:
-                sl_price = entry * (1 - sl_value / 100) if side == "LONG" else entry * (1 + sl_value / 100)
+            sl_price = (
+                entry - sl_value if side == "LONG" else entry + sl_value
+                if sl_type == "SL Points"
+                else entry * (1 - sl_value / 100) if side == "LONG"
+                else entry * (1 + sl_value / 100)
+            )
 
             client.futures_create_order(
                 symbol=symbol,
                 side=exit_side,
                 type="LIMIT",
                 price=round_price(sl_price, price_step),
-                quantity=qty,
+                quantity=filled_qty,
                 timeInForce="GTC",
                 reduceOnly=True
             )
 
-        # ==================================================
-        # TAKE PROFIT 1 (LIMIT)
-        # ==================================================
+        # ================= TP1 =================
         if tp1 > 0:
-            tp1_qty = round_qty(qty * (tp1_pct / 100), qty_step)
+            tp1_qty = round_qty(filled_qty * (tp1_pct / 100), qty_step)
             if tp1_qty > 0:
                 client.futures_create_order(
                     symbol=symbol,
@@ -174,11 +186,9 @@ def execute_trade_action(balance, symbol, side, entry, order_type,
                     reduceOnly=True
                 )
 
-        # ==================================================
-        # TAKE PROFIT 2 (LIMIT)
-        # ==================================================
+        # ================= TP2 =================
         if tp2 > 0:
-            tp2_qty = round_qty(qty * ((100 - tp1_pct) / 100), qty_step)
+            tp2_qty = round_qty(filled_qty * ((100 - tp1_pct) / 100), qty_step)
             if tp2_qty > 0:
                 client.futures_create_order(
                     symbol=symbol,
@@ -190,13 +200,13 @@ def execute_trade_action(balance, symbol, side, entry, order_type,
                     reduceOnly=True
                 )
 
-        # ---------- LOGGING ----------
+        # ---------- LOG ----------
         stats["total"] += 1
         session["stats"][today] = stats
         session["trades"].append({
             "symbol": symbol,
             "side": side,
-            "qty": qty,
+            "qty": filled_qty,
             "time": datetime.utcnow().isoformat()
         })
         session.modified = True
@@ -213,10 +223,8 @@ def execute_trade_action(balance, symbol, side, entry, order_type,
 def get_all_exchange_symbols():
     try:
         info = client.futures_exchange_info()
-        return sorted(
-            s["symbol"] for s in info["symbols"]
-            if s["status"] == "TRADING" and s["quoteAsset"] == "USDT"
-        )
+        return sorted(s["symbol"] for s in info["symbols"]
+                      if s["status"] == "TRADING" and s["quoteAsset"] == "USDT")
     except:
         return ["BTCUSDT", "ETHUSDT"]
 
