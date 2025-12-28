@@ -61,24 +61,26 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         try: client.futures_change_margin_type(symbol=symbol, marginType=margin_mode.upper())
         except: pass
 
+        # ROUNDING EVERYTHING TO PREVENT PRECISION ERROR -1111
         units = round(u_units if u_units > 0 else sizing["suggested_units"], q_prec)
+        rounded_entry = round(float(entry), p_prec)
         b_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
-        # 1. Main Entry
+        # 1. Main Entry Order
         if order_type == "MARKET":
             client.futures_create_order(symbol=symbol, side=b_side, type='MARKET', quantity=abs(units))
         else:
-            client.futures_create_order(symbol=symbol, side=b_side, type='LIMIT', timeInForce='GTC', quantity=abs(units), price=str(round(entry, p_prec)))
+            client.futures_create_order(symbol=symbol, side=b_side, type='LIMIT', timeInForce='GTC', quantity=abs(units), price=str(rounded_entry))
 
-        # 2. IMMEDIATE LOGGING (Fixes missing live log)
+        # 2. Log to UI Session
         day_stats["total"] += 1
         day_stats["symbols"][symbol] = day_stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = day_stats
-        session["trades"].append({"timestamp": datetime.utcnow().isoformat(), "symbol": symbol, "side": side, "entry_price": entry, "units": units})
+        session["trades"].append({"timestamp": datetime.utcnow().isoformat(), "symbol": symbol, "side": side, "entry_price": rounded_entry, "units": units})
         session.modified = True
 
-        # 3. ALGO ORDERS (Fixes Error -4120)
+        # 3. ALGO ORDERS for SL and TP (Fix for Error -4120)
         if sl_val > 0:
             client._post('fapi/v1/algoOrder', data={
                 "symbol": symbol, "side": exit_side, "type": "STOP_MARKET", 
@@ -91,7 +93,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                 "stopPrice": str(round(tp1, p_prec)), "quantity": str(tp1_q), "reduceOnly": "true"
             })
 
-        return {"success": True, "message": f"SUCCESS: {symbol} placed via Algo API."}
+        return {"success": True, "message": f"SUCCESS: {symbol} active with SL/TP."}
     except Exception as e:
         return {"success": False, "message": f"Execution Error: {str(e)}"}
 
