@@ -5,7 +5,8 @@ from math import floor
 from binance.client import Client
 import config 
 
-client = Client(config.BINANCE_KEY, config.BINANCE_SECRET)
+# Added recvWindow and larger timeout to help with network/time-sync issues
+client = Client(config.BINANCE_KEY, config.BINANCE_SECRET, {"verify": True, "timeout": 30})
 
 def initialize_session():
     if "trades" not in session: session["trades"] = []
@@ -51,8 +52,9 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
 def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_val, sizing, u_units, u_lev, margin_mode, tp1, tp1_pct, tp2):
     today = datetime.utcnow().date().isoformat()
     day_stats = session["stats"].get(today, {"total": 0, "symbols": {}})
+    
     if day_stats["total"] >= 4 or day_stats["symbols"].get(symbol, 0) >= 2:
-        return {"success": False, "message": "Limit Reached"}
+        return {"success": False, "message": "Daily Trade Limit Reached"}
 
     try:
         p_prec, q_prec = get_asset_rules(symbol)
@@ -61,26 +63,25 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         try: client.futures_change_margin_type(symbol=symbol, marginType=margin_mode.upper())
         except: pass
 
-        # ROUNDING EVERYTHING TO PREVENT PRECISION ERROR -1111
         units = round(u_units if u_units > 0 else sizing["suggested_units"], q_prec)
         rounded_entry = round(float(entry), p_prec)
         b_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
-        # 1. Main Entry Order
+        # 1. Main Order Placement
         if order_type == "MARKET":
             client.futures_create_order(symbol=symbol, side=b_side, type='MARKET', quantity=abs(units))
         else:
             client.futures_create_order(symbol=symbol, side=b_side, type='LIMIT', timeInForce='GTC', quantity=abs(units), price=str(rounded_entry))
 
-        # 2. Log to UI Session
+        # Update Session with Entry Price
         day_stats["total"] += 1
         day_stats["symbols"][symbol] = day_stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = day_stats
         session["trades"].append({"timestamp": datetime.utcnow().isoformat(), "symbol": symbol, "side": side, "entry_price": rounded_entry, "units": units})
         session.modified = True
 
-        # 3. ALGO ORDERS for SL and TP (Fix for Error -4120)
+        # 2. Place SL and TP via MANDATORY Algo API (Fix for Error -4120)
         if sl_val > 0:
             client._post('fapi/v1/algoOrder', data={
                 "symbol": symbol, "side": exit_side, "type": "STOP_MARKET", 
@@ -93,9 +94,12 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                 "stopPrice": str(round(tp1, p_prec)), "quantity": str(tp1_q), "reduceOnly": "true"
             })
 
-        return {"success": True, "message": f"SUCCESS: {symbol} active with SL/TP."}
+        return {"success": True, "message": f"SUCCESS: Order placed for {symbol}."}
     except Exception as e:
-        return {"success": False, "message": f"Execution Error: {str(e)}"}
+        msg = str(e)
+        if "code=0" in msg:
+            return {"success": False, "message": "Region Block: Binance sent HTML instead of JSON. Check your VPN or IP location."}
+        return {"success": False, "message": f"Execution Error: {msg}"}
 
 def get_all_exchange_symbols():
     try:
