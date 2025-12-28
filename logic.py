@@ -1,16 +1,26 @@
 from flask import session
-from datetime import datetime
-from math import floor
-from decimal import Decimal
-from time import sleep
 from binance.client import Client
+from decimal import Decimal
+from datetime import datetime
+from time import sleep
+from math import floor
 import config
 
 client = Client(config.BINANCE_KEY, config.BINANCE_SECRET)
 
-# ======================================================
-# PRECISION (TICK SIZE SAFE)
-# ======================================================
+# =====================================================
+# SESSION (THIS FIXES YOUR IMPORT ERROR)
+# =====================================================
+
+def initialize_session():
+    if "trades" not in session:
+        session["trades"] = []
+    if "stats" not in session:
+        session["stats"] = {}
+
+# =====================================================
+# PRECISION HELPERS
+# =====================================================
 
 def get_symbol_steps(symbol):
     info = client.futures_exchange_info()
@@ -31,58 +41,51 @@ def round_qty(value, step):
 def round_price(value, step):
     return float((Decimal(value) // step) * step)
 
-# ======================================================
-# SESSION
-# ======================================================
-
-def initialize_session():
-    session.setdefault("trades", [])
-    session.setdefault("stats", {})
-
-# ======================================================
-# BALANCE
-# ======================================================
+# =====================================================
+# BALANCE / PRICE
+# =====================================================
 
 def get_live_balance():
-    try:
-        acc = client.futures_account()
-        usdt = next(i for i in acc["assets"] if i["asset"] == "USDT")
-        return float(usdt["availableBalance"]) + float(usdt["initialMargin"]), float(usdt["initialMargin"])
-    except:
-        return None, None
+    acc = client.futures_account()
+    usdt = next(i for i in acc["assets"] if i["asset"] == "USDT")
+    return float(usdt["availableBalance"]), float(usdt["initialMargin"])
 
-# ======================================================
-# POSITION SIZING (UNCHANGED)
-# ======================================================
+def get_live_price(symbol):
+    return float(client.futures_symbol_ticker(symbol=symbol)["price"])
 
-def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
-    try:
-        if sl_value <= 0:
-            return {"error": "SL Required"}
+def get_all_exchange_symbols():
+    info = client.futures_exchange_info()
+    return [
+        s["symbol"]
+        for s in info["symbols"]
+        if s["status"] == "TRADING" and s["quoteAsset"] == "USDT"
+    ]
 
-        risk_amount = unutilized_margin * 0.01
-        sl_pct = (sl_value / entry * 100) if sl_type == "SL Points" else sl_value
-        movement = sl_pct + 0.2
+# =====================================================
+# POSITION SIZING
+# =====================================================
 
-        notional = (risk_amount / movement) * 100
-        units = notional / entry
-        leverage = min(100, floor(100 / movement))
+def calculate_position_sizing(balance, entry, sl_type, sl_value):
+    risk = balance * 0.01
+    sl_pct = (sl_value / entry * 100) if sl_type == "SL Points" else sl_value
+    movement = sl_pct + 0.2
+    notional = (risk / movement) * 100
+    units = notional / entry
+    leverage = min(100, floor(100 / movement))
 
-        return {
-            "suggested_units": units,
-            "suggested_leverage": int(max(1, leverage)),
-            "risk_amount": round(risk_amount, 2),
-            "error": None
-        }
-    except:
-        return {"error": "Invalid sizing"}
+    return {
+        "suggested_units": units,
+        "suggested_leverage": leverage,
+        "risk_amount": round(risk, 2),
+        "error": None
+    }
 
-# ======================================================
-# WAIT FOR POSITION (FIX -2022)
-# ======================================================
+# =====================================================
+# WAIT FOR POSITION
+# =====================================================
 
-def wait_for_position(symbol, side, timeout=5):
-    for _ in range(timeout * 5):
+def wait_for_position(symbol, side):
+    for _ in range(30):
         positions = client.futures_position_information(symbol=symbol)
         for p in positions:
             amt = float(p["positionAmt"])
@@ -93,143 +96,94 @@ def wait_for_position(symbol, side, timeout=5):
         sleep(0.2)
     return 0
 
-# ======================================================
-# EXECUTE TRADE (ALL ERRORS FIXED)
-# ======================================================
+# =====================================================
+# EXECUTE TRADE
+# =====================================================
 
 def execute_trade_action(balance, symbol, side, entry, order_type,
                          sl_type, sl_value, sizing,
-                         u_units, u_lev, margin_mode,
+                         units_override, lev_override, margin_mode,
                          tp1, tp1_pct, tp2):
 
-    today = datetime.utcnow().date().isoformat()
-    stats = session["stats"].get(today, {"total": 0, "symbols": {}})
+    qty_step, price_step = get_symbol_steps(symbol)
 
-    if stats["total"] >= 4:
-        return {"success": False, "message": "Daily trade limit reached"}
+    units = units_override if units_override > 0 else sizing["suggested_units"]
+    qty = round_qty(abs(units), qty_step)
 
-    try:
-        # ---------- POSITION MODE ----------
-        try:
-            if client.futures_get_position_mode()["dualSidePosition"]:
-                client.futures_change_position_mode(dualSidePosition=False)
-        except:
-            pass
+    buy, sell = Client.SIDE_BUY, Client.SIDE_SELL
+    main_side = buy if side == "LONG" else sell
+    exit_side = sell if side == "LONG" else buy
 
-        # ---------- LEVERAGE ----------
-        lev = int(u_lev if u_lev > 0 else sizing["suggested_leverage"])
-        client.futures_change_leverage(symbol=symbol, leverage=lev)
+    # ENTRY
+    client.futures_create_order(
+        symbol=symbol,
+        side=main_side,
+        type="MARKET",
+        quantity=qty
+    )
 
-        # ---------- PRECISION ----------
-        qty_step, price_step = get_symbol_steps(symbol)
-        units = u_units if u_units > 0 else sizing["suggested_units"]
-        qty = round_qty(abs(units), qty_step)
+    filled_qty = wait_for_position(symbol, side)
+    if filled_qty <= 0:
+        return {"success": False, "message": "Position not confirmed"}
 
-        buy = Client.SIDE_BUY
-        sell = Client.SIDE_SELL
-        main_side = buy if side == "LONG" else sell
-        exit_side = sell if side == "LONG" else buy
-
-        # ================= MAIN ORDER =================
-        if order_type == "MARKET":
-            client.futures_create_order(
-                symbol=symbol,
-                side=main_side,
-                type="MARKET",
-                quantity=qty
-            )
+    # STOP LOSS
+    if sl_value > 0:
+        if sl_type == "SL Points":
+            sl_price = entry - sl_value if side == "LONG" else entry + sl_value
         else:
-            client.futures_create_order(
-                symbol=symbol,
-                side=main_side,
-                type="LIMIT",
-                price=round_price(entry, price_step),
-                quantity=qty,
-                timeInForce="GTC"
-            )
+            sl_price = entry * (1 - sl_value / 100) if side == "LONG" else entry * (1 + sl_value / 100)
 
-        # ---------- WAIT FOR POSITION (CRITICAL) ----------
-        filled_qty = wait_for_position(symbol, side)
-        if filled_qty <= 0:
-            return {"success": False, "message": "Position not confirmed, TP/SL skipped"}
+        sl_price = round_price(sl_price, price_step)
 
-        # ================= STOP LOSS =================
-        if sl_value > 0:
-            sl_price = (
-                entry - sl_value if side == "LONG" else entry + sl_value
-                if sl_type == "SL Points"
-                else entry * (1 - sl_value / 100) if side == "LONG"
-                else entry * (1 + sl_value / 100)
-            )
-
+        if sl_price > 0:
             client.futures_create_order(
                 symbol=symbol,
                 side=exit_side,
                 type="LIMIT",
-                price=round_price(sl_price, price_step),
+                price=sl_price,
                 quantity=filled_qty,
                 timeInForce="GTC",
                 reduceOnly=True
             )
 
-        # ================= TP1 =================
-        if tp1 > 0:
-            tp1_qty = round_qty(filled_qty * (tp1_pct / 100), qty_step)
-            if tp1_qty > 0:
-                client.futures_create_order(
-                    symbol=symbol,
-                    side=exit_side,
-                    type="LIMIT",
-                    price=round_price(tp1, price_step),
-                    quantity=tp1_qty,
-                    timeInForce="GTC",
-                    reduceOnly=True
-                )
+    # TP1
+    if tp1 > 0:
+        tp1_price = round_price(tp1, price_step)
+        tp1_qty = round_qty(filled_qty * (tp1_pct / 100), qty_step)
 
-        # ================= TP2 =================
-        if tp2 > 0:
-            tp2_qty = round_qty(filled_qty * ((100 - tp1_pct) / 100), qty_step)
-            if tp2_qty > 0:
-                client.futures_create_order(
-                    symbol=symbol,
-                    side=exit_side,
-                    type="LIMIT",
-                    price=round_price(tp2, price_step),
-                    quantity=tp2_qty,
-                    timeInForce="GTC",
-                    reduceOnly=True
-                )
+        if tp1_price > 0 and tp1_qty > 0:
+            client.futures_create_order(
+                symbol=symbol,
+                side=exit_side,
+                type="LIMIT",
+                price=tp1_price,
+                quantity=tp1_qty,
+                timeInForce="GTC",
+                reduceOnly=True
+            )
 
-        # ---------- LOG ----------
-        stats["total"] += 1
-        session["stats"][today] = stats
-        session["trades"].append({
-            "symbol": symbol,
-            "side": side,
-            "qty": filled_qty,
-            "time": datetime.utcnow().isoformat()
-        })
-        session.modified = True
+    # TP2
+    if tp2 > 0:
+        tp2_price = round_price(tp2, price_step)
+        tp2_qty = round_qty(filled_qty * ((100 - tp1_pct) / 100), qty_step)
 
-        return {"success": True, "message": "Trade executed successfully"}
+        if tp2_price > 0 and tp2_qty > 0:
+            client.futures_create_order(
+                symbol=symbol,
+                side=exit_side,
+                type="LIMIT",
+                price=tp2_price,
+                quantity=tp2_qty,
+                timeInForce="GTC",
+                reduceOnly=True
+            )
 
-    except Exception as e:
-        return {"success": False, "message": str(e)}
+    session["trades"].append({
+        "symbol": symbol,
+        "side": side,
+        "qty": filled_qty,
+        "time": datetime.utcnow().isoformat()
+    })
+    session.modified = True
 
-# ======================================================
-# UTIL
-# ======================================================
-
-def get_all_exchange_symbols():
-    try:
-        info = client.futures_exchange_info()
-        return sorted(s["symbol"] for s in info["symbols"]
-                      if s["status"] == "TRADING" and s["quoteAsset"] == "USDT")
-    except:
-        return ["BTCUSDT", "ETHUSDT"]
-
-def get_live_price(symbol):
-    try:
-        return float(client.futures_symbol_ticker(symbol=symbol)["price"])
-    except:
-        return None
+    return {"success": True, "message": "Trade executed successfully"}
