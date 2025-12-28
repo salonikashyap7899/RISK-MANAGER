@@ -15,14 +15,13 @@ def index():
     live_bal, live_margin = get_live_balance()
     unutilized = max(0, (live_bal or 0) - (live_margin or 0))
 
-    # Survival of message after redirect
+    # Get trade status from session (set after POST redirect)
     trade_status = session.pop('trade_status', None)
 
     selected_symbol = request.form.get("symbol", "BTCUSDT")
     prev_symbol = request.form.get("prev_symbol", "")
     order_type = request.form.get("order_type", "MARKET")
     
-    # Logic to maintain the entry price correctly across refreshes/symbol changes
     if selected_symbol != prev_symbol or not request.form.get("entry"):
         entry = get_live_price(selected_symbol) or 0.0
     else:
@@ -42,7 +41,7 @@ def index():
             margin_mode, float(request.form.get("tp1") or 0), int(request.form.get("tp1_pct") or 50), float(request.form.get("tp2") or 0)
         )
         session['trade_status'] = status
-        return redirect(url_for('index')) # PREVENT DUPLICATE ORDER ON REFRESH
+        return redirect(url_for('index')) # PREVENT REFRESH DUPLICATES
 
     chart_html = f'<script src="https://s3.tradingview.com/tv.js"></script><script>new TradingView.widget({{"autosize": true, "symbol": "BINANCE:{selected_symbol}", "interval": "1", "theme": "dark", "container_id": "tv_chart"}});</script><div id="tv_chart" style="height:350px;"></div>'
 

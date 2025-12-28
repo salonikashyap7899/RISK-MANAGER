@@ -5,7 +5,7 @@ from math import floor
 from binance.client import Client
 import config 
 
-# Added recvWindow and larger timeout to help with network/time-sync issues
+# Added recvWindow and larger timeout to help with time-sync and network issues
 client = Client(config.BINANCE_KEY, config.BINANCE_SECRET, {"verify": True, "timeout": 30})
 
 def initialize_session():
@@ -68,20 +68,20 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         b_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
-        # 1. Main Order Placement
+        # 1. Main Entry Order
         if order_type == "MARKET":
             client.futures_create_order(symbol=symbol, side=b_side, type='MARKET', quantity=abs(units))
         else:
             client.futures_create_order(symbol=symbol, side=b_side, type='LIMIT', timeInForce='GTC', quantity=abs(units), price=str(rounded_entry))
 
-        # Update Session with Entry Price
+        # Update Session with Entry Price immediately
         day_stats["total"] += 1
         day_stats["symbols"][symbol] = day_stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = day_stats
         session["trades"].append({"timestamp": datetime.utcnow().isoformat(), "symbol": symbol, "side": side, "entry_price": rounded_entry, "units": units})
         session.modified = True
 
-        # 2. Place SL and TP via MANDATORY Algo API (Fix for Error -4120)
+        # 2. Algo Orders for SL/TP (Required for Futures API 2024/2025)
         if sl_val > 0:
             client._post('fapi/v1/algoOrder', data={
                 "symbol": symbol, "side": exit_side, "type": "STOP_MARKET", 
@@ -98,7 +98,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
     except Exception as e:
         msg = str(e)
         if "code=0" in msg:
-            return {"success": False, "message": "Region Block: Binance sent HTML instead of JSON. Check your VPN or IP location."}
+            return {"success": False, "message": "Region Block: Check your VPN/IP location."}
         return {"success": False, "message": f"Execution Error: {msg}"}
 
 def get_all_exchange_symbols():
