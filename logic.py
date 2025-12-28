@@ -7,7 +7,9 @@ import config
 
 client = Client(config.BINANCE_KEY, config.BINANCE_SECRET)
 
-# ---------- PRECISION HELPERS ----------
+# =========================
+# PRECISION HELPERS
+# =========================
 
 def get_symbol_precisions(symbol):
     info = client.futures_exchange_info()
@@ -21,23 +23,27 @@ def get_symbol_precisions(symbol):
                 if f["filterType"] == "PRICE_FILTER":
                     price_precision = abs(Decimal(f["tickSize"]).as_tuple().exponent)
             return qty_precision, price_precision
-    return 3, 2  # safe fallback
+    return 3, 2  # fallback
 
-def round_qty(value, precision):
-    return float(Decimal(value).quantize(
+def round_qty(val, precision):
+    return float(Decimal(val).quantize(
         Decimal(f"1e-{precision}"), rounding=ROUND_DOWN))
 
-def round_price(value, precision):
-    return float(Decimal(value).quantize(
+def round_price(val, precision):
+    return float(Decimal(val).quantize(
         Decimal(f"1e-{precision}"), rounding=ROUND_DOWN))
 
-# ---------- SESSION ----------
+# =========================
+# SESSION
+# =========================
 
 def initialize_session():
     session.setdefault("trades", [])
     session.setdefault("stats", {})
 
-# ---------- BALANCE ----------
+# =========================
+# BALANCE
+# =========================
 
 def get_live_balance():
     try:
@@ -49,7 +55,9 @@ def get_live_balance():
     except:
         return None, None
 
-# ---------- POSITION SIZING ----------
+# =========================
+# POSITION SIZING
+# =========================
 
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     if sl_value <= 0:
@@ -70,7 +78,9 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
         "error": None
     }
 
-# ---------- EXECUTE TRADE ----------
+# =========================
+# EXECUTE TRADE
+# =========================
 
 def execute_trade_action(balance, symbol, side, entry, order_type, sl_type,
                          sl_value, sizing, u_units, u_lev, margin_mode,
@@ -86,24 +96,33 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type,
         return {"success": False, "message": "Symbol trade limit reached"}
 
     try:
-        qty_p, price_p = get_symbol_precisions(symbol)
+        # -------- POSITION MODE SAFE CHECK (FIX -4059) --------
+        try:
+            mode = client.futures_get_position_mode()
+            if mode.get("dualSidePosition"):
+                client.futures_change_position_mode(dualSidePosition=False)
+        except:
+            pass
 
-        client.futures_change_position_mode(dualSidePosition=False)
-
+        # -------- LEVERAGE & MARGIN --------
         lev = int(u_lev if u_lev > 0 else sizing["suggested_leverage"])
         client.futures_change_leverage(symbol=symbol, leverage=lev)
 
         try:
-            client.futures_change_margin_type(symbol=symbol, marginType=margin_mode.upper())
+            client.futures_change_margin_type(
+                symbol=symbol, marginType=margin_mode.upper())
         except:
             pass
+
+        # -------- PRECISION --------
+        qty_p, price_p = get_symbol_precisions(symbol)
 
         units = u_units if u_units > 0 else sizing["suggested_units"]
         qty = round_qty(abs(units), qty_p)
 
         side_main = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
 
-        # MAIN ORDER
+        # -------- MAIN ORDER --------
         if order_type == "MARKET":
             client.futures_create_order(
                 symbol=symbol,
@@ -121,7 +140,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type,
                 timeInForce="GTC"
             )
 
-        # STOP LOSS
+        # -------- STOP LOSS --------
         if sl_value > 0:
             if sl_type == "SL Points":
                 sl_price = entry - sl_value if side == "LONG" else entry + sl_value
@@ -136,48 +155,57 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type,
                 closePosition=True
             )
 
-        # TP1
+        # -------- TAKE PROFITS --------
         if tp1 > 0:
-            tp_qty = round_qty(qty * (tp1_pct / 100), qty_p)
-            if tp_qty > 0:
+            tp1_qty = round_qty(qty * (tp1_pct / 100), qty_p)
+            if tp1_qty > 0:
                 client.futures_create_order(
                     symbol=symbol,
                     side=Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY,
                     type="TAKE_PROFIT_MARKET",
                     stopPrice=round_price(tp1, price_p),
-                    quantity=tp_qty
+                    quantity=tp1_qty
                 )
 
-        # TP2
         if tp2 > 0:
-            tp_qty = round_qty(qty * ((100 - tp1_pct) / 100), qty_p)
-            if tp_qty > 0:
+            tp2_qty = round_qty(qty * ((100 - tp1_pct) / 100), qty_p)
+            if tp2_qty > 0:
                 client.futures_create_order(
                     symbol=symbol,
                     side=Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY,
                     type="TAKE_PROFIT_MARKET",
                     stopPrice=round_price(tp2, price_p),
-                    quantity=tp_qty
+                    quantity=tp2_qty
                 )
 
+        # -------- STATS --------
         stats["total"] += 1
         stats["symbols"][symbol] = stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = stats
-        session["trades"].append({"symbol": symbol, "side": side, "qty": qty})
+        session["trades"].append({
+            "time": datetime.utcnow().isoformat(),
+            "symbol": symbol,
+            "side": side,
+            "qty": qty
+        })
         session.modified = True
 
-        return {"success": True, "message": "Trade executed successfully"}
+        return {"success": True, "message": "Trade placed successfully"}
 
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-# ---------- UTIL ----------
+# =========================
+# UTIL
+# =========================
 
 def get_all_exchange_symbols():
     try:
         info = client.futures_exchange_info()
-        return sorted([s["symbol"] for s in info["symbols"]
-                       if s["quoteAsset"] == "USDT" and s["status"] == "TRADING"])
+        return sorted([
+            s["symbol"] for s in info["symbols"]
+            if s["status"] == "TRADING" and s["quoteAsset"] == "USDT"
+        ])
     except:
         return ["BTCUSDT", "ETHUSDT"]
 
