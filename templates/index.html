@@ -8,48 +8,28 @@
 <div class="container">
     <div class="panel left">
         <div class="header">CORE CONTROLS</div>
-
-        {% if trade_status %}
-            <div class="message {{ 'success' if trade_status.success else 'error' }}">
-                {{ trade_status.message }}
-            </div>
-        {% endif %}
+        {% if trade_status %}<div class="message {{ 'success' if trade_status.success else 'error' }}">{{ trade_status.message }}</div>{% endif %}
 
         <form method="POST">
-            <input type="hidden" name="side" id="side_hidden" value="{{ default_side | default('LONG') }}">
-            <input type="hidden" name="prev_symbol" value="{{ selected_symbol | default('') }}">
+            <input type="hidden" name="side" id="side_hidden" value="{{default_side}}">
+            <input type="hidden" name="prev_symbol" value="{{selected_symbol}}">
 
             <div class="row">
-                <div class="col">
-                    <label>Unutilized Capital (1% Risk Pool)</label>
-                    <input value="${{ (unutilized | default(0)) | round(2) }}" disabled style="color: #7aff00;">
-                </div>
+                <div class="col"><label>Unutilized Capital (1% Risk Pool)</label><input value="${{unutilized | round(2)}}" disabled style="color: #7aff00;"></div>
             </div>
 
             <div class="row">
                 <div class="col">
                     <label>Symbol</label>
                     <select name="symbol" onchange="this.form.submit()">
-                        {% for sym in symbols | default([]) %}
-                            <option value="{{ sym }}" {{ 'selected' if sym == selected_symbol }}>
-                                {{ sym }}
-                            </option>
-                        {% endfor %}
+                        {% for sym in symbols %}<option value="{{sym}}" {{ 'selected' if sym == selected_symbol }}>{{sym}}</option>{% endfor %}
                     </select>
                 </div>
             </div>
 
             <div class="button-row">
-                <button type="button"
-                        class="tab {{ 'active' if default_side == 'LONG' }}"
-                        onclick="document.getElementById('side_hidden').value='LONG'; this.form.submit();">
-                    LONG
-                </button>
-                <button type="button"
-                        class="tab {{ 'active' if default_side == 'SHORT' }}"
-                        onclick="document.getElementById('side_hidden').value='SHORT'; this.form.submit();">
-                    SHORT
-                </button>
+                <button type="button" class="tab {{ 'active' if default_side == 'LONG' }}" onclick="document.getElementById('side_hidden').value='LONG'; this.form.submit();">LONG</button>
+                <button type="button" class="tab {{ 'active' if default_side == 'SHORT' }}" onclick="document.getElementById('side_hidden').value='SHORT'; this.form.submit();">SHORT</button>
             </div>
 
             <div class="row">
@@ -70,107 +50,56 @@
             </div>
 
             <div class="row">
-                <div class="col">
-                    <label>Entry Price</label>
-                    <input type="number" name="entry" id="entry_input"
-                           value="{{ default_entry | default(0) }}" step="any">
-                </div>
+                <div class="col"><label>Entry Price</label><input type="number" name="entry" id="entry_input" value="{{default_entry}}" step="any"></div>
             </div>
 
             <div class="row">
-                <div class="col">
-                    <label>TP 1 Price</label>
-                    <input type="number" name="tp1" value="{{ tp1 | default(0) }}" step="any">
-                </div>
-                <div class="col">
-                    <label>TP 1 Qty %</label>
-                    <input type="number" name="tp1_pct" value="{{ tp1_pct | default(0) }}">
-                </div>
-                <div class="col">
-                    <label>TP 2 Price</label>
-                    <input type="number" name="tp2" value="{{ tp2 | default(0) }}" step="any">
-                </div>
+                <div class="col"><label>TP 1 Price</label><input type="number" name="tp1" value="{{tp1}}" step="any"></div>
+                <div class="col"><label>TP 1 Qty %</label><input type="number" name="tp1_pct" value="{{tp1_pct}}"></div>
+                <div class="col"><label>TP 2 Price</label><input type="number" name="tp2" value="{{tp2}}" step="any"></div>
             </div>
 
             <div class="row">
                 <div class="col">
                     <label>SL Method</label>
                     <select name="sl_type" onchange="this.form.submit();">
-                        <option value="SL Points" {{ 'selected' if default_sl_type == 'SL Points' }}>
-                            SL Points
-                        </option>
-                        <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>
-                            SL % Movement
-                        </option>
+                        <option value="SL Points" {{ 'selected' if default_sl_type == 'SL Points' }}>SL Points</option>
+                        <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>SL % Movement</option>
                     </select>
                 </div>
-                <div class="col">
-                    <label>SL Value (Mandatory)</label>
-                    <input type="number" name="sl_value"
-                           value="{{ default_sl_value | default(0) }}"
-                           step="any" onchange="this.form.submit();" required>
-                </div>
+                <div class="col"><label>SL Value (Mandatory)</label><input type="number" name="sl_value" value="{{default_sl_value}}" step="any" onchange="this.form.submit();" required></div>
             </div>
 
             <div class="row">
-                <div class="col">
-                    <label>Pos Override</label>
-                    <input type="number" name="user_units" step="any">
-                    <small>Sug: {{ sizing.suggested_units | default(0) }}</small>
-                </div>
-                <div class="col">
-                    <label>Lev Override</label>
-                    <input type="number" name="user_lev" step="any">
-                    <small>Sug: {{ sizing.suggested_leverage | default(0) }}x</small>
-                </div>
+                <div class="col"><label>Pos Override</label><input type="number" name="user_units" step="any"><small>Sug: {{sizing.suggested_units}}</small></div>
+                <div class="col"><label>Lev Override</label><input type="number" name="user_lev" step="any"><small>Sug: {{sizing.suggested_leverage}}x</small></div>
             </div>
 
-            <button type="submit" name="place_order" class="place"
-                {% if (default_sl_value | default(0)) <= 0 %}
-                    disabled style="filter: grayscale(1);"
-                {% endif %}>
-                {% if (default_sl_value | default(0)) <= 0 %}
-                    LOCK: SET SL FIRST
-                {% else %}
-                    EXECUTE EXCHANGE ORDER
-                {% endif %}
+            <button type="submit" name="place_order" class="place" {% if default_sl_value <= 0 %} disabled style="filter: grayscale(1);" {% endif %}>
+                {% if default_sl_value <= 0 %} LOCK: SET SL FIRST {% else %} EXECUTE EXCHANGE ORDER {% endif %}
             </button>
 
-            {% if sizing and not sizing.error %}
             <div class="status-box">
-                <div class="formula" style="background:#06212a;padding:10px;border-radius:4px;border:1px solid #0ca7d4;margin-top:10px;">
-                    <b style="color:#00b7ff;">📐 Precision Logic:</b><br>
-                    <span style="font-size:0.85em;">
-                        • <b>Risk:</b> ${{ sizing.risk_amount | default(0) }} (1%)<br>
-                        • <b>Max Lev:</b> {{ sizing.suggested_leverage | default(0) }}x<br>
-                        • <b>Pos Size:</b> {{ sizing.suggested_units | default(0) }} units<br>
-                        • <b>Formula:</b> (Risk / (SL% + 0.2)) × 100
-                    </span>
-                </div>
+                {% if not sizing.error %}
+                    <div class="formula" style="background: #06212a; padding: 10px; border-radius: 4px;">
+                        <b>📐 Suggestion Logic:</b><br>
+                        • Risk Amount: ${{ sizing.risk_amount }} (1% Pool)<br>
+                        • Sug. Leverage: {{ sizing.suggested_leverage }}x<br>
+                        • Leverage Formula: (Units × Entry) / Unutilized Capital
+                    </div>
+                {% endif %}
             </div>
-            {% endif %}
         </form>
     </div>
 
     <div class="panel right">
-        <div class="chart-box" style="height:380px;">
-            {{ chart_html | safe }}
-        </div>
-
+        <div class="chart-box" style="height:380px;">{{ chart_html | safe }}</div>
         <div class="header">LIVE LOG (Today's Limit: 4)</div>
         <div class="trade-log-section">
             <table>
-                <tr>
-                    <th>Time</th><th>Sym</th><th>Side</th><th>Entry</th><th>Units</th>
-                </tr>
-                {% for t in trades | default([]) | reverse %}
-                <tr>
-                    <td>{{ datetime.fromisoformat(t.timestamp).strftime('%H:%M') }}</td>
-                    <td>{{ t.symbol }}</td>
-                    <td class="{{ t.side.lower() }}">{{ t.side }}</td>
-                    <td>{{ t.entry_price }}</td>
-                    <td>{{ t.units }}</td>
-                </tr>
+                <tr><th>Time</th><th>Sym</th><th>Side</th><th>Entry</th><th>Units</th></tr>
+                {% for t in trades | reverse %}
+                <tr><td>{{ datetime.fromisoformat(t.timestamp).strftime('%H:%M') }}</td><td>{{t.symbol}}</td><td class="{{t.side.lower()}}">{{t.side}}</td><td>{{t.entry_price}}</td><td>{{t.units}}</td></tr>
                 {% endfor %}
             </table>
         </div>
@@ -178,23 +107,18 @@
 </div>
 
 <script>
-function updateLivePrice() {
-    const symbol = document.querySelector('select[name="symbol"]').value;
-    const orderType = document.getElementById('order_type_select').value;
-    const entryInput = document.getElementById('entry_input');
+    function updateLivePrice() {
+        const symbol = document.querySelector('select[name="symbol"]').value;
+        const orderType = document.getElementById('order_type_select').value;
+        const entryInput = document.getElementById('entry_input');
 
-    if (orderType === "MARKET") {
-        fetch(`/get_live_price/${symbol}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data && data.price) {
-                    entryInput.value = data.price;
-                }
-            });
+        if (orderType === "MARKET") {
+            fetch(`/get_live_price/${symbol}`)
+                .then(r => r.json())
+                .then(data => { if(data.price) entryInput.value = data.price; });
+        }
     }
-}
-setInterval(updateLivePrice, 2000);
+    setInterval(updateLivePrice, 2000);
 </script>
-
 </body>
 </html>

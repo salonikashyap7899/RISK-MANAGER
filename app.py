@@ -1,162 +1,57 @@
-from flask import Flask, render_template, request, jsonify
+# app.py
+from flask import Flask, render_template, request, session, jsonify
 from datetime import datetime
-import requests
+import config 
+from logic import (initialize_session, calculate_position_sizing, execute_trade_action, 
+                   get_live_balance, get_live_price, get_all_exchange_symbols)
 
 app = Flask(__name__)
+app.secret_key = "trading_secret_key"
 
-BINANCE_BASE = "https://api.binance.com"
-
-# --------------------------------------------------
-# 🔥 FETCH ALL BINANCE USDT SYMBOLS (LIVE)
-# --------------------------------------------------
-
-def get_all_exchange_symbols():
-    try:
-        url = f"{BINANCE_BASE}/api/v3/exchangeInfo"
-        data = requests.get(url, timeout=5).json()
-
-        symbols = [
-            s["symbol"]
-            for s in data["symbols"]
-            if s["quoteAsset"] == "USDT" and s["status"] == "TRADING"
-        ]
-        return sorted(symbols)
-    except Exception:
-        return ["BTCUSDT"]
-
-# --------------------------------------------------
-# 🔥 LIVE PRICE (REAL BINANCE DATA)
-# --------------------------------------------------
-
-def get_live_price(symbol):
-    try:
-        url = f"{BINANCE_BASE}/api/v3/ticker/price?symbol={symbol}"
-        return float(requests.get(url, timeout=5).json()["price"])
-    except Exception:
-        return 0.0
-
-# --------------------------------------------------
-# BASIC ACCOUNT HELPERS
-# --------------------------------------------------
-
-def get_live_balance():
-    # Your real balance logic will go here later
-    return 15.0
-
-def calculate_position_sizing(entry, sl_value):
-    if entry <= 0 or sl_value <= 0:
-        return {
-            "error": True,
-            "risk_amount": 0,
-            "suggested_units": 0,
-            "suggested_leverage": 0
-        }
-
-    risk = round(get_live_balance() * 0.01, 2)
-    sl_percent = (sl_value / entry) * 100
-    leverage = round(100 / (sl_percent + 0.2), 2)
-    units = round((risk / (sl_percent + 0.2)) * 100, 4)
-
-    return {
-        "error": False,
-        "risk_amount": risk,
-        "suggested_units": units,
-        "suggested_leverage": leverage
-    }
-
-# --------------------------------------------------
-# 🔥 REAL TRADINGVIEW LIVE CHART
-# --------------------------------------------------
-
-def generate_tradingview_chart(symbol):
-    return f"""
-    <div class="tradingview-widget-container">
-      <div id="tradingview_chart"></div>
-      <script src="https://s3.tradingview.com/tv.js"></script>
-      <script>
-        new TradingView.widget({{
-          "width": "100%",
-          "height": 380,
-          "symbol": "BINANCE:{symbol}",
-          "interval": "1",
-          "timezone": "Asia/Kolkata",
-          "theme": "dark",
-          "style": "1",
-          "locale": "en",
-          "toolbar_bg": "#020c14",
-          "enable_publishing": false,
-          "save_image": false,
-          "container_id": "tradingview_chart"
-        }});
-      </script>
-    </div>
-    """
-
-# --------------------------------------------------
-# MAIN ROUTE
-# --------------------------------------------------
+@app.route("/get_live_price/<symbol>")
+def live_price_api(symbol):
+    price = get_live_price(symbol)
+    return jsonify({"price": price})
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    symbols = get_all_exchange_symbols()
+    initialize_session()
+    all_symbols = get_all_exchange_symbols()
+    live_bal, live_margin = get_live_balance()
+    
+    balance = live_bal if live_bal is not None else 1000.0
+    margin_used = live_margin if live_margin is not None else 0.0
+    unutilized = balance - margin_used
 
-    selected_symbol = request.form.get("symbol", symbols[0])
-    default_side = request.form.get("side", "LONG")
+    selected_symbol = request.form.get("symbol", "BTCUSDT")
+    prev_symbol = request.form.get("prev_symbol", "")
     order_type = request.form.get("order_type", "MARKET")
+    
+    # Auto-fetch price on selection
+    if selected_symbol != prev_symbol or not request.form.get("entry"):
+        entry = get_live_price(selected_symbol) or 0.0
+    else:
+        entry = float(request.form.get("entry", 0))
+
+    sl_type = request.form.get("sl_type", "SL Points")
+    sl_val = float(request.form.get("sl_value", 0))
     margin_mode = request.form.get("margin_mode", "ISOLATED")
+    tp1 = float(request.form.get("tp1") or 0)
+    tp1_pct = float(request.form.get("tp1_pct") or 50)
+    tp2 = float(request.form.get("tp2") or 0)
 
-    entry = float(request.form.get("entry", 0) or 0)
-    sl_value = float(request.form.get("sl_value", 0) or 0)
-
-    tp1 = float(request.form.get("tp1", 0) or 0)
-    tp2 = float(request.form.get("tp2", 0) or 0)
-    tp1_pct = float(request.form.get("tp1_pct", 0) or 0)
-
-    chart_html = generate_tradingview_chart(selected_symbol)
-    unutilized = round(get_live_balance(), 2)
-    sizing = calculate_position_sizing(entry, sl_value)
-
+    sizing = calculate_position_sizing(unutilized, entry, sl_type, sl_val)
     trade_status = None
 
-    if request.method == "POST" and "place_order" in request.form:
-        if entry <= 0:
-            trade_status = {"success": False, "message": "Invalid entry price"}
-        elif sl_value <= 0:
-            trade_status = {"success": False, "message": "SL value required"}
+    if request.method == "POST" and 'place_order' in request.form:
+        if sl_val <= 0:
+            trade_status = {"success": False, "message": "ERROR: SL is mandatory."}
         else:
-            trade_status = {"success": True, "message": "Order validated"}
+            trade_status = execute_trade_action(unutilized, selected_symbol, request.form.get("side"), entry, order_type, sl_type, sl_val, sizing, float(request.form.get("user_units") or 0), float(request.form.get("user_lev") or 0), margin_mode, tp1, tp1_pct, tp2)
 
-    return render_template(
-        "index.html",
-        symbols=symbols,
-        selected_symbol=selected_symbol,
-        default_side=default_side,
-        order_type=order_type,
-        margin_mode=margin_mode,
-        default_entry=entry,
-        default_sl_value=sl_value,
-        tp1=tp1,
-        tp2=tp2,
-        tp1_pct=tp1_pct,
-        sizing=sizing,
-        unutilized=unutilized,
-        chart_html=chart_html,
-        trade_status=trade_status,
-        trades=[],
-        datetime=datetime
-    )
+    chart_html = f'<script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script><script type="text/javascript">new TradingView.widget({{"autosize": true, "symbol": "BINANCE:{selected_symbol}", "interval": "1", "theme": "dark", "style": "1", "container_id": "tv_chart"}});</script><div id="tv_chart" style="height:100%;"></div>'
 
-# --------------------------------------------------
-# LIVE PRICE ENDPOINT
-# --------------------------------------------------
-
-@app.route("/get_live_price/<symbol>")
-def live_price(symbol):
-    return jsonify({"price": get_live_price(symbol)})
-
-# --------------------------------------------------
-# RUN
-# --------------------------------------------------
+    return render_template("index.html", trade_status=trade_status, sizing=sizing, trades=session["trades"], balance=balance, margin_used=margin_used, unutilized=unutilized, symbols=all_symbols, selected_symbol=selected_symbol, default_entry=entry, default_sl_value=sl_val, default_sl_type=sl_type, default_side=request.form.get("side", "LONG"), margin_mode=margin_mode, tp1=tp1, tp1_pct=tp1_pct, tp2=tp2, order_type=order_type, datetime=datetime, chart_html=chart_html)
 
 if __name__ == "__main__":
     app.run(debug=True)
