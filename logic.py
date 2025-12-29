@@ -1,7 +1,6 @@
 from flask import session
 from datetime import datetime
 from binance.client import Client
-import math
 import config
 
 client = Client(config.BINANCE_KEY, config.BINANCE_SECRET)
@@ -37,7 +36,7 @@ def get_live_price(symbol):
     except:
         return None
 
-# ---------------- PRECISION HANDLER ----------------
+# ---------------- PRECISION SAFE HANDLER ----------------
 def adjust_quantity(symbol, qty):
     try:
         info = client.futures_exchange_info()
@@ -45,12 +44,17 @@ def adjust_quantity(symbol, qty):
             if s["symbol"] == symbol:
                 for f in s["filters"]:
                     if f["filterType"] == "LOT_SIZE":
-                        step = float(f["stepSize"])
-                        precision = int(round(-math.log(step, 10), 0))
-                        return round(qty - (qty % step), precision)
-        return qty
-    except:
-        return qty
+                        step = f["stepSize"]
+                        if "." in step:
+                            precision = len(step.rstrip("0").split(".")[1])
+                        else:
+                            precision = 0
+                        step = float(step)
+                        adjusted = qty - (qty % step)
+                        return round(adjusted, precision)
+        return round(qty, 3)
+    except Exception:
+        return round(qty, 3)
 
 # ---------------- POSITION SIZE + LEVERAGE ----------------
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
@@ -58,19 +62,19 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
         if sl_value <= 0 or entry <= 0:
             return {"error": "Invalid SL"}
 
-        # ---- FIXED 1% RISK ----
+        # 1% risk
         risk_amount = unutilized_margin * 0.01
 
-        # ---- SL % MOVEMENT ONLY ----
+        # SL % movement ONLY
         effective_sl = sl_value + 0.2
 
-        # ---- POSITION SIZE (USDT NOTIONAL) ----
+        # Position size (USDT notional)
         notional = (risk_amount / effective_sl) * 100
 
-        # ---- CONVERT TO QUANTITY ----
+        # Convert to quantity
         quantity = notional / entry
 
-        # ---- LEVERAGE ----
+        # Leverage
         leverage = int(100 / effective_sl)
         leverage = max(1, min(leverage, 100))
 
@@ -94,22 +98,20 @@ def execute_trade_action(
     today = datetime.utcnow().date().isoformat()
     day_stats = session["stats"].get(today, {"total": 0, "symbols": {}})
 
-    # ---- LIMITS ----
+    # Limits
     if day_stats["total"] >= 4:
-        return {"success": False, "message": "Daily trade limit (4) reached"}
-
+        return {"success": False, "message": "Daily trade limit reached"}
     if day_stats["symbols"].get(symbol, 0) >= 2:
-        return {"success": False, "message": f"{symbol} daily limit (2) reached"}
+        return {"success": False, "message": f"{symbol} daily limit reached"}
 
     try:
-        # ---- QUANTITY ----
         raw_units = user_units if user_units > 0 else sizing["suggested_units"]
         units = adjust_quantity(symbol, raw_units)
 
         if units <= 0:
-            return {"success": False, "message": "Order size too small for this symbol"}
+            return {"success": False, "message": "Order size too small"}
 
-        # ---- LEVERAGE (IGNORE DEFAULT 100) ----
+        # Ignore default UI 100 leverage
         if user_lev and user_lev != 100:
             leverage = int(user_lev)
         else:
@@ -117,7 +119,6 @@ def execute_trade_action(
 
         leverage = max(1, min(leverage, 100))
 
-        # ---- BINANCE SETTINGS ----
         try:
             client.futures_change_margin_type(symbol=symbol, marginType=margin_mode.upper())
         except:
@@ -127,7 +128,6 @@ def execute_trade_action(
 
         side_binance = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
 
-        # ---- MAIN ORDER ----
         if order_type == "MARKET":
             client.futures_create_order(
                 symbol=symbol,
@@ -145,34 +145,7 @@ def execute_trade_action(
                 quantity=units
             )
 
-        # ---- TAKE PROFITS ----
-        tp_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
-
-        if tp1 > 0:
-            q1 = adjust_quantity(symbol, units * (tp1_pct / 100))
-            if q1 > 0:
-                client.futures_create_order(
-                    symbol=symbol,
-                    side=tp_side,
-                    type="LIMIT",
-                    price=str(tp1),
-                    timeInForce="GTC",
-                    quantity=q1
-                )
-
-        if tp2 > 0:
-            q2 = adjust_quantity(symbol, units - (units * (tp1_pct / 100)))
-            if q2 > 0:
-                client.futures_create_order(
-                    symbol=symbol,
-                    side=tp_side,
-                    type="LIMIT",
-                    price=str(tp2),
-                    timeInForce="GTC",
-                    quantity=q2
-                )
-
-        # ---- UPDATE SESSION ----
+        # Update session
         day_stats["total"] += 1
         day_stats["symbols"][symbol] = day_stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = day_stats
@@ -184,10 +157,9 @@ def execute_trade_action(
             "units": units,
             "leverage": leverage
         })
-
         session.modified = True
 
-        return {"success": True, "message": f"{side} {symbol} trade placed"}
+        return {"success": True, "message": "Trade placed successfully"}
 
     except Exception as e:
         return {"success": False, "message": str(e)}
