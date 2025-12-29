@@ -42,33 +42,30 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
         if sl_value <= 0 or entry <= 0:
             return {"error": "Invalid SL or Entry"}
 
-        # 1% Risk of unutilized margin
+        # 1% fixed risk
         risk_amount = unutilized_margin * 0.01
 
-        # Convert SL to percentage movement
+        # SL → %
         if sl_type == "% Movement":
             sl_percent = sl_value
-        else:  # SL Points
+        else:
             sl_percent = (sl_value / entry) * 100
 
-        if sl_percent <= 0:
-            return {"error": "SL percentage must be > 0"}
+        # ---- CORE LOGIC (DO NOT TOUCH) ----
+        effective_sl = sl_percent + 0.2
 
-        # Effective SL with buffer
-        effective_sl = sl_percent + 0.2  # +0.2% buffer
-
-        # FIXED POSITION SIZE FORMULA (as requested)
+        # Position Size (YOUR FORMULA)
         position_size = (risk_amount / effective_sl) * 100
 
-        # SUGGESTED LEVERAGE: max 100, based on effective SL
-        leverage = 100 / effective_sl
-        leverage = max(1, min(round(leverage), 100))  # Clamp between 1 and 100
+        # Leverage (YOUR FORMULA)
+        leverage = int(100 / effective_sl)
+        leverage = max(1, min(leverage, 100))
+        # ----------------------------------
 
         return {
             "suggested_units": round(position_size, 3),
             "suggested_leverage": leverage,
             "risk_amount": round(risk_amount, 2),
-            "effective_sl_percent": round(effective_sl, 3),
             "error": None
         }
 
@@ -97,47 +94,39 @@ def execute_trade_action(
         leverage = user_lev if user_lev > 0 else sizing["suggested_leverage"]
         leverage = max(1, min(int(leverage), 100))
 
-        # Set Margin Type (Isolated/Cross)
         try:
             client.futures_change_margin_type(
                 symbol=symbol,
                 marginType=margin_mode.upper()
             )
         except:
-            pass  # Already set or error (ignore)
+            pass
 
-        # Set Leverage
         client.futures_change_leverage(symbol=symbol, leverage=leverage)
 
-        order_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
+        side_binance = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
 
-        # MAIN ENTRY ORDER
-        quantity = abs(round(units, 3))
         if order_type == "MARKET":
             client.futures_create_order(
                 symbol=symbol,
-                side=order_side,
+                side=side_binance,
                 type="MARKET",
-                quantity=quantity
+                quantity=abs(round(units, 3))
             )
         else:
             client.futures_create_order(
                 symbol=symbol,
-                side=order_side,
+                side=side_binance,
                 type="LIMIT",
                 price=str(entry),
                 timeInForce="GTC",
-                quantity=quantity
+                quantity=abs(round(units, 3))
             )
 
-        # TAKE PROFIT ORDERS
         tp_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
-        remaining_units = units
-
-        if tp1 > 0 and tp1_pct > 0:
+        if tp1 > 0:
             q1 = abs(round(units * (tp1_pct / 100), 3))
-            q1 = min(q1, remaining_units)  # Safety
             client.futures_create_order(
                 symbol=symbol,
                 side=tp_side,
@@ -146,10 +135,9 @@ def execute_trade_action(
                 timeInForce="GTC",
                 quantity=q1
             )
-            remaining_units -= q1
 
-        if tp2 > 0 and remaining_units > 0.001:  # Avoid dust
-            q2 = abs(round(remaining_units, 3))
+        if tp2 > 0:
+            q2 = abs(round(units - (units * (tp1_pct / 100)), 3))
             client.futures_create_order(
                 symbol=symbol,
                 side=tp_side,
@@ -159,7 +147,7 @@ def execute_trade_action(
                 quantity=q2
             )
 
-        # UPDATE SESSION STATS
+        # ---- UPDATE SESSION ----
         day_stats["total"] += 1
         day_stats["symbols"][symbol] = day_stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = day_stats
@@ -177,4 +165,4 @@ def execute_trade_action(
         return {"success": True, "message": f"✅ {side} {symbol} trade placed"}
 
     except Exception as e:
-        return {"success": False, "message": f"Binance Error: {str(e)}"}
+        return {"success": False, "message": str(e)}
