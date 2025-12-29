@@ -39,24 +39,20 @@ def get_live_price(symbol):
 # ---------------- POSITION SIZE + LEVERAGE ----------------
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     try:
-        if sl_value <= 0 or entry <= 0:
-            return {"error": "Invalid SL or Entry"}
+        if sl_value <= 0:
+            return {"error": "SL required"}
 
         # 1% fixed risk
         risk_amount = unutilized_margin * 0.01
 
-        # --- SL CONVERSION (CRITICAL FIX) ---
-        if sl_type == "% Movement":
-            sl_percent = sl_value
-        else:  # SL Points
-            sl_percent = (sl_value / entry) * 100
-
+        # ONLY SL % MOVEMENT (as you asked)
+        sl_percent = sl_value
         effective_sl = sl_percent + 0.2
 
-        # --- POSITION SIZE (YOUR FORMULA) ---
+        # Position size (YOUR FORMULA)
         position_size = (risk_amount / effective_sl) * 100
 
-        # --- LEVERAGE (YOUR FORMULA) ---
+        # Suggested leverage (YOUR FORMULA)
         leverage = int(100 / effective_sl)
         leverage = max(1, min(leverage, 100))
 
@@ -88,9 +84,18 @@ def execute_trade_action(
         return {"success": False, "message": f"❌ {symbol} daily limit (2) reached"}
 
     try:
+        # Units
         units = user_units if user_units > 0 else sizing["suggested_units"]
-        leverage = user_lev if user_lev > 0 else sizing["suggested_leverage"]
-        leverage = max(1, min(int(leverage), 100))
+
+        # ---- LEVERAGE FIX (CRITICAL) ----
+        # Ignore default 100 coming from UI
+        if user_lev and user_lev != 100:
+            leverage = int(user_lev)
+        else:
+            leverage = int(sizing["suggested_leverage"])
+
+        leverage = max(1, min(leverage, 100))
+        # --------------------------------
 
         try:
             client.futures_change_margin_type(
@@ -104,6 +109,7 @@ def execute_trade_action(
 
         side_binance = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
 
+        # MAIN ORDER
         if order_type == "MARKET":
             client.futures_create_order(
                 symbol=symbol,
@@ -121,6 +127,7 @@ def execute_trade_action(
                 quantity=abs(round(units, 3))
             )
 
+        # TAKE PROFITS
         tp_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
         if tp1 > 0:
