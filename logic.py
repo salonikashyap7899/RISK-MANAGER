@@ -39,27 +39,31 @@ def get_live_price(symbol):
 # ---------------- POSITION SIZE + LEVERAGE ----------------
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     try:
-        if sl_value <= 0:
-            return {"error": "SL required"}
+        if sl_value <= 0 or entry <= 0:
+            return {"error": "Invalid SL or Entry"}
 
         # 1% fixed risk
         risk_amount = unutilized_margin * 0.01
 
-        # ONLY SL % MOVEMENT (as you asked)
+        # ONLY SL % MOVEMENT (as requested)
         sl_percent = sl_value
         effective_sl = sl_percent + 0.2
 
-        # Position size (YOUR FORMULA)
-        position_size = (risk_amount / effective_sl) * 100
+        # ---- YOUR FORMULA (NOTIONAL USDT) ----
+        notional_position = (risk_amount / effective_sl) * 100
 
-        # Suggested leverage (YOUR FORMULA)
+        # ---- CONVERT TO QUANTITY (CRITICAL FIX) ----
+        quantity = notional_position / entry
+
+        # ---- LEVERAGE (YOUR FORMULA) ----
         leverage = int(100 / effective_sl)
         leverage = max(1, min(leverage, 100))
 
         return {
-            "suggested_units": round(position_size, 3),
+            "suggested_units": round(quantity, 4),
             "suggested_leverage": leverage,
             "risk_amount": round(risk_amount, 2),
+            "notional_position": round(notional_position, 2),
             "error": None
         }
 
@@ -84,18 +88,15 @@ def execute_trade_action(
         return {"success": False, "message": f"❌ {symbol} daily limit (2) reached"}
 
     try:
-        # Units
         units = user_units if user_units > 0 else sizing["suggested_units"]
 
-        # ---- LEVERAGE FIX (CRITICAL) ----
-        # Ignore default 100 coming from UI
+        # Ignore default UI 100 leverage
         if user_lev and user_lev != 100:
             leverage = int(user_lev)
         else:
             leverage = int(sizing["suggested_leverage"])
 
         leverage = max(1, min(leverage, 100))
-        # --------------------------------
 
         try:
             client.futures_change_margin_type(
@@ -109,13 +110,12 @@ def execute_trade_action(
 
         side_binance = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
 
-        # MAIN ORDER
         if order_type == "MARKET":
             client.futures_create_order(
                 symbol=symbol,
                 side=side_binance,
                 type="MARKET",
-                quantity=abs(round(units, 3))
+                quantity=abs(round(units, 4))
             )
         else:
             client.futures_create_order(
@@ -124,32 +124,7 @@ def execute_trade_action(
                 type="LIMIT",
                 price=str(entry),
                 timeInForce="GTC",
-                quantity=abs(round(units, 3))
-            )
-
-        # TAKE PROFITS
-        tp_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
-
-        if tp1 > 0:
-            q1 = abs(round(units * (tp1_pct / 100), 3))
-            client.futures_create_order(
-                symbol=symbol,
-                side=tp_side,
-                type="LIMIT",
-                price=str(tp1),
-                timeInForce="GTC",
-                quantity=q1
-            )
-
-        if tp2 > 0:
-            q2 = abs(round(units - (units * (tp1_pct / 100)), 3))
-            client.futures_create_order(
-                symbol=symbol,
-                side=tp_side,
-                type="LIMIT",
-                price=str(tp2),
-                timeInForce="GTC",
-                quantity=q2
+                quantity=abs(round(units, 4))
             )
 
         # ---- UPDATE SESSION ----
