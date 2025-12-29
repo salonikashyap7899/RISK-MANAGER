@@ -40,34 +40,37 @@ def get_live_price(symbol):
 # ---------------- POSITION SIZE + LEVERAGE ----------------
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     try:
-        if sl_value <= 0 or entry <= 0:
-            return {"error": "Invalid SL or Entry"}
+        if sl_value <= 0:
+            return {"error": "SL required"}
 
         # 1% risk
         risk_amount = unutilized_margin * 0.01
 
-        # SL % + 0.2%
+        # Convert SL to %
         if sl_type == "% Movement":
-            sl_percent = sl_value + 0.2
+            sl_percent = sl_value
         else:
-            sl_percent = ((sl_value / entry) * 100) + 0.2
+            sl_percent = (sl_value / entry) * 100
 
-        # POSITION SIZE FORMULA
-        position_size = (risk_amount / sl_percent) * 100
+        effective_sl = sl_percent + 0.2
 
-        # LEVERAGE FORMULA (CAPPED AT 100)
-        raw_leverage = (position_size * entry) / unutilized_margin
-        suggested_leverage = min(ceil(raw_leverage), 100)
+        # ----- POSITION SIZE (YOUR FORMULA) -----
+        position_size = (risk_amount / effective_sl) * 100
+
+        # ----- LEVERAGE (CORRECTED) -----
+        leverage = 100 / effective_sl
+        leverage = max(1, min(round(leverage), 100))
 
         return {
             "suggested_units": round(position_size, 3),
-            "suggested_leverage": suggested_leverage,
+            "suggested_leverage": leverage,
             "risk_amount": round(risk_amount, 2),
             "error": None
         }
 
     except Exception as e:
         return {"error": str(e)}
+
 
 # ---------------- EXECUTE TRADE ----------------
 def execute_trade_action(
