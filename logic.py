@@ -42,28 +42,33 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
         if sl_value <= 0 or entry <= 0:
             return {"error": "Invalid SL or Entry"}
 
-        # 1% Risk
+        # 1% Risk of unutilized margin
         risk_amount = unutilized_margin * 0.01
 
-        # SL → %
+        # Convert SL to percentage movement
         if sl_type == "% Movement":
             sl_percent = sl_value
-        else:
+        else:  # SL Points
             sl_percent = (sl_value / entry) * 100
 
-        effective_sl = sl_percent + 0.2
+        if sl_percent <= 0:
+            return {"error": "SL percentage must be > 0"}
 
-        # POSITION SIZE (FIXED FORMULA)
+        # Effective SL with buffer
+        effective_sl = sl_percent + 0.2  # +0.2% buffer
+
+        # FIXED POSITION SIZE FORMULA (as requested)
         position_size = (risk_amount / effective_sl) * 100
 
-        # LEVERAGE (FIXED FORMULA)
+        # SUGGESTED LEVERAGE: max 100, based on effective SL
         leverage = 100 / effective_sl
-        leverage = max(1, min(round(leverage), 100))
+        leverage = max(1, min(round(leverage), 100))  # Clamp between 1 and 100
 
         return {
             "suggested_units": round(position_size, 3),
             "suggested_leverage": leverage,
             "risk_amount": round(risk_amount, 2),
+            "effective_sl_percent": round(effective_sl, 3),
             "error": None
         }
 
@@ -92,26 +97,28 @@ def execute_trade_action(
         leverage = user_lev if user_lev > 0 else sizing["suggested_leverage"]
         leverage = max(1, min(int(leverage), 100))
 
-        # Margin + Leverage
+        # Set Margin Type (Isolated/Cross)
         try:
             client.futures_change_margin_type(
                 symbol=symbol,
                 marginType=margin_mode.upper()
             )
         except:
-            pass
+            pass  # Already set or error (ignore)
 
+        # Set Leverage
         client.futures_change_leverage(symbol=symbol, leverage=leverage)
 
         order_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
 
-        # MAIN ORDER
+        # MAIN ENTRY ORDER
+        quantity = abs(round(units, 3))
         if order_type == "MARKET":
             client.futures_create_order(
                 symbol=symbol,
                 side=order_side,
                 type="MARKET",
-                quantity=abs(round(units, 3))
+                quantity=quantity
             )
         else:
             client.futures_create_order(
@@ -120,14 +127,17 @@ def execute_trade_action(
                 type="LIMIT",
                 price=str(entry),
                 timeInForce="GTC",
-                quantity=abs(round(units, 3))
+                quantity=quantity
             )
 
-        # TAKE PROFITS
+        # TAKE PROFIT ORDERS
         tp_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
-        if tp1 > 0:
+        remaining_units = units
+
+        if tp1 > 0 and tp1_pct > 0:
             q1 = abs(round(units * (tp1_pct / 100), 3))
+            q1 = min(q1, remaining_units)  # Safety
             client.futures_create_order(
                 symbol=symbol,
                 side=tp_side,
@@ -136,9 +146,10 @@ def execute_trade_action(
                 timeInForce="GTC",
                 quantity=q1
             )
+            remaining_units -= q1
 
-        if tp2 > 0:
-            q2 = abs(round(units - (units * (tp1_pct / 100)), 3))
+        if tp2 > 0 and remaining_units > 0.001:  # Avoid dust
+            q2 = abs(round(remaining_units, 3))
             client.futures_create_order(
                 symbol=symbol,
                 side=tp_side,
@@ -148,7 +159,7 @@ def execute_trade_action(
                 quantity=q2
             )
 
-        # UPDATE SESSION
+        # UPDATE SESSION STATS
         day_stats["total"] += 1
         day_stats["symbols"][symbol] = day_stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = day_stats
@@ -166,4 +177,4 @@ def execute_trade_action(
         return {"success": True, "message": f"✅ {side} {symbol} trade placed"}
 
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        return {"success": False, "message": f"Binance Error: {str(e)}"}
