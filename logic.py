@@ -45,22 +45,20 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
         # 1% fixed risk
         risk_amount = unutilized_margin * 0.01
 
-        # SL → %
+        # --- SL CONVERSION (CRITICAL FIX) ---
         if sl_type == "% Movement":
             sl_percent = sl_value
-        else:
+        else:  # SL Points
             sl_percent = (sl_value / entry) * 100
 
-        # ---- CORE LOGIC (DO NOT TOUCH) ----
         effective_sl = sl_percent + 0.2
 
-        # Position Size (YOUR FORMULA)
+        # --- POSITION SIZE (YOUR FORMULA) ---
         position_size = (risk_amount / effective_sl) * 100
 
-        # Leverage (YOUR FORMULA)
+        # --- LEVERAGE (YOUR FORMULA) ---
         leverage = int(100 / effective_sl)
         leverage = max(1, min(leverage, 100))
-        # ----------------------------------
 
         return {
             "suggested_units": round(position_size, 3),
