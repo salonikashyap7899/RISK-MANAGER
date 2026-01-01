@@ -1,90 +1,59 @@
-# app.py
 from flask import Flask, render_template, request, session, jsonify
 from datetime import datetime
-import config 
-from logic import (initialize_session, calculate_position_sizing, execute_trade_action, 
-                   get_live_balance, get_live_price, get_all_exchange_symbols)
+import logic
+import os
 
 app = Flask(__name__)
-app.secret_key = "trading_secret_key"
+app.secret_key = "trading_secret_key" # Essential for session management
 
 @app.route("/get_live_price/<symbol>")
 def live_price_api(symbol):
-    price = get_live_price(symbol)
+    price = logic.get_live_price(symbol)
     return jsonify({"price": price})
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    initialize_session()
-    all_symbols = get_all_exchange_symbols()
-    live_bal, live_margin = get_live_balance()
+    logic.initialize_session()
+    all_symbols = logic.get_all_exchange_symbols()
+    live_bal, live_margin = logic.get_live_balance()
     
+    # Fallback values for UI if API is slow
     balance = live_bal if live_bal is not None else 1000.0
     margin_used = live_margin if live_margin is not None else 0.0
-    unutilized = max(balance - margin_used, 0.01)  # Avoid zero/negative
+    unutilized = max(balance - margin_used, 0.01)
 
     selected_symbol = request.form.get("symbol", "BTCUSDT")
     prev_symbol = request.form.get("prev_symbol", "")
     order_type = request.form.get("order_type", "MARKET")
     
-    # Auto-fetch current price when symbol changes or entry blank
+    # Auto-fetch entry price
     if selected_symbol != prev_symbol or not request.form.get("entry"):
-        entry = get_live_price(selected_symbol) or 0.0
+        entry = logic.get_live_price(selected_symbol) or 0.0
     else:
         entry = float(request.form.get("entry", 0))
 
-    sl_type = request.form.get("sl_type", "SL Points")
+    sl_type = request.form.get("sl_type", "SL % Movement")
     sl_val = float(request.form.get("sl_value", 0))
     margin_mode = request.form.get("margin_mode", "ISOLATED")
-    tp1 = float(request.form.get("tp1") or 0)
-    tp1_pct = float(request.form.get("tp1_pct") or 50)
-    tp2 = float(request.form.get("tp2") or 0)
-
-    sizing = calculate_position_sizing(unutilized, entry, sl_type, sl_val)
+    
+    sizing = logic.calculate_position_sizing(unutilized, entry, sl_type, sl_val)
     trade_status = None
 
     if request.method == "POST" and 'place_order' in request.form:
-        if sl_val <= 0:
-            trade_status = {"success": False, "message": "ERROR: Stop Loss is mandatory."}
-        else:
-            trade_status = execute_trade_action(
-                balance, selected_symbol, request.form.get("side", "LONG"), entry, order_type,
-                sl_type, sl_val, sizing,
-                float(request.form.get("user_units") or 0),
-                float(request.form.get("user_lev") or 0),
-                margin_mode, tp1, tp1_pct, tp2
-            )
-
-    # Fixed TradingView chart with correct symbol
-    chart_html = f'''
-    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-    <script type="text/javascript">
-    new TradingView.widget(
-    {{
-      "autosize": true,
-      "symbol": "BINANCE:{selected_symbol}PERP",
-      "interval": "5",
-      "timezone": "Etc/UTC",
-      "theme": "dark",
-      "style": "1",
-      "locale": "en",
-      "toolbar_bg": "#f1f3f6",
-      "enable_publishing": false,
-      "hide_side_toolbar": false,
-      "container_id": "tv_chart"
-    }}
-    );
-    </script>
-    <div id="tv_chart" style="height:500px; width:100%;"></div>
-    '''
+        trade_status = logic.execute_trade_action(
+            balance, selected_symbol, request.form.get("side", "LONG"), entry, 
+            order_type, sl_type, sl_val, sizing,
+            float(request.form.get("user_units") or 0), 
+            float(request.form.get("user_lev") or 0),
+            margin_mode, 0, 50, 0
+        )
 
     return render_template(
         "index.html",
         trade_status=trade_status,
         sizing=sizing,
-        trades=session["trades"][-10:],  # Show last 10 trades
+        trades=session.get("trades", [])[-10:], # Matches HTML requirements
         balance=round(balance, 2),
-        margin_used=round(margin_used, 2),
         unutilized=round(unutilized, 2),
         symbols=all_symbols,
         selected_symbol=selected_symbol,
@@ -93,13 +62,9 @@ def index():
         default_sl_type=sl_type,
         default_side=request.form.get("side", "LONG"),
         margin_mode=margin_mode,
-        tp1=tp1,
-        tp1_pct=tp1_pct,
-        tp2=tp2,
         order_type=order_type,
-        datetime=datetime,
-        chart_html=chart_html
+        datetime=datetime
     )
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5000)

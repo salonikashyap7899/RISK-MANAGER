@@ -79,30 +79,45 @@
                 {% if default_sl_value <= 0 %} LOCK: SET SL FIRST {% else %} EXECUTE EXCHANGE ORDER {% endif %}
             </button>
 
-            <div class="status-box">
-                {% if not sizing.error %}
-                    <div class="formula" style="background: #06212a; padding: 10px; border-radius: 4px;">
-                        <b>📐 Suggestion Logic:</b><br>
-                        • Risk Amount: ${{ sizing.risk_amount }} (1% Pool)<br>
-                        • Sug. Leverage: {{ sizing.suggested_leverage }}x<br>
-                        • Leverage Formula: (Units × Entry) / Unutilized Capital
-                    </div>
-                {% endif %}
-            </div>
+           <div class="status-box">
+    {% if not sizing.error %}
+        <div class="formula" style="background: #06212a; padding: 10px; border-radius: 4px; border: 1px solid #0ca7d4; margin-top: 10px;">
+            <b style="color: #00b7ff;">📐 Precision Logic:</b><br>
+            <span style="font-size: 0.85em;">
+                • <b>Risk:</b> ${{ sizing.risk_amount }} (1%)<br>
+                • <b>Max Lev:</b> {{ sizing.suggested_leverage }}x [100 / (SL% + 0.2)]<br>
+                • <b>Pos Size:</b> {{ sizing.suggested_units }} units<br>
+                • <b>Formula:</b> (Risk / (SL% + 0.2)) × 100
+            </span>
+        </div>
+    {% endif %}
+</div>
         </form>
     </div>
 
-    <div class="panel right">
-        <div class="chart-box" style="height:380px;">{{ chart_html | safe }}</div>
-        <div class="header">LIVE LOG (Today's Limit: 4)</div>
-        <div class="trade-log-section">
-            <table>
-                <tr><th>Time</th><th>Sym</th><th>Side</th><th>Entry</th><th>Units</th></tr>
-                {% for t in trades | reverse %}
-                <tr><td>{{ datetime.fromisoformat(t.timestamp).strftime('%H:%M') }}</td><td>{{t.symbol}}</td><td class="{{t.side.lower()}}">{{t.side}}</td><td>{{t.entry_price}}</td><td>{{t.units}}</td></tr>
-                {% endfor %}
-            </table>
-        </div>
+  <div class="panel right">
+    <div id="tv_chart" style="height: 450px; width: 100%;"></div>
+
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+
+    <script type="text/javascript">
+      new TradingView.widget({
+        "autosize": true,
+        "symbol": "BINANCE:{{ selected_symbol or 'BTCUSDT' }}",
+        "interval": "5",
+        "timezone": "Etc/UTC",
+        "theme": "dark",
+        "style": "1",
+        "locale": "en",
+        "toolbar_bg": "#f1f3f6",
+        "enable_publishing": false,
+        "hide_top_toolbar": false,
+        "save_image": false,
+        "container_id": "tv_chart"  // This must match the div ID above
+      });
+    </script>
+
+    <div class="header">LIVE LOG (Today's Limit: 4)</div>
     </div>
 </div>
 
