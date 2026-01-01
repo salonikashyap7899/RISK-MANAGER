@@ -3,9 +3,10 @@ from datetime import datetime
 from binance.client import Client
 import config
 
+# ---------------- BINANCE CLIENT ----------------
 client = Client(config.BINANCE_KEY, config.BINANCE_SECRET)
 
-# ---------------- SESSION ----------------
+# ---------------- SESSION INIT ----------------
 def initialize_session():
     if "trades" not in session:
         session["trades"] = []
@@ -36,7 +37,7 @@ def get_live_price(symbol):
     except:
         return None
 
-# ---------------- PRECISION SAFE HANDLER ----------------
+# ---------------- QUANTITY PRECISION FIX ----------------
 def adjust_quantity(symbol, qty):
     try:
         info = client.futures_exchange_info()
@@ -53,28 +54,28 @@ def adjust_quantity(symbol, qty):
                         adjusted = qty - (qty % step)
                         return round(adjusted, precision)
         return round(qty, 3)
-    except Exception:
+    except:
         return round(qty, 3)
 
-# ---------------- POSITION SIZE + LEVERAGE ----------------
+# ---------------- POSITION SIZE & LEVERAGE ----------------
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     try:
         if sl_value <= 0 or entry <= 0:
-            return {"error": "Invalid SL"}
+            return {"error": "Invalid SL or entry"}
 
-        # 1% risk
+        # 1% fixed risk
         risk_amount = unutilized_margin * 0.01
 
-        # SL % movement ONLY
+        # SL % movement + buffer
         effective_sl = sl_value + 0.2
 
         # Position size (USDT notional)
         notional = (risk_amount / effective_sl) * 100
 
-        # Convert to quantity
+        # Quantity
         quantity = notional / entry
 
-        # Leverage
+        # Suggested leverage
         leverage = int(100 / effective_sl)
         leverage = max(1, min(leverage, 100))
 
@@ -95,23 +96,35 @@ def execute_trade_action(
     user_units, user_lev, margin_mode,
     tp1, tp1_pct, tp2
 ):
+    # ✅ SESSION SAFETY (NO 500 ERROR)
+    if "stats" not in session:
+        session["stats"] = {}
+    if "trades" not in session:
+        session["trades"] = []
+
+    # ✅ SIZE SAFETY
+    if not sizing or sizing.get("error"):
+        return {"success": False, "message": "Invalid SL or sizing"}
+
     today = datetime.utcnow().date().isoformat()
     day_stats = session["stats"].get(today, {"total": 0, "symbols": {}})
 
-    # Limits
+    # Daily trade limits
     if day_stats["total"] >= 4:
-        return {"success": False, "message": "Daily trade limit reached"}
+        return {"success": False, "message": "Daily trade limit reached (4)"}
+
     if day_stats["symbols"].get(symbol, 0) >= 2:
-        return {"success": False, "message": f"{symbol} daily limit reached"}
+        return {"success": False, "message": f"{symbol} daily limit reached (2)"}
 
     try:
+        # Quantity
         raw_units = user_units if user_units > 0 else sizing["suggested_units"]
         units = adjust_quantity(symbol, raw_units)
 
         if units <= 0:
             return {"success": False, "message": "Order size too small"}
 
-        # Ignore default UI 100 leverage
+        # Leverage logic (NO override bug)
         if user_lev and user_lev != 100:
             leverage = int(user_lev)
         else:
@@ -119,8 +132,12 @@ def execute_trade_action(
 
         leverage = max(1, min(leverage, 100))
 
+        # Margin mode
         try:
-            client.futures_change_margin_type(symbol=symbol, marginType=margin_mode.upper())
+            client.futures_change_margin_type(
+                symbol=symbol,
+                marginType=margin_mode.upper()
+            )
         except:
             pass
 
@@ -128,6 +145,7 @@ def execute_trade_action(
 
         side_binance = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
 
+        # Order placement
         if order_type == "MARKET":
             client.futures_create_order(
                 symbol=symbol,
@@ -145,7 +163,7 @@ def execute_trade_action(
                 quantity=units
             )
 
-        # Update session
+        # Update stats
         day_stats["total"] += 1
         day_stats["symbols"][symbol] = day_stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = day_stats
@@ -157,6 +175,7 @@ def execute_trade_action(
             "units": units,
             "leverage": leverage
         })
+
         session.modified = True
 
         return {"success": True, "message": "Trade placed successfully"}
