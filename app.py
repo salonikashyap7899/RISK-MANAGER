@@ -1,32 +1,35 @@
 from flask import Flask, render_template, request, session, jsonify
 from datetime import datetime
 import logic
-import os
 
 app = Flask(__name__)
-app.secret_key = "trading_secret_key" # Essential for session management
+app.secret_key = "trading_secret_key"
 
 @app.route("/get_live_price/<symbol>")
 def live_price_api(symbol):
-    price = logic.get_live_price(symbol)
-    return jsonify({"price": price})
+    return jsonify({"price": logic.get_live_price(symbol)})
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     logic.initialize_session()
     all_symbols = logic.get_all_exchange_symbols()
+
     live_bal, live_margin = logic.get_live_balance()
-    
-    # Fallback values for UI if API is slow
-    balance = live_bal if live_bal is not None else 1000.0
-    margin_used = live_margin if live_margin is not None else 0.0
-    unutilized = max(balance - margin_used, 0.01)
+
+    # ✅ REAL BALANCE ONLY (NO FAKE)
+    if live_bal is None or live_margin is None:
+        balance = 0.0
+        margin_used = 0.0
+    else:
+        balance = live_bal
+        margin_used = live_margin
+
+    unutilized = max(balance - margin_used, 0.0)
 
     selected_symbol = request.form.get("symbol", "BTCUSDT")
     prev_symbol = request.form.get("prev_symbol", "")
     order_type = request.form.get("order_type", "MARKET")
-    
-    # Auto-fetch entry price
+
     if selected_symbol != prev_symbol or not request.form.get("entry"):
         entry = logic.get_live_price(selected_symbol) or 0.0
     else:
@@ -35,15 +38,15 @@ def index():
     sl_type = request.form.get("sl_type", "SL % Movement")
     sl_val = float(request.form.get("sl_value", 0))
     margin_mode = request.form.get("margin_mode", "ISOLATED")
-    
+
     sizing = logic.calculate_position_sizing(unutilized, entry, sl_type, sl_val)
     trade_status = None
 
-    if request.method == "POST" and 'place_order' in request.form:
+    if request.method == "POST" and "place_order" in request.form:
         trade_status = logic.execute_trade_action(
-            balance, selected_symbol, request.form.get("side", "LONG"), entry, 
-            order_type, sl_type, sl_val, sizing,
-            float(request.form.get("user_units") or 0), 
+            balance, selected_symbol, request.form.get("side", "LONG"),
+            entry, order_type, sl_type, sl_val, sizing,
+            float(request.form.get("user_units") or 0),
             float(request.form.get("user_lev") or 0),
             margin_mode, 0, 50, 0
         )
@@ -52,7 +55,7 @@ def index():
         "index.html",
         trade_status=trade_status,
         sizing=sizing,
-        trades=session.get("trades", [])[-10:], # Matches HTML requirements
+        trades=session.get("trades", []),
         balance=round(balance, 2),
         unutilized=round(unutilized, 2),
         symbols=all_symbols,
@@ -67,4 +70,4 @@ def index():
     )
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True)
