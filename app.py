@@ -16,7 +16,6 @@ def index():
 
     live_bal, live_margin = logic.get_live_balance()
 
-    # ✅ REAL BALANCE ONLY (NO FAKE)
     if live_bal is None or live_margin is None:
         balance = 0.0
         margin_used = 0.0
@@ -27,13 +26,9 @@ def index():
     unutilized = max(balance - margin_used, 0.0)
 
     selected_symbol = request.form.get("symbol", "BTCUSDT")
-    prev_symbol = request.form.get("prev_symbol", "")
     order_type = request.form.get("order_type", "MARKET")
 
-    if selected_symbol != prev_symbol or not request.form.get("entry"):
-        entry = logic.get_live_price(selected_symbol) or 0.0
-    else:
-        entry = float(request.form.get("entry", 0))
+    entry = logic.get_live_price(selected_symbol) or 0.0
 
     sl_type = request.form.get("sl_type", "SL % Movement")
     sl_val = float(request.form.get("sl_value", 0))
