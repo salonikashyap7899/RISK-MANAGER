@@ -95,18 +95,15 @@ def execute_trade_action(
     today = datetime.utcnow().date().isoformat()
     day_stats = session["stats"].get(today, {"total": 0, "symbols": {}})
 
-    if day_stats["total"] >= 4:
-        return {"success": False, "message": "Daily limit (4) reached"}
+    # 1. Fetch Precisions for this specific symbol
+    price_p, qty_p = get_precision(symbol)
 
     try:
-        # Get Precisions
-        price_p, qty_p = get_precision(symbol)
-
-        # 1. Format Quantity
+        # 2. Format Quantity (Truncate to avoid floating point junk)
         raw_units = float(user_units) if user_units > 0 else float(sizing["suggested_units"])
         qty = float(f"{{:.{qty_p}f}}".format(raw_units)) 
 
-        # 2. Leverage and Margin
+        # 3. Apply Leverage & Margin
         leverage = int(user_lev) if user_lev > 0 else sizing["max_leverage"]
         client.futures_change_leverage(symbol=symbol, leverage=leverage)
         try:
@@ -116,35 +113,57 @@ def execute_trade_action(
         entry_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
-        # 3. Main Order
-        client.futures_create_order(symbol=symbol, side=entry_side, type="MARKET", quantity=qty)
-
-        # 4. Format SL Price
-        sl_percent = sl_value if sl_type == "SL % Movement" else (sl_value / entry) * 100
-        sl_raw = entry * (1 - sl_percent / 100) if side == "LONG" else entry * (1 + sl_percent / 100)
-        sl_price = float(f"{{:.{price_p}f}}".format(sl_raw))
-
-        client.futures_create_order(
-            symbol=symbol, side=exit_side, type="STOP_MARKET",
-            stopPrice=sl_price, closePosition=True
+        # 4. PLACE MAIN MARKET ORDER
+        main_order = client.futures_create_order(
+            symbol=symbol, 
+            side=entry_side, 
+            type="MARKET", 
+            quantity=qty
         )
 
-        # 5. Format TP Price
-        if tp1 > 0:
-            tp_price = float(f"{{:.{price_p}f}}".format(tp1))
-            client.futures_create_order(
-                symbol=symbol, side=exit_side, type="TAKE_PROFIT_MARKET",
-                stopPrice=tp_price, closePosition=True
-            )
-
-        # Update Session
+        # SUCCESS SO FAR: Log the trade even if SL/TP fails later
         day_stats["total"] += 1
         day_stats["symbols"][symbol] = day_stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = day_stats
-        session["trades"].append({"time": datetime.utcnow().isoformat(), "symbol": symbol, "side": side, "units": qty, "leverage": leverage})
+        session["trades"].append({
+            "time": datetime.utcnow().isoformat(), 
+            "symbol": symbol, 
+            "side": side, 
+            "units": qty, 
+            "leverage": leverage
+        })
         session.modified = True
 
-        return {"success": True, "message": f"Success! Qty: {qty}, SL: {sl_price}"}
+        # 5. PLACE STOP LOSS (In a separate safety block)
+        sl_msg = ""
+        try:
+            sl_percent = sl_value if sl_type == "SL % Movement" else (sl_value / entry) * 100
+            sl_raw = entry * (1 - sl_percent / 100) if side == "LONG" else entry * (1 + sl_percent / 100)
+            sl_price = float(f"{{:.{price_p}f}}".format(sl_raw))
+            
+            client.futures_create_order(
+                symbol=symbol, side=exit_side, type="STOP_MARKET",
+                stopPrice=sl_price, closePosition=True
+            )
+            sl_msg = f" | SL set at {sl_price}"
+        except Exception as e:
+            sl_msg = f" | SL FAILED: {str(e)}"
+
+        # 6. PLACE TAKE PROFIT
+        tp_msg = ""
+        if tp1 > 0:
+            try:
+                tp_price = float(f"{{:.{price_p}f}}".format(tp1))
+                client.futures_create_order(
+                    symbol=symbol, side=exit_side, type="TAKE_PROFIT_MARKET",
+                    stopPrice=tp_price, closePosition=True
+                )
+                tp_msg = f" | TP set at {tp_price}"
+            except Exception as e:
+                tp_msg = f" | TP FAILED: {str(e)}"
+
+        return {"success": True, "message": f"Main Order Placed!{sl_msg}{tp_msg}"}
 
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        # This only triggers if the MAIN order fails
+        return {"success": False, "message": f"Main Order Failed: {str(e)}"}
