@@ -2,6 +2,7 @@ from flask import session
 from datetime import datetime
 from binance.client import Client
 import config
+import math
 
 client = Client(config.BINANCE_KEY, config.BINANCE_SECRET)
 
@@ -36,7 +37,7 @@ def get_live_price(symbol):
     except:
         return None
 
-# ---------------- BINANCE PRECISION ----------------
+# ---------------- BINANCE PRECISION (FIXED) ----------------
 def get_symbol_filters(symbol):
     info = client.futures_exchange_info()
     for s in info["symbols"]:
@@ -48,9 +49,14 @@ def round_qty(symbol, qty):
     try:
         for f in get_symbol_filters(symbol):
             if f["filterType"] == "LOT_SIZE":
-                step = float(f["stepSize"])
-                precision = len(f["stepSize"].rstrip("0").split(".")[1])
-                return round(qty - (qty % step), precision)
+                step_size = f["stepSize"]
+                # Calculate precision based on position of '1'
+                precision = step_size.find('1') - step_size.find('.')
+                if precision < 0: precision = 0
+                
+                # Manual truncation to avoid float rounding errors
+                factor = 10 ** precision
+                return math.floor(qty * factor) / factor
         return round(qty, 3)
     except:
         return round(qty, 3)
@@ -59,9 +65,12 @@ def round_price(symbol, price):
     try:
         for f in get_symbol_filters(symbol):
             if f["filterType"] == "PRICE_FILTER":
-                tick = float(f["tickSize"])
-                precision = len(f["tickSize"].rstrip("0").split(".")[1])
-                return round(price - (price % tick), precision)
+                tick_size = f["tickSize"]
+                precision = tick_size.find('1') - tick_size.find('.')
+                if precision < 0: precision = 0
+                
+                factor = 10 ** precision
+                return math.floor(price * factor) / factor
         return round(price, 2)
     except:
         return round(price, 2)
@@ -73,17 +82,15 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
             return {"error": "Invalid SL"}
 
         risk_amount = unutilized_margin * 0.01
-
         sl_percent = sl_value if sl_type == "SL % Movement" else (sl_value / entry) * 100
         effective_sl = sl_percent + 0.2
 
         position_size = (risk_amount / effective_sl) * 100
-
         max_leverage = int(100 / effective_sl)
         max_leverage = max(1, min(max_leverage, 100))
 
         return {
-            "suggested_units": round(position_size, 3),
+            "suggested_units": position_size, # Keep raw here, round at execution
             "suggested_leverage": max_leverage,
             "max_leverage": max_leverage,
             "risk_amount": round(risk_amount, 2),
@@ -92,7 +99,7 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     except Exception as e:
         return {"error": str(e)}
 
-# ---------------- EXECUTE TRADE ----------------
+# ---------------- EXECUTE TRADE (FIXED PRECISION) ----------------
 def execute_trade_action(
     balance, symbol, side, entry, order_type,
     sl_type, sl_value, sizing,
@@ -109,7 +116,8 @@ def execute_trade_action(
         return {"success": False, "message": f"{symbol} daily limit (2) reached"}
 
     try:
-        units = user_units if user_units > 0 else sizing["suggested_units"]
+        # 1. FIXED: Ensure units are float and rounded correctly
+        units = float(user_units) if user_units > 0 else float(sizing["suggested_units"])
         qty = round_qty(symbol, units)
 
         max_lev = sizing["max_leverage"]
@@ -117,11 +125,16 @@ def execute_trade_action(
         leverage = max(1, min(leverage, max_lev))
 
         client.futures_change_leverage(symbol=symbol, leverage=leverage)
+        # Set Margin Mode (Isolated/Cross)
+        try:
+            client.futures_change_margin_type(symbol=symbol, marginType=margin_mode)
+        except:
+            pass # Ignore if already set
 
         entry_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
-        # MAIN ORDER
+        # 2. MAIN ORDER
         client.futures_create_order(
             symbol=symbol,
             side=entry_side,
@@ -129,10 +142,10 @@ def execute_trade_action(
             quantity=qty
         )
 
-        # SL PRICE
+        # 3. FIXED: SL PRICE PRECISION
         sl_percent = sl_value if sl_type == "SL % Movement" else (sl_value / entry) * 100
-        sl_price = entry * (1 - sl_percent / 100) if side == "LONG" else entry * (1 + sl_percent / 100)
-        sl_price = round_price(symbol, sl_price)
+        sl_price_raw = entry * (1 - sl_percent / 100) if side == "LONG" else entry * (1 + sl_percent / 100)
+        sl_price = round_price(symbol, sl_price_raw)
 
         client.futures_create_order(
             symbol=symbol,
@@ -142,7 +155,7 @@ def execute_trade_action(
             closePosition=True
         )
 
-        # TP
+        # 4. FIXED: TP PRICE PRECISION
         if tp1 > 0:
             tp_price = round_price(symbol, tp1)
             client.futures_create_order(
@@ -153,6 +166,7 @@ def execute_trade_action(
                 closePosition=True
             )
 
+        # Update Session Stats
         day_stats["total"] += 1
         day_stats["symbols"][symbol] = day_stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = day_stats
@@ -166,7 +180,7 @@ def execute_trade_action(
         })
         session.modified = True
 
-        return {"success": True, "message": "Trade placed with SL & TP"}
+        return {"success": True, "message": f"Trade placed! Qty: {qty}, SL: {sl_price}"}
 
     except Exception as e:
         return {"success": False, "message": str(e)}
