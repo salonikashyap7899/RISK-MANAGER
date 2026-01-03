@@ -43,15 +43,21 @@ def get_symbol_filters(symbol):
             return s["filters"]
     return []
 
-def round_qty(symbol, qty):
+def get_lot_step(symbol):
     for f in get_symbol_filters(symbol):
         if f["filterType"] == "LOT_SIZE":
-            step = float(f["stepSize"])
-            if step == 1:
-                return int(qty)
-            precision = abs(int(round(-math.log10(step))))
-            return round(qty - (qty % step), precision)
-    return qty
+            return float(f["stepSize"])
+    return 0.001
+
+def round_qty(symbol, qty):
+    step = get_lot_step(symbol)
+    if step == 1:
+        return max(1, int(qty))
+
+    precision = abs(int(round(-math.log10(step))))
+    rounded = round(qty - (qty % step), precision)
+
+    return rounded if rounded > 0 else step
 
 def round_price(symbol, price):
     for f in get_symbol_filters(symbol):
@@ -71,19 +77,23 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     risk_amount = unutilized_margin * 0.01
 
     if sl_value > 0:
-        sl_percent = sl_value if sl_type == "SL % Movement" else (sl_value / entry) * 100
-        effective_sl = sl_percent + 0.2
-        max_lev = max(1, min(int(100 / effective_sl), 100))
-    else:
-        # ✅ SAFE DEFAULT WHEN SL IS NOT SET
-        max_lev = 10
+        if sl_type == "SL % Movement":
+            sl_distance = entry * (sl_value / 100)
+        else:
+            sl_distance = abs(entry - sl_value)
 
-    position_size = (risk_amount * max_lev) / entry
+        if sl_distance <= 0:
+            return {"error": "Invalid SL distance"}
+
+        position_size = risk_amount / sl_distance
+    else:
+        # fallback when SL not provided
+        position_size = risk_amount / entry
 
     return {
-        "suggested_units": round(position_size, 3),
-        "suggested_leverage": max_lev,
-        "max_leverage": max_lev,
+        "suggested_units": round(position_size, 6),
+        "suggested_leverage": 10,
+        "max_leverage": 10,
         "risk_amount": round(risk_amount, 2),
         "error": None
     }
@@ -136,7 +146,7 @@ def execute_trade_action(
 
         # -------- STOP LOSS (OPTIONAL) --------
         if sl_value > 0:
-            sl_percent = sl_value if sl_type == "SL % Movement" else (sl_value / entry) * 100
+            sl_percent = sl_value if sl_type == "SL % Movement" else abs(entry - sl_value) / entry * 100
             mark = float(client.futures_mark_price(symbol=symbol)["markPrice"])
 
             sl_price = (
