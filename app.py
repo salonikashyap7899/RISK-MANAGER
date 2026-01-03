@@ -1,7 +1,8 @@
-from flask import Flask, render_template, request, session, jsonify
+from flask import Flask, render_template, request, session, jsonify, redirect, url_for
 from datetime import datetime
 import logic
 
+# --- THIS WAS MISSING AND CAUSED YOUR NEW ERROR ---
 app = Flask(__name__)
 app.secret_key = "trading_secret_key"
 
@@ -13,38 +14,33 @@ def live_price_api(symbol):
 def index():
     logic.initialize_session()
     all_symbols = logic.get_all_exchange_symbols()
-
     live_bal, live_margin = logic.get_live_balance()
-
-    if live_bal is None or live_margin is None:
-        balance = 0.0
-        margin_used = 0.0
-    else:
-        balance = live_bal
-        margin_used = live_margin
-
+    
+    balance = live_bal if live_bal is not None else 0.0
+    margin_used = live_margin if live_margin is not None else 0.0
     unutilized = max(balance - margin_used, 0.0)
 
     selected_symbol = request.form.get("symbol", "BTCUSDT")
-    order_type = request.form.get("order_type", "MARKET")
-
     entry = logic.get_live_price(selected_symbol) or 0.0
-
     sl_type = request.form.get("sl_type", "SL % Movement")
     sl_val = float(request.form.get("sl_value", 0))
-    margin_mode = request.form.get("margin_mode", "ISOLATED")
-
+    
     sizing = logic.calculate_position_sizing(unutilized, entry, sl_type, sl_val)
-    trade_status = None
 
     if request.method == "POST" and "place_order" in request.form:
-        trade_status = logic.execute_trade_action(
+        # Pass all form data to logic
+        status = logic.execute_trade_action(
             balance, selected_symbol, request.form.get("side", "LONG"),
-            entry, order_type, sl_type, sl_val, sizing,
+            entry, request.form.get("order_type", "MARKET"), 
+            sl_type, sl_val, sizing,
             float(request.form.get("user_units") or 0),
             float(request.form.get("user_lev") or 0),
-            margin_mode, 0, 50, 0
+            request.form.get("margin_mode", "ISOLATED"), 0
         )
+        session['last_status'] = status
+        return redirect(url_for('index')) # Prevents duplicate order on refresh
+
+    trade_status = session.pop('last_status', None)
 
     return render_template(
         "index.html",
@@ -59,9 +55,8 @@ def index():
         default_sl_value=sl_val,
         default_sl_type=sl_type,
         default_side=request.form.get("side", "LONG"),
-        margin_mode=margin_mode,
-        order_type=order_type,
-        datetime=datetime
+        margin_mode=request.form.get("margin_mode", "ISOLATED"),
+        order_type=request.form.get("order_type", "MARKET")
     )
 
 if __name__ == "__main__":
