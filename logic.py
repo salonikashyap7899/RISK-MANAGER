@@ -73,11 +73,12 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     if sl_value > 0:
         sl_percent = sl_value if sl_type == "SL % Movement" else (sl_value / entry) * 100
         effective_sl = sl_percent + 0.2
+        max_lev = max(1, min(int(100 / effective_sl), 100))
     else:
-        effective_sl = 1.2  # fallback safety
+        # ✅ SAFE DEFAULT WHEN SL IS NOT SET
+        max_lev = 10
 
-    position_size = (risk_amount / effective_sl) * 100
-    max_lev = max(1, min(int(100 / effective_sl), 100))
+    position_size = (risk_amount * max_lev) / entry
 
     return {
         "suggested_units": round(position_size, 3),
@@ -115,7 +116,7 @@ def execute_trade_action(
         entry_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
-        # ---------- ENTRY ORDER ----------
+        # -------- ENTRY --------
         client.futures_create_order(
             symbol=symbol,
             side=entry_side,
@@ -123,7 +124,7 @@ def execute_trade_action(
             quantity=qty
         )
 
-        # ---------- LIVE LOG (ALWAYS) ----------
+        # -------- LIVE LOG --------
         session["trades"].append({
             "time": datetime.utcnow().isoformat(),
             "symbol": symbol,
@@ -133,7 +134,7 @@ def execute_trade_action(
         })
         session.modified = True
 
-        # ---------- STOP LOSS (ONLY IF SL > 0) ----------
+        # -------- STOP LOSS (OPTIONAL) --------
         if sl_value > 0:
             sl_percent = sl_value if sl_type == "SL % Movement" else (sl_value / entry) * 100
             mark = float(client.futures_mark_price(symbol=symbol)["markPrice"])
