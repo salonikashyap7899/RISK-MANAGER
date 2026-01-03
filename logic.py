@@ -49,40 +49,66 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
         return {"suggested_units": position_size, "suggested_leverage": max_lev, "max_leverage": max_lev, "risk_amount": round(risk_amount, 2), "error": None}
     except: return {"error": "Calculation error"}
 
-def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_value, sizing, user_units, user_lev, margin_mode, tp1):
+def execute_trade_action(
+    balance, symbol, side, entry, order_type,
+    sl_type, sl_value, sizing,
+    user_units, user_lev, margin_mode,
+    tp1, tp1_pct, tp2
+):
     today = datetime.utcnow().date().isoformat()
     day_stats = session["stats"].get(today, {"total": 0, "symbols": {}})
-    if day_stats["total"] >= 4: return {"success": False, "message": "Daily limit reached"}
+
+    # Check limits
+    if day_stats["total"] >= 4:
+        return {"success": False, "message": "Daily limit reached"}
 
     try:
-        price_p, qty_p = get_precision(symbol)
-        raw_qty = float(user_units) if user_units > 0 else float(sizing["suggested_units"])
-        qty = float(f"{{:.{qty_p}f}}".format(raw_qty))
-        
+        # Precision handling
+        price_p, qty_p = get_precision(symbol) # Ensure you use the precision helper
+        units = float(user_units) if user_units > 0 else float(sizing["suggested_units"])
+        qty = float(f"{{:.{qty_p}f}}".format(units))
+
+        # Leverage & Margin
         leverage = int(user_lev) if user_lev > 0 else sizing["max_leverage"]
         client.futures_change_leverage(symbol=symbol, leverage=leverage)
-        try: client.futures_change_margin_type(symbol=symbol, marginType=margin_mode)
+        try:
+            client.futures_change_margin_type(symbol=symbol, marginType=margin_mode)
         except: pass
 
         e_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         x_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
-        # 1. Main Order
+        # 1. PLACE MAIN ORDER
         client.futures_create_order(symbol=symbol, side=e_side, type="MARKET", quantity=qty)
 
-        # 2. Log to session immediately
-        session["trades"].append({"time": datetime.utcnow().strftime('%H:%M:%S'), "symbol": symbol, "side": side, "units": qty, "lev": leverage})
+        # 2. LOG TO LIVE LOG IMMEDIATELY (Fixes visibility issue)
+        session["trades"].append({
+            "time": datetime.utcnow().strftime('%H:%M:%S'),
+            "symbol": symbol,
+            "side": side,
+            "units": qty,
+            "lev": leverage
+        })
         day_stats["total"] += 1
         session["stats"][today] = day_stats
         session.modified = True
 
-        # 3. SL Order with Fixed Precision
+        # 3. PLACE STOP LOSS (Fixes Error -4120)
         sl_percent = sl_value if sl_type == "SL % Movement" else (sl_value / entry) * 100
         sl_raw = entry * (1 - sl_percent / 100) if side == "LONG" else entry * (1 + sl_percent / 100)
         sl_price = float(f"{{:.{price_p}f}}".format(sl_raw))
 
-        client.futures_create_order(symbol=symbol, side=x_side, type="STOP_MARKET", stopPrice=sl_price, closePosition=True, timeInForce="GTC")
+        client.futures_create_order(
+            symbol=symbol,
+            side=x_side,
+            type="STOP_MARKET",
+            stopPrice=sl_price,
+            closePosition=True,
+            timeInForce="GTC",
+            workingType="MARK_PRICE" # This is critical for Algo Orders
+        )
 
-        return {"success": True, "message": f"Success! Qty: {qty}, SL: {sl_price}"}
+        return {"success": True, "message": f"Order & SL placed at {sl_price}"}
+
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        return {"success": False, "message": f"Execution Error: {str(e)}"}
