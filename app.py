@@ -2,9 +2,8 @@ from flask import Flask, render_template, request, session, jsonify, redirect, u
 from datetime import datetime
 import logic
 
-# --- THIS WAS MISSING AND CAUSED YOUR NEW ERROR ---
 app = Flask(__name__)
-app.secret_key = "trading_secret_key"
+app.secret_key = "trading_secret_key" # Ensure this is unique
 
 @app.route("/get_live_price/<symbol>")
 def live_price_api(symbol):
@@ -28,17 +27,22 @@ def index():
     sizing = logic.calculate_position_sizing(unutilized, entry, sl_type, sl_val)
 
     if request.method == "POST" and "place_order" in request.form:
-        # Pass all form data to logic
+        # Check argument count: 11 arguments passed to logic.py
         status = logic.execute_trade_action(
-            balance, selected_symbol, request.form.get("side", "LONG"),
-            entry, request.form.get("order_type", "MARKET"), 
-            sl_type, sl_val, sizing,
+            balance, 
+            selected_symbol, 
+            request.form.get("side", "LONG"),
+            entry, 
+            request.form.get("order_type", "MARKET"), 
+            sl_type, 
+            sl_val, 
+            sizing,
             float(request.form.get("user_units") or 0),
             float(request.form.get("user_lev") or 0),
-            request.form.get("margin_mode", "ISOLATED"), 0
+            request.form.get("margin_mode", "ISOLATED")
         )
         session['last_status'] = status
-        return redirect(url_for('index')) # Prevents duplicate order on refresh
+        return redirect(url_for('index')) # Critical: Stops 500 error on refresh
 
     trade_status = session.pop('last_status', None)
 
