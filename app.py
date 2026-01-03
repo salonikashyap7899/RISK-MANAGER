@@ -1,11 +1,12 @@
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for
+from datetime import datetime
 import logic
 
 app = Flask(__name__)
-app.secret_key = "risk_manager_secret"
+app.secret_key = "trading_secret_key"
 
 @app.route("/get_live_price/<symbol>")
-def live_price(symbol):
+def live_price_api(symbol):
     return jsonify({"price": logic.get_live_price(symbol)})
 
 @app.route("/", methods=["GET", "POST"])
@@ -13,42 +14,66 @@ def index():
     logic.initialize_session()
 
     symbols = logic.get_all_exchange_symbols()
-    balance, used = logic.get_live_balance()
-    unutilized = max(balance - used, 0)
+    live_bal, live_margin = logic.get_live_balance()
 
-    symbol = request.form.get("symbol", "BTCUSDT")
+    balance = live_bal or 0.0
+    margin_used = live_margin or 0.0
+    unutilized = max(balance - margin_used, 0.0)
+
+    selected_symbol = request.form.get("symbol", "BTCUSDT")
     side = request.form.get("side", "LONG")
+    order_type = request.form.get("order_type", "MARKET")
+    margin_mode = request.form.get("margin_mode", "ISOLATED")
+
+    entry = float(request.form.get("entry") or logic.get_live_price(selected_symbol) or 0)
     sl_type = request.form.get("sl_type", "SL % Movement")
-    sl_value = float(request.form.get("sl_value") or 0)
+    sl_val = float(request.form.get("sl_value") or 0)
 
-    entry = logic.get_live_price(symbol)
-    sizing = logic.calculate_position_sizing(unutilized, entry, sl_type, sl_value)
+    tp1 = float(request.form.get("tp1") or 0)
+    tp1_pct = float(request.form.get("tp1_pct") or 0)
+    tp2 = float(request.form.get("tp2") or 0)
 
-    if request.method == "POST" and "place_order" in request.form:
-        status = logic.execute_trade_action(
-            balance, symbol, side, entry,
-            sl_type, sl_value, sizing,
+    sizing = logic.calculate_position_sizing(unutilized, entry, sl_type, sl_val)
+    trade_status = None
+
+    if request.method == "POST" and "place_order" in request.form and not sizing.get("error"):
+        trade_status = logic.execute_trade_action(
+            balance,
+            selected_symbol,
+            side,
+            entry,
+            order_type,
+            sl_type,
+            sl_val,
+            sizing,
             float(request.form.get("user_units") or 0),
             float(request.form.get("user_lev") or 0),
-            request.form.get("margin_mode", "ISOLATED")
+            margin_mode,
+            tp1,
+            tp1_pct,
+            tp2
         )
-        session["last_status"] = status
-        return redirect(url_for("index"))
-
-    trade_status = session.pop("last_status", None)
+        return redirect(url_for("index"))  # 🔒 refresh-safe
 
     return render_template(
         "index.html",
-        symbols=symbols,
-        selected_symbol=symbol,
-        default_side=side,
-        default_entry=entry,
-        default_sl_value=sl_value,
-        default_sl_type=sl_type,
-        sizing=sizing,
-        trades=session["trades"],
         trade_status=trade_status,
-        unutilized=unutilized
+        sizing=sizing,
+        trades=session.get("trades", []),
+        balance=round(balance, 2),
+        unutilized=round(unutilized, 2),
+        symbols=symbols,
+        selected_symbol=selected_symbol,
+        default_entry=entry,
+        default_sl_value=sl_val,
+        default_sl_type=sl_type,
+        default_side=side,
+        margin_mode=margin_mode,
+        order_type=order_type,
+        tp1=tp1,
+        tp1_pct=tp1_pct,
+        tp2=tp2,
+        datetime=datetime
     )
 
 if __name__ == "__main__":
