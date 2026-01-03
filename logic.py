@@ -65,12 +65,16 @@ def round_price(symbol, price):
 
 # ---------------- POSITION SIZING ----------------
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
-    if sl_value <= 0 or entry <= 0:
-        return {"error": "Invalid SL"}
+    if entry <= 0:
+        return {"error": "Invalid Entry"}
 
     risk_amount = unutilized_margin * 0.01
-    sl_percent = sl_value if sl_type == "SL % Movement" else (sl_value / entry) * 100
-    effective_sl = sl_percent + 0.2
+
+    if sl_value > 0:
+        sl_percent = sl_value if sl_type == "SL % Movement" else (sl_value / entry) * 100
+        effective_sl = sl_percent + 0.2
+    else:
+        effective_sl = 1.2  # fallback safety
 
     position_size = (risk_amount / effective_sl) * 100
     max_lev = max(1, min(int(100 / effective_sl), 100))
@@ -111,7 +115,7 @@ def execute_trade_action(
         entry_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
-        # ENTRY
+        # ---------- ENTRY ORDER ----------
         client.futures_create_order(
             symbol=symbol,
             side=entry_side,
@@ -119,7 +123,7 @@ def execute_trade_action(
             quantity=qty
         )
 
-        # ✅ LIVE LOG ALWAYS
+        # ---------- LIVE LOG (ALWAYS) ----------
         session["trades"].append({
             "time": datetime.utcnow().isoformat(),
             "symbol": symbol,
@@ -129,29 +133,35 @@ def execute_trade_action(
         })
         session.modified = True
 
-        # SL (safe)
-        sl_percent = sl_value if sl_type == "SL % Movement" else (sl_value / entry) * 100
-        mark = float(client.futures_mark_price(symbol=symbol)["markPrice"])
+        # ---------- STOP LOSS (ONLY IF SL > 0) ----------
+        if sl_value > 0:
+            sl_percent = sl_value if sl_type == "SL % Movement" else (sl_value / entry) * 100
+            mark = float(client.futures_mark_price(symbol=symbol)["markPrice"])
 
-        sl_price = mark * (1 - sl_percent / 100) if side == "LONG" else mark * (1 + sl_percent / 100)
-        sl_price = round_price(symbol, sl_price)
-
-        try:
-            client.futures_create_order(
-                symbol=symbol,
-                side=exit_side,
-                type="STOP_MARKET",
-                stopPrice=sl_price,
-                closePosition=True
+            sl_price = (
+                mark * (1 - sl_percent / 100)
+                if side == "LONG"
+                else mark * (1 + sl_percent / 100)
             )
-        except:
-            pass
+
+            sl_price = round_price(symbol, sl_price)
+
+            try:
+                client.futures_create_order(
+                    symbol=symbol,
+                    side=exit_side,
+                    type="STOP_MARKET",
+                    stopPrice=sl_price,
+                    closePosition=True
+                )
+            except:
+                pass
 
         stats["total"] += 1
         stats["symbols"][symbol] = stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = stats
 
-        return {"success": True, "message": "Trade placed successfully"}
+        return {"success": True, "message": "Order placed successfully"}
 
     except Exception as e:
         return {"success": False, "message": str(e)}
