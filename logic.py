@@ -148,9 +148,12 @@ def execute_trade_action(
         return {"success": False, "message": "Symbol limit reached"}
 
     try:
+        print(f"[TRADE] Attempting to place order for {symbol} {side}")
         client = get_client()
         if client is None:
-            return {"success": False, "message": "Binance client not available"}
+            error_msg = "Binance client not available - Check API keys and network connection"
+            print(f"[ERROR] {error_msg}")
+            return {"success": False, "message": error_msg}
 
         units = user_units if user_units > 0 else sizing["suggested_units"]
         qty = round_qty(symbol, units)
@@ -274,4 +277,8 @@ def execute_trade_action(
         return {"success": True, "message": "Order placed successfully"}
 
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        error_msg = f"Order failed: {str(e)}"
+        print(f"[ERROR] {error_msg}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "message": error_msg}
