@@ -14,7 +14,8 @@ def index():
     logic.initialize_session()
     symbols = logic.get_all_exchange_symbols()
     live_bal, live_margin = logic.get_live_balance()
-    balance, unutilized = live_bal or 0.0, max((live_bal or 0.0) - (live_margin or 0.0), 0.0)
+    balance = live_bal or 0.0
+    unutilized = max(balance - (live_margin or 0.0), 0.0)
 
     selected_symbol = request.form.get("symbol", "BTCUSDT")
     side = request.form.get("side", "LONG")
@@ -29,17 +30,21 @@ def index():
         result = logic.execute_trade_action(
             balance, selected_symbol, side, entry, "MARKET",
             sl_type, sl_val, sizing,
-            request.form.get("user_units"), request.form.get("user_lev"),
+            float(request.form.get("user_units") or 0),
+            float(request.form.get("user_lev") or 0),
             "ISOLATED", 0, 0, 0
         )
         session["trade_status"] = result
+        session.modified = True
         return redirect(url_for("index"))
 
     return render_template(
-        "index.html", trade_status=trade_status, sizing=sizing,
-        trades=session.get("trades", []), unutilized=unutilized,
-        symbols=symbols, selected_symbol=selected_symbol,
-        default_entry=entry, default_sl_value=sl_val, default_sl_type=sl_type, default_side=side
+        "index.html",
+        trade_status=trade_status, sizing=sizing,
+        trades=session.get("trades", []), balance=round(balance, 2),
+        unutilized=round(unutilized, 2), symbols=symbols,
+        selected_symbol=selected_symbol, default_entry=entry,
+        default_sl_value=sl_val, default_sl_type=sl_type, default_side=side
     )
 
 if __name__ == "__main__":
