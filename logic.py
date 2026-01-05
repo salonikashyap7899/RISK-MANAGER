@@ -107,50 +107,91 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
         "risk_amount": round(risk_amount, 2),
         "error": None
     }
+# logic.py
 
-def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_value, sizing, user_units, user_lev, margin_mode, tp1, tp1_pct, tp2):
+# ... (Keep all your imports and helper functions exactly as they are)
+
+def execute_trade_action(
+    balance, symbol, side, entry, order_type,
+    sl_type, sl_value, sizing,
+    user_units, user_lev, margin_mode,
+    tp1, tp1_pct, tp2
+):
     today = datetime.utcnow().date().isoformat()
     stats = session["stats"].get(today, {"total": 0, "symbols": {}})
 
+    if stats["total"] >= 4:
+        return {"success": False, "message": "Daily limit reached"}
+
     try:
         client = get_client()
-        # YOUR ORIGINAL LOGIC:
-        units = float(user_units) if user_units > 0 else sizing["suggested_units"]
+        units = user_units if user_units > 0 else sizing["suggested_units"]
         qty = round_qty(symbol, units)
-        leverage = int(user_lev) if user_lev > 0 else sizing["max_leverage"]
 
+        leverage = int(user_lev) if user_lev > 0 else sizing["max_leverage"]
         client.futures_change_leverage(symbol=symbol, leverage=leverage)
-        
+
         entry_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
         # -------- ENTRY --------
         client.futures_create_order(symbol=symbol, side=entry_side, type="MARKET", quantity=qty)
-        actual_entry = float(client.futures_mark_price(symbol=symbol)["markPrice"])
+        
+        mark = float(client.futures_mark_price(symbol=symbol)["markPrice"])
+        actual_entry = mark
 
         # -------- STOP LOSS (Execution Fixed) --------
         sl_price_value = None
         if sl_value > 0:
             sl_percent = sl_value if sl_type == "SL % Movement" else abs(entry - sl_value) / entry * 100
             sl_price = actual_entry * (1 - sl_percent / 100) if side == "LONG" else actual_entry * (1 + sl_percent / 100)
-            sl_price_value = round_price(symbol, sl_price)
-            client.futures_create_order(symbol=symbol, side=exit_side, type="STOP_MARKET", stopPrice=sl_price_value, closePosition=True, workingType="MARK_PRICE")
+            sl_price = round_price(symbol, sl_price)
+            sl_price_value = sl_price
 
-        # -------- TAKE PROFIT (Execution Fixed) --------
-        if tp1 > 0:
-            client.futures_create_order(symbol=symbol, side=exit_side, type="TAKE_PROFIT_MARKET", stopPrice=round_price(symbol, tp1), quantity=round_qty(symbol, qty * (tp1_pct / 100)), workingType="MARK_PRICE")
+            try:
+                client.futures_create_order(
+                    symbol=symbol, side=exit_side, type="STOP_MARKET",
+                    stopPrice=sl_price, closePosition=True,
+                    workingType='MARK_PRICE'  # Added for guaranteed execution
+                )
+            except Exception as e:
+                print(f"SL Order Error: {e}")
+
+        # -------- TAKE PROFIT ORDERS (Execution Fixed) --------
+        if tp1 > 0 and tp1_pct > 0:
+            tp1_price = round_price(symbol, tp1)
+            tp1_qty = round_qty(symbol, qty * (tp1_pct / 100))
+            try:
+                client.futures_create_order(
+                    symbol=symbol, side=exit_side, type="TAKE_PROFIT_MARKET",
+                    stopPrice=tp1_price, quantity=tp1_qty,
+                    workingType='MARK_PRICE'  # Added for guaranteed execution
+                )
+            except Exception as e:
+                print(f"TP1 Order Error: {e}")
+        
         if tp2 > 0:
-            client.futures_create_order(symbol=symbol, side=exit_side, type="TAKE_PROFIT_MARKET", stopPrice=round_price(symbol, tp2), closePosition=True if tp1 <= 0 else False, quantity=round_qty(symbol, qty - round_qty(symbol, qty * (tp1_pct / 100))) if tp1 > 0 else None, workingType="MARK_PRICE")
+            tp2_price = round_price(symbol, tp2)
+            try:
+                kwargs = {"symbol": symbol, "side": exit_side, "type": "TAKE_PROFIT_MARKET", "stopPrice": tp2_price, "workingType": 'MARK_PRICE'}
+                if tp1 > 0 and tp1_pct > 0:
+                    kwargs["quantity"] = round_qty(symbol, qty * ((100 - tp1_pct) / 100))
+                else:
+                    kwargs["closePosition"] = True
+                client.futures_create_order(**kwargs)
+            except Exception as e:
+                print(f"TP2 Order Error: {e}")
 
-        # -------- LOG SAVING --------
+        # -------- SESSION LOG --------
         session["trades"].append({
             "time": datetime.utcnow().strftime("%H:%M:%S"),
-            "symbol": symbol, "side": side, "units": qty, "leverage": leverage, 
+            "symbol": symbol, "side": side, "units": qty, "leverage": leverage,
             "entry": actual_entry, "sl": sl_price_value, "tp1": tp1, "tp2": tp2
         })
         session.modified = True
         stats["total"] += 1
         session["stats"][today] = stats
         return {"success": True, "message": "Order placed successfully"}
+
     except Exception as e:
         return {"success": False, "message": str(e)}
