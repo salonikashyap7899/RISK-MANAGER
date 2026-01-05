@@ -3,12 +3,6 @@
 <head>
     <title>Risk Manager Pro</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <style>
-        .log-box { background: #0a0a0a; border: 1px solid #333; height: 250px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 12px; }
-        .log-item { border-bottom: 1px solid #222; padding: 5px 0; color: #eee; }
-        .side-long { color: #00ff88; font-weight: bold; }
-        .side-short { color: #ff4d4d; font-weight: bold; }
-    </style>
 </head>
 <body>
 <div class="container">
@@ -18,9 +12,11 @@
 
         <form method="POST">
             <input type="hidden" name="side" id="side_hidden" value="{{default_side}}">
+            
             <div class="row">
-                <div class="col"><label>Unutilized Capital</label><input value="${{unutilized | round(2)}}" disabled style="color: #7aff00;"></div>
+                <div class="col"><label>Unutilized Capital (1% Risk Pool)</label><input value="${{unutilized | round(2)}}" disabled style="color: #7aff00;"></div>
             </div>
+
             <div class="row">
                 <div class="col">
                     <label>Symbol</label>
@@ -29,13 +25,22 @@
                     </select>
                 </div>
             </div>
+
             <div class="button-row">
                 <button type="button" class="tab {{ 'active' if default_side == 'LONG' }}" onclick="document.getElementById('side_hidden').value='LONG'; this.form.submit();">LONG</button>
                 <button type="button" class="tab {{ 'active' if default_side == 'SHORT' }}" onclick="document.getElementById('side_hidden').value='SHORT'; this.form.submit();">SHORT</button>
             </div>
+
             <div class="row">
                 <div class="col"><label>Entry Price</label><input type="number" name="entry" id="entry_input" value="{{default_entry}}" step="any"></div>
             </div>
+
+            <div class="row">
+                <div class="col"><label>TP 1 Price</label><input type="number" name="tp1" value="{{tp1}}" step="any"></div>
+                <div class="col"><label>TP 1 Qty %</label><input type="number" name="tp1_pct" value="{{tp1_pct}}"></div>
+                <div class="col"><label>TP 2 Price</label><input type="number" name="tp2" value="{{tp2}}" step="any"></div>
+            </div>
+
             <div class="row">
                 <div class="col">
                     <label>SL Method</label>
@@ -44,40 +49,56 @@
                         <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>SL % Movement</option>
                     </select>
                 </div>
-                <div class="col"><label>SL Value</label><input type="number" name="sl_value" value="{{default_sl_value}}" step="any" onchange="this.form.submit();" required></div>
+                <div class="col"><label>SL Value (Mandatory)</label><input type="number" name="sl_value" value="{{default_sl_value}}" step="any" onchange="this.form.submit();" required></div>
             </div>
+
             <div class="row">
                 <div class="col"><label>Pos Override</label><input type="number" name="user_units" step="any" placeholder="Auto"><small>Sug: {{sizing.suggested_units}}</small></div>
                 <div class="col"><label>Lev Override</label><input type="number" name="user_lev" step="any" placeholder="Auto"><small>Sug: {{sizing.suggested_leverage}}x</small></div>
             </div>
-            <button type="submit" name="place_order" class="place" {% if default_sl_value <= 0 %} disabled style="opacity: 0.5;" {% endif %}>EXECUTE EXCHANGE ORDER</button>
+
+            <button type="submit" name="place_order" class="place" {% if default_sl_value <= 0 %} disabled style="filter: grayscale(1);" {% endif %}>
+                {% if default_sl_value <= 0 %} LOCK: SET SL FIRST {% else %} EXECUTE EXCHANGE ORDER {% endif %}
+            </button>
+
             <div class="status-box">
                 {% if not sizing.error %}
-                <div class="formula" style="background: #06212a; padding: 10px; border: 1px solid #0ca7d4; margin-top: 10px; border-radius: 4px;">
-                    <b style="color: #00b7ff;">📐 Precision Logic:</b><br>
-                    <span style="font-size: 0.85em;">
-                        • <b>Risk:</b> ${{ sizing.risk_amount }} | • <b>Sug. Pos:</b> {{ sizing.suggested_units }} units<br>
-                        • <b>Formula:</b> [Risk / (SL% + 0.2)] × 100
-                    </span>
-                </div>
+                    <div class="formula" style="background: #06212a; padding: 10px; border-radius: 4px; border: 1px solid #0ca7d4; margin-top: 10px;">
+                        <b style="color: #00b7ff;">📐 Precision Logic:</b><br>
+                        <span style="font-size: 0.85em;">
+                            • <b>Risk:</b> ${{ sizing.risk_amount }} (1%)<br>
+                            • <b>Max Lev:</b> {{ sizing.suggested_leverage }}x [100 / (SL% + 0.2)]<br>
+                            • <b>Pos Size:</b> {{ sizing.suggested_units }} units<br>
+                            • <b>Formula:</b> [Risk / (SL% + 0.2)] × 100
+                        </span>
+                    </div>
                 {% endif %}
             </div>
         </form>
     </div>
 
     <div class="panel right">
-        <div id="tv_chart" style="height: 400px; width: 100%;"></div>
+        <div id="tv_chart" style="height: 450px; width: 100%;"></div>
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-        <script>new TradingView.widget({"autosize": true, "symbol": "BINANCE:{{ selected_symbol }}", "interval": "5", "theme": "dark", "container_id": "tv_chart"});</script>
+        <script type="text/javascript">
+          new TradingView.widget({
+            "autosize": true,
+            "symbol": "BINANCE:{{ selected_symbol or 'BTCUSDT' }}",
+            "interval": "5",
+            "theme": "dark",
+            "container_id": "tv_chart"
+          });
+        </script>
 
-        <div class="header" style="margin-top: 20px;">LIVE LOG (Today's Limit: 4)</div>
-        <div class="log-box">
-            {% for t in trades|reverse %}
-            <div class="log-item">
-                [{{ t.time }}] <span class="{{ 'side-long' if t.side == 'LONG' else 'side-short' }}">{{ t.side }}</span> {{ t.symbol }} | Qty: {{ t.units }} | Ent: {{ t.entry | round(2) }} | SL: {{ t.sl or 'None' }}
+        <div class="header">LIVE LOG (Today's Limit: 4)</div>
+        <div style="background: #000; border: 1px solid #333; height: 200px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 11px;">
+            {% for trade in trades|reverse %}
+            <div style="border-bottom: 1px solid #222; padding: 5px 0;">
+                <span style="color: {{ '#00ff88' if trade.side == 'LONG' else '#ff4d4d' }}"><b>{{ trade.side }}</b></span> 
+                {{ trade.symbol }} | Qty: {{ trade.units }} | Ent: {{ trade.entry | round(2) }} | SL: {{ trade.sl | round(2) if trade.sl else 'None' }}
             </div>
             {% endfor %}
-            {% if not trades %}<div style="text-align: center; color: #555; padding-top: 20px;">No trades yet</div>{% endif %}
+            {% if not trades %}<div style="color: #555; text-align: center; margin-top: 20px;">No trades placed yet.</div>{% endif %}
         </div>
     </div>
 </div>
