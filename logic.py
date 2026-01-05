@@ -111,36 +111,46 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
 def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_value, sizing, user_units, user_lev, margin_mode, tp1, tp1_pct, tp2):
     today = datetime.utcnow().date().isoformat()
     stats = session["stats"].get(today, {"total": 0, "symbols": {}})
-    if stats["total"] >= 4: return {"success": False, "message": "Daily limit reached"}
 
     try:
         client = get_client()
-        # Ensure units/leverage use formula sizing if the user input is 0 or empty
-        units = user_units if user_units > 0 else sizing["suggested_units"]
+        # YOUR ORIGINAL LOGIC:
+        units = float(user_units) if user_units > 0 else sizing["suggested_units"]
         qty = round_qty(symbol, units)
         leverage = int(user_lev) if user_lev > 0 else sizing["max_leverage"]
 
         client.futures_change_leverage(symbol=symbol, leverage=leverage)
+        
         entry_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
+        # -------- ENTRY --------
         client.futures_create_order(symbol=symbol, side=entry_side, type="MARKET", quantity=qty)
-        mark = float(client.futures_mark_price(symbol=symbol)["markPrice"])
+        actual_entry = float(client.futures_mark_price(symbol=symbol)["markPrice"])
 
+        # -------- STOP LOSS (Execution Fixed) --------
         sl_price_value = None
         if sl_value > 0:
-            sl_perc = sl_value if sl_type == "SL % Movement" else abs(entry - sl_value) / entry * 100
-            sl_price = mark * (1 - sl_perc/100) if side == "LONG" else mark * (1 + sl_perc/100)
+            sl_percent = sl_value if sl_type == "SL % Movement" else abs(entry - sl_value) / entry * 100
+            sl_price = actual_entry * (1 - sl_percent / 100) if side == "LONG" else actual_entry * (1 + sl_percent / 100)
             sl_price_value = round_price(symbol, sl_price)
-            client.futures_create_order(symbol=symbol, side=exit_side, type="STOP_MARKET", stopPrice=sl_price_value, closePosition=True)
+            client.futures_create_order(symbol=symbol, side=exit_side, type="STOP_MARKET", stopPrice=sl_price_value, closePosition=True, workingType="MARK_PRICE")
 
-        # Update Session Logs
+        # -------- TAKE PROFIT (Execution Fixed) --------
+        if tp1 > 0:
+            client.futures_create_order(symbol=symbol, side=exit_side, type="TAKE_PROFIT_MARKET", stopPrice=round_price(symbol, tp1), quantity=round_qty(symbol, qty * (tp1_pct / 100)), workingType="MARK_PRICE")
+        if tp2 > 0:
+            client.futures_create_order(symbol=symbol, side=exit_side, type="TAKE_PROFIT_MARKET", stopPrice=round_price(symbol, tp2), closePosition=True if tp1 <= 0 else False, quantity=round_qty(symbol, qty - round_qty(symbol, qty * (tp1_pct / 100))) if tp1 > 0 else None, workingType="MARK_PRICE")
+
+        # -------- LOG SAVING --------
         session["trades"].append({
             "time": datetime.utcnow().strftime("%H:%M:%S"),
-            "symbol": symbol, "side": side, "units": qty, "leverage": leverage, "entry": mark, "sl": sl_price_value
+            "symbol": symbol, "side": side, "units": qty, "leverage": leverage, 
+            "entry": actual_entry, "sl": sl_price_value, "tp1": tp1, "tp2": tp2
         })
         session.modified = True
         stats["total"] += 1
         session["stats"][today] = stats
         return {"success": True, "message": "Order placed successfully"}
-    except Exception as e: return {"success": False, "message": str(e)}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
