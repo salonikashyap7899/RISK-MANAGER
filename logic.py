@@ -4,7 +4,18 @@ from binance.client import Client
 import config
 import math
 
-client = Client(config.BINANCE_KEY, config.BINANCE_SECRET)
+# Lazy initialization to avoid errors on import
+_client = None
+
+def get_client():
+    global _client
+    if _client is None:
+        try:
+            _client = Client(config.BINANCE_KEY, config.BINANCE_SECRET)
+        except Exception as e:
+            print(f"Warning: Could not initialize Binance client: {e}")
+            _client = None
+    return _client
 
 # ---------------- SESSION ----------------
 def initialize_session():
@@ -14,6 +25,9 @@ def initialize_session():
 # ---------------- BINANCE HELPERS ----------------
 def get_all_exchange_symbols():
     try:
+        client = get_client()
+        if client is None:
+            return ["BTCUSDT", "ETHUSDT"]
         info = client.futures_exchange_info()
         return sorted([
             s["symbol"] for s in info["symbols"]
@@ -24,6 +38,9 @@ def get_all_exchange_symbols():
 
 def get_live_balance():
     try:
+        client = get_client()
+        if client is None:
+            return None, None
         acc = client.futures_account()
         return float(acc["totalWalletBalance"]), float(acc["totalInitialMargin"])
     except:
@@ -31,12 +48,18 @@ def get_live_balance():
 
 def get_live_price(symbol):
     try:
+        client = get_client()
+        if client is None:
+            return None
         return float(client.futures_symbol_ticker(symbol=symbol)["price"])
     except:
         return None
 
 # ---------------- PRECISION ----------------
 def get_symbol_filters(symbol):
+    client = get_client()
+    if client is None:
+        return []
     info = client.futures_exchange_info()
     for s in info["symbols"]:
         if s["symbol"] == symbol:
@@ -77,23 +100,33 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     risk_amount = unutilized_margin * 0.01
 
     if sl_value > 0:
+        # Calculate SL percentage
         if sl_type == "SL % Movement":
+            sl_percent = sl_value
             sl_distance = entry * (sl_value / 100)
         else:
             sl_distance = abs(entry - sl_value)
+            sl_percent = (sl_distance / entry) * 100
 
         if sl_distance <= 0:
             return {"error": "Invalid SL distance"}
 
-        position_size = risk_amount / sl_distance
+        # Calculate leverage using the formula: 100 / (SL% + 0.2)
+        calculated_leverage = 100 / (sl_percent + 0.2)
+        max_leverage = min(int(calculated_leverage), 125)  # Cap at Binance max 125x
+        
+        # Calculate position size with leverage
+        # Formula: (Risk Amount * Leverage) / (Entry * SL%)
+        position_size = (risk_amount * max_leverage) / sl_distance
     else:
         # fallback when SL not provided
+        max_leverage = 10
         position_size = risk_amount / entry
 
     return {
         "suggested_units": round(position_size, 6),
-        "suggested_leverage": 10,
-        "max_leverage": 10,
+        "suggested_leverage": max_leverage,
+        "max_leverage": max_leverage,
         "risk_amount": round(risk_amount, 2),
         "error": None
     }
@@ -115,6 +148,10 @@ def execute_trade_action(
         return {"success": False, "message": "Symbol limit reached"}
 
     try:
+        client = get_client()
+        if client is None:
+            return {"success": False, "message": "Binance client not available"}
+
         units = user_units if user_units > 0 else sizing["suggested_units"]
         qty = round_qty(symbol, units)
 
