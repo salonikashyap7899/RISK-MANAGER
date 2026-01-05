@@ -34,10 +34,9 @@ def index():
     tp2 = float(request.form.get("tp2") or 0)
 
     sizing = logic.calculate_position_sizing(unutilized, entry, sl_type, sl_val)
-    trade_status = session.pop("trade_status", None)  # Get status from session then clear it
+    trade_status = session.pop("trade_status", None)
 
     if request.method == "POST" and "place_order" in request.form and not sizing.get("error"):
-        print(f"[APP] Order request received: {selected_symbol} {side}")
         result = logic.execute_trade_action(
             balance,
             selected_symbol,
@@ -47,17 +46,16 @@ def index():
             sl_type,
             sl_val,
             sizing,
-            float(request.form.get("user_units") or 0),
-            float(request.form.get("user_lev") or 0),
+            request.form.get("user_units"),
+            request.form.get("user_lev"),
             margin_mode,
             tp1,
             tp1_pct,
             tp2
         )
-        print(f"[APP] Order result: {result}")
-        session["trade_status"] = result  # Store in session
+        session["trade_status"] = result
         session.modified = True
-        return redirect(url_for("index"))  # 🔒 refresh-safe
+        return redirect(url_for("index"))
 
     return render_template(
         "index.html",
@@ -76,8 +74,7 @@ def index():
         order_type=order_type,
         tp1=tp1,
         tp1_pct=tp1_pct,
-        tp2=tp2,
-        datetime=datetime
+        tp2=tp2
     )
 
 if __name__ == "__main__":

@@ -19,8 +19,10 @@ def get_client():
 
 # ---------------- SESSION ----------------
 def initialize_session():
-    session.setdefault("trades", [])
-    session.setdefault("stats", {})
+    if "trades" not in session:
+        session["trades"] = []
+    if "stats" not in session:
+        session["stats"] = {}
 
 # ---------------- BINANCE HELPERS ----------------
 def get_all_exchange_symbols():
@@ -95,12 +97,11 @@ def round_price(symbol, price):
 # ---------------- POSITION SIZING ----------------
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     if entry <= 0:
-        return {"error": "Invalid Entry"}
+        return {"error": "Invalid Entry", "suggested_units": 0, "suggested_leverage": 1, "risk_amount": 0}
 
     risk_amount = unutilized_margin * 0.01
 
     if sl_value > 0:
-        # Calculate SL percentage
         if sl_type == "SL % Movement":
             sl_percent = sl_value
             sl_distance = entry * (sl_value / 100)
@@ -109,17 +110,12 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
             sl_percent = (sl_distance / entry) * 100
 
         if sl_distance <= 0:
-            return {"error": "Invalid SL distance"}
+            return {"error": "Invalid SL distance", "suggested_units": 0, "suggested_leverage": 1, "risk_amount": 0}
 
-        # Calculate leverage using the formula: 100 / (SL% + 0.2)
         calculated_leverage = 100 / (sl_percent + 0.2)
-        max_leverage = min(int(calculated_leverage), 125)  # Cap at Binance max 125x
-        
-        # Calculate position size with leverage
-        # Formula: (Risk Amount * Leverage) / (Entry * SL%)
+        max_leverage = min(int(calculated_leverage), 125)
         position_size = (risk_amount * max_leverage) / sl_distance
     else:
-        # fallback when SL not provided
         max_leverage = 10
         position_size = risk_amount / entry
 
@@ -148,20 +144,18 @@ def execute_trade_action(
         return {"success": False, "message": "Symbol limit reached"}
 
     try:
-        print(f"[TRADE] Attempting to place order for {symbol} {side}")
         client = get_client()
         if client is None:
-            error_msg = "Binance client not available - Check API keys and network connection"
-            print(f"[ERROR] {error_msg}")
-            return {"success": False, "message": error_msg}
+            return {"success": False, "message": "Binance client connection error"}
 
-        units = user_units if user_units > 0 else sizing["suggested_units"]
-        qty = round_qty(symbol, units)
+        # FIX: Ensure units are pulled correctly from sizing if user_units is 0 or None
+        final_units = float(user_units) if (user_units and float(user_units) > 0) else sizing["suggested_units"]
+        qty = round_qty(symbol, final_units)
 
-        leverage = int(user_lev) if user_lev > 0 else sizing["max_leverage"]
-        leverage = max(1, min(leverage, sizing["max_leverage"]))
+        final_leverage = int(user_lev) if (user_lev and int(user_lev) > 0) else sizing["max_leverage"]
+        final_leverage = max(1, min(final_leverage, 125))
 
-        client.futures_change_leverage(symbol=symbol, leverage=leverage)
+        client.futures_change_leverage(symbol=symbol, leverage=final_leverage)
 
         entry_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
@@ -174,111 +168,68 @@ def execute_trade_action(
             quantity=qty
         )
         
-        # Get actual entry price from mark price
         mark = float(client.futures_mark_price(symbol=symbol)["markPrice"])
         actual_entry = mark
         notional = qty * actual_entry
 
-        # -------- STOP LOSS (OPTIONAL) --------
+        # -------- STOP LOSS --------
         sl_price_value = None
         if sl_value > 0:
             sl_percent = sl_value if sl_type == "SL % Movement" else abs(entry - sl_value) / entry * 100
-
-            sl_price = (
-                actual_entry * (1 - sl_percent / 100)
-                if side == "LONG"
-                else actual_entry * (1 + sl_percent / 100)
-            )
-
+            sl_price = actual_entry * (1 - sl_percent / 100) if side == "LONG" else actual_entry * (1 + sl_percent / 100)
             sl_price = round_price(symbol, sl_price)
             sl_price_value = sl_price
 
-            try:
-                client.futures_create_order(
-                    symbol=symbol,
-                    side=exit_side,
-                    type="STOP_MARKET",
-                    stopPrice=sl_price,
-                    closePosition=True
-                )
-            except Exception as e:
-                print(f"SL Order Error: {e}")
+            client.futures_create_order(
+                symbol=symbol, side=exit_side, type="STOP_MARKET",
+                stopPrice=sl_price, closePosition=True
+            )
 
-        # -------- TAKE PROFIT ORDERS --------
-        tp1_price_value = None
-        tp2_price_value = None
+        # -------- TAKE PROFIT --------
+        tp1_price_value = tp1 if tp1 > 0 else None
+        tp2_price_value = tp2 if tp2 > 0 else None
         
         if tp1 > 0 and tp1_pct > 0:
-            # TP1 - Partial close
-            tp1_price = round_price(symbol, tp1)
-            tp1_qty = round_qty(symbol, qty * (tp1_pct / 100))
-            tp1_price_value = tp1_price
-            
-            try:
-                client.futures_create_order(
-                    symbol=symbol,
-                    side=exit_side,
-                    type="TAKE_PROFIT_MARKET",
-                    stopPrice=tp1_price,
-                    quantity=tp1_qty
-                )
-            except Exception as e:
-                print(f"TP1 Order Error: {e}")
+            client.futures_create_order(
+                symbol=symbol, side=exit_side, type="TAKE_PROFIT_MARKET",
+                stopPrice=round_price(symbol, tp1), quantity=round_qty(symbol, qty * (tp1_pct / 100))
+            )
         
         if tp2 > 0:
-            # TP2 - Close remaining position
-            tp2_price = round_price(symbol, tp2)
-            tp2_price_value = tp2_price
-            
-            try:
-                # If TP1 exists, TP2 closes the remaining; otherwise closes all
-                if tp1 > 0 and tp1_pct > 0:
-                    tp2_qty = round_qty(symbol, qty * ((100 - tp1_pct) / 100))
-                    client.futures_create_order(
-                        symbol=symbol,
-                        side=exit_side,
-                        type="TAKE_PROFIT_MARKET",
-                        stopPrice=tp2_price,
-                        quantity=tp2_qty
-                    )
-                else:
-                    # Close entire position
-                    client.futures_create_order(
-                        symbol=symbol,
-                        side=exit_side,
-                        type="TAKE_PROFIT_MARKET",
-                        stopPrice=tp2_price,
-                        closePosition=True
-                    )
-            except Exception as e:
-                print(f"TP2 Order Error: {e}")
+            if tp1 > 0 and tp1_pct > 0:
+                tp2_qty = round_qty(symbol, qty * ((100 - tp1_pct) / 100))
+                client.futures_create_order(
+                    symbol=symbol, side=exit_side, type="TAKE_PROFIT_MARKET",
+                    stopPrice=round_price(symbol, tp2), quantity=tp2_qty
+                )
+            else:
+                client.futures_create_order(
+                    symbol=symbol, side=exit_side, type="TAKE_PROFIT_MARKET",
+                    stopPrice=round_price(symbol, tp2), closePosition=True
+                )
 
-        # -------- ENHANCED LIVE LOG --------
-        session["trades"].append({
-            "time": datetime.utcnow().isoformat(),
+        # -------- LOGGING --------
+        new_trade = {
+            "time": datetime.utcnow().strftime("%H:%M:%S"),
             "symbol": symbol,
             "side": side,
             "units": qty,
-            "leverage": leverage,
+            "leverage": final_leverage,
             "entry": actual_entry,
             "sl": sl_price_value,
-            "tp1": tp1_price_value,
-            "tp1_pct": tp1_pct if tp1 > 0 else None,
-            "tp2": tp2_price_value,
-            "notional": notional,
-            "status": "open"
-        })
-        session.modified = True
-
+            "status": "OPEN"
+        }
+        
+        trades = session.get("trades", [])
+        trades.append(new_trade)
+        session["trades"] = trades
+        
         stats["total"] += 1
         stats["symbols"][symbol] = stats["symbols"].get(symbol, 0) + 1
         session["stats"][today] = stats
+        session.modified = True
 
-        return {"success": True, "message": "Order placed successfully"}
+        return {"success": True, "message": f"Order Successful: {qty} {symbol}"}
 
     except Exception as e:
-        error_msg = f"Order failed: {str(e)}"
-        print(f"[ERROR] {error_msg}")
-        import traceback
-        traceback.print_exc()
-        return {"success": False, "message": error_msg}
+        return {"success": False, "message": str(e)}
