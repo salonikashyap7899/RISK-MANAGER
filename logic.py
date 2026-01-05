@@ -164,35 +164,31 @@ def execute_trade_action(
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
         # -------- ENTRY --------
-        client.futures_create_order(
+        entry_order = client.futures_create_order(
             symbol=symbol,
             side=entry_side,
             type="MARKET",
             quantity=qty
         )
-
-        # -------- LIVE LOG --------
-        session["trades"].append({
-            "time": datetime.utcnow().isoformat(),
-            "symbol": symbol,
-            "side": side,
-            "units": qty,
-            "leverage": leverage
-        })
-        session.modified = True
+        
+        # Get actual entry price from mark price
+        mark = float(client.futures_mark_price(symbol=symbol)["markPrice"])
+        actual_entry = mark
+        notional = qty * actual_entry
 
         # -------- STOP LOSS (OPTIONAL) --------
+        sl_price_value = None
         if sl_value > 0:
             sl_percent = sl_value if sl_type == "SL % Movement" else abs(entry - sl_value) / entry * 100
-            mark = float(client.futures_mark_price(symbol=symbol)["markPrice"])
 
             sl_price = (
-                mark * (1 - sl_percent / 100)
+                actual_entry * (1 - sl_percent / 100)
                 if side == "LONG"
-                else mark * (1 + sl_percent / 100)
+                else actual_entry * (1 + sl_percent / 100)
             )
 
             sl_price = round_price(symbol, sl_price)
+            sl_price_value = sl_price
 
             try:
                 client.futures_create_order(
@@ -202,8 +198,74 @@ def execute_trade_action(
                     stopPrice=sl_price,
                     closePosition=True
                 )
-            except:
-                pass
+            except Exception as e:
+                print(f"SL Order Error: {e}")
+
+        # -------- TAKE PROFIT ORDERS --------
+        tp1_price_value = None
+        tp2_price_value = None
+        
+        if tp1 > 0 and tp1_pct > 0:
+            # TP1 - Partial close
+            tp1_price = round_price(symbol, tp1)
+            tp1_qty = round_qty(symbol, qty * (tp1_pct / 100))
+            tp1_price_value = tp1_price
+            
+            try:
+                client.futures_create_order(
+                    symbol=symbol,
+                    side=exit_side,
+                    type="TAKE_PROFIT_MARKET",
+                    stopPrice=tp1_price,
+                    quantity=tp1_qty
+                )
+            except Exception as e:
+                print(f"TP1 Order Error: {e}")
+        
+        if tp2 > 0:
+            # TP2 - Close remaining position
+            tp2_price = round_price(symbol, tp2)
+            tp2_price_value = tp2_price
+            
+            try:
+                # If TP1 exists, TP2 closes the remaining; otherwise closes all
+                if tp1 > 0 and tp1_pct > 0:
+                    tp2_qty = round_qty(symbol, qty * ((100 - tp1_pct) / 100))
+                    client.futures_create_order(
+                        symbol=symbol,
+                        side=exit_side,
+                        type="TAKE_PROFIT_MARKET",
+                        stopPrice=tp2_price,
+                        quantity=tp2_qty
+                    )
+                else:
+                    # Close entire position
+                    client.futures_create_order(
+                        symbol=symbol,
+                        side=exit_side,
+                        type="TAKE_PROFIT_MARKET",
+                        stopPrice=tp2_price,
+                        closePosition=True
+                    )
+            except Exception as e:
+                print(f"TP2 Order Error: {e}")
+
+        # -------- ENHANCED LIVE LOG --------
+        session["trades"].append({
+            "time": datetime.utcnow().isoformat(),
+            "symbol": symbol,
+            "side": side,
+            "units": qty,
+            "leverage": leverage,
+            "entry": actual_entry,
+            "sl": sl_price_value,
+            "tp1": tp1_price_value,
+            "tp1_pct": tp1_pct if tp1 > 0 else None,
+            "tp2": tp2_price_value,
+            "notional": notional,
+            "status": "open"
+        })
+        session.modified = True
 
         stats["total"] += 1
         stats["symbols"][symbol] = stats["symbols"].get(symbol, 0) + 1
