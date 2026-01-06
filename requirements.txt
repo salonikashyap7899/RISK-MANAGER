@@ -97,4 +97,5 @@ websockets==15.0.1
 Werkzeug==3.1.3
 yarl==1.22.0
 gunicorn
+Flask-Session==0.8.0
 
