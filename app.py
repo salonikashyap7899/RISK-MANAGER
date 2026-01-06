@@ -1,13 +1,26 @@
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for
+from flask_session import Session
 from datetime import datetime
 import logic
+import os
 
 app = Flask(__name__)
-app.secret_key = "trading_secret_key"
+app.secret_key = "trading_secret_key_ultra_secure_2025"
+
+# Configure server-side session
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_USE_SIGNER'] = True
+app.config['SESSION_FILE_DIR'] = '/tmp/flask_session'
+app.config['SESSION_FILE_THRESHOLD'] = 500
+
+# Initialize session
+Session(app)
 
 @app.route("/get_live_price/<symbol>")
 def live_price_api(symbol):
-    return jsonify({"price": logic.get_live_price(symbol)})
+    price = logic.get_live_price(symbol)
+    return jsonify({"price": price if price else 0})
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -58,11 +71,14 @@ def index():
         session.modified = True
         return redirect(url_for("index"))
 
+    # Get trades for display
+    trades = session.get("trades", [])
+    
     return render_template(
         "index.html",
         trade_status=trade_status,
         sizing=sizing,
-        trades=session.get("trades", []), # Ensure trades are passed
+        trades=trades,
         balance=round(balance, 2),
         unutilized=round(unutilized, 2),
         symbols=symbols,
@@ -71,10 +87,12 @@ def index():
         default_sl_value=sl_val,
         default_sl_type=sl_type,
         default_side=side,
+        order_type=order_type,
+        margin_mode=margin_mode,
         tp1=tp1,
         tp1_pct=tp1_pct,
         tp2=tp2
     )
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=8001, debug=True)
