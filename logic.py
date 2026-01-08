@@ -164,7 +164,7 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     }
 
 def get_open_positions():
-    """Get all open positions with live P&L - FIX #1"""
+    """Get all open positions with ENHANCED live P&L details - UPGRADE #1"""
     try:
         client = get_client()
         if client is None:
@@ -179,21 +179,45 @@ def get_open_positions():
                 entry_price = float(pos['entryPrice'])
                 mark_price = float(pos['markPrice'])
                 unrealized_pnl = float(pos['unRealizedProfit'])
+                liquidation_price = float(pos['liquidationPrice'])
+                leverage = int(pos['leverage'])
+                
+                # Calculate additional metrics like Binance
+                notional = float(pos['notional'])  # Position size in USDT
+                initial_margin = abs(notional) / leverage
+                
+                # Calculate ROI%
+                roi_percent = (unrealized_pnl / initial_margin * 100) if initial_margin > 0 else 0
+                
+                # Calculate Margin Ratio (used margin / maintenance margin)
+                # Higher ratio = closer to liquidation
+                if mark_price > 0 and liquidation_price > 0:
+                    if position_amt > 0:  # LONG
+                        margin_ratio = ((mark_price - liquidation_price) / mark_price) * 100
+                    else:  # SHORT
+                        margin_ratio = ((liquidation_price - mark_price) / mark_price) * 100
+                else:
+                    margin_ratio = 0
                 
                 open_positions.append({
                     'symbol': pos['symbol'],
                     'side': 'LONG' if position_amt > 0 else 'SHORT',
                     'amount': abs(position_amt),
+                    'size_usdt': abs(notional),  # NEW: Position size in USDT
+                    'margin_usdt': initial_margin,  # NEW: Margin allocated
+                    'margin_ratio': abs(margin_ratio),  # NEW: Margin ratio
                     'entry_price': entry_price,
                     'mark_price': mark_price,
                     'unrealized_pnl': unrealized_pnl,
-                    'leverage': pos['leverage'],
-                    'liquidation_price': float(pos['liquidationPrice'])
+                    'roi_percent': roi_percent,  # NEW: ROI percentage
+                    'leverage': leverage,
+                    'liquidation_price': liquidation_price
                 })
         
         return open_positions
     except Exception as e:
         print(f"Error getting open positions: {e}")
+        traceback.print_exc()
         return []
 
 def execute_trade_action(
@@ -202,6 +226,7 @@ def execute_trade_action(
     user_units, user_lev, margin_mode,
     tp1, tp1_pct, tp2
 ):
+    """Execute trade with FIXED TP/SL orders - UPGRADE #2"""
     today = datetime.utcnow().date().isoformat()
     stats = session.get("stats", {}).get(today, {"total": 0, "symbols": {}})
 
@@ -244,11 +269,12 @@ def execute_trade_action(
         print(f"✅ Entry order placed: {entry_order['orderId']}")
         
         # Get actual entry price
+        time.sleep(1)  # Small delay to ensure order is filled
         mark = float(client.futures_mark_price(symbol=symbol)["markPrice"])
         actual_entry = mark
         print(f"📍 Entry price: {actual_entry}")
 
-        # -------- STOP LOSS ORDER - FIX #2 --------
+        # -------- STOP LOSS ORDER - FIXED --------
         sl_price_value = None
         if sl_value > 0:
             sl_percent = sl_value if sl_type == "SL % Movement" else abs(entry - sl_value) / entry * 100
@@ -263,27 +289,27 @@ def execute_trade_action(
 
             try:
                 print(f"\n🛑 Placing SL order @ {sl_price}")
-                # FIX: Use STOP_MARKET instead of STOP for futures
+                # FIX: Use STOP_MARKET with closePosition=true
                 sl_order = client.futures_create_order(
                     symbol=symbol,
                     side=exit_side,
                     type="STOP_MARKET",
                     stopPrice=sl_price,
-                    closePosition="true"
+                    closePosition="true"  # Close entire position
                 )
                 print(f"✅ Stop Loss placed: {sl_order['orderId']}")
             except BinanceAPIException as e:
                 print(f"❌ SL Order Error: {e}")
                 print(f"⚠️ Trade executed but SL placement failed")
 
-        # -------- TAKE PROFIT 1 - FIX #2 --------
+        # -------- TAKE PROFIT 1 - FIXED --------
         if tp1 > 0 and tp1_pct > 0:
             tp1_price = round_price(symbol, tp1)
             tp1_qty = round_qty(symbol, qty * (tp1_pct / 100))
             
             try:
                 print(f"\n🎯 Placing TP1 order: {tp1_qty} @ {tp1_price}")
-                # FIX: Use TAKE_PROFIT_MARKET instead of TAKE_PROFIT
+                # FIX: Use TAKE_PROFIT_MARKET for futures
                 tp1_order = client.futures_create_order(
                     symbol=symbol,
                     side=exit_side,
@@ -294,8 +320,9 @@ def execute_trade_action(
                 print(f"✅ TP1 placed: {tp1_order['orderId']}")
             except BinanceAPIException as e:
                 print(f"❌ TP1 Order Error: {e}")
+                traceback.print_exc()
         
-        # -------- TAKE PROFIT 2 - FIX #2 --------
+        # -------- TAKE PROFIT 2 - FIXED --------
         if tp2 > 0:
             tp2_price = round_price(symbol, tp2)
             
@@ -324,6 +351,7 @@ def execute_trade_action(
                 print(f"✅ TP2 placed: {tp2_order['orderId']}")
             except BinanceAPIException as e:
                 print(f"❌ TP2 Order Error: {e}")
+                traceback.print_exc()
 
         # -------- LOG TRADE IN SESSION --------
         trade_log = {
@@ -335,7 +363,8 @@ def execute_trade_action(
             "entry": round(actual_entry, 4),
             "sl": round(sl_price_value, 4) if sl_price_value else None,
             "tp1": round(tp1, 4) if tp1 > 0 else None,
-            "tp2": round(tp2, 4) if tp2 > 0 else None
+            "tp2": round(tp2, 4) if tp2 > 0 else None,
+            "margin_mode": margin_mode
         }
         
         if "trades" not in session:
@@ -364,3 +393,7 @@ def execute_trade_action(
         print(f"❌ {error_msg}")
         traceback.print_exc()
         return {"success": False, "message": error_msg}
+
+def get_completed_trades():
+    """Get completed trades for CSV export - UPGRADE #3"""
+    return session.get("trades", [])

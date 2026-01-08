@@ -1,7 +1,9 @@
-from flask import Flask, render_template, request, session, jsonify, redirect, url_for
+from flask import Flask, render_template, request, session, jsonify, redirect, url_for, Response
 from datetime import datetime
 import logic
 import os
+import csv
+import io
 
 app = Flask(__name__)
 app.secret_key = "trading_secret_key_ultra_secure_2025"
@@ -16,9 +18,50 @@ def live_price_api(symbol):
 
 @app.route("/get_open_positions")
 def get_open_positions_api():
-    """NEW ENDPOINT - FIX #1: Returns live positions with P&L"""
+    """UPGRADE #1: Returns enhanced live positions with full P&L metrics"""
     positions = logic.get_open_positions()
     return jsonify({"positions": positions})
+
+@app.route("/download_trades")
+def download_trades():
+    """UPGRADE #3: Download complete trade history as CSV"""
+    trades = logic.get_completed_trades()
+    
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow([
+        'Time (UTC)', 'Symbol', 'Side', 'Units', 'Leverage', 
+        'Entry Price', 'Stop Loss', 'Take Profit 1', 'Take Profit 2', 
+        'Margin Mode'
+    ])
+    
+    # Write trade data
+    for trade in trades:
+        writer.writerow([
+            trade.get('time', ''),
+            trade.get('symbol', ''),
+            trade.get('side', ''),
+            trade.get('units', ''),
+            f"{trade.get('leverage', '')}x",
+            trade.get('entry', ''),
+            trade.get('sl', 'N/A'),
+            trade.get('tp1', 'N/A'),
+            trade.get('tp2', 'N/A'),
+            trade.get('margin_mode', 'ISOLATED')
+        ])
+    
+    # Prepare response
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={
+            'Content-Disposition': f'attachment; filename=trade_history_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'
+        }
+    )
 
 @app.route("/", methods=["GET", "POST"])
 def index():

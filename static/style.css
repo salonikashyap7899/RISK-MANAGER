@@ -51,6 +51,26 @@ body {
     font-size: 1em;
 }
 
+/* Messages */
+.message {
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    font-weight: bold;
+}
+
+.message.success {
+    background: #1a4d2e;
+    color: #00ff88;
+    border: 1px solid #00ff88;
+}
+
+.message.error {
+    background: #4d1a1a;
+    color: #ff4d4d;
+    border: 1px solid #ff4d4d;
+}
+
 /* Rows and form layout */
 .row { display: flex; gap: 8px; margin-bottom: 6px; }
 .col { flex: 1; display: flex; flex-direction: column; }
@@ -67,7 +87,47 @@ input, select { background: #101b22; color: #00b7ff; border: 1px solid #0d4a5e; 
 .status { background: #111d23; padding: 8px; border-radius: 4px; border: 1px solid #1d3a45; color: #a8ffcc; margin: 8px 0; font-size: 0.9em; }
 
 .reset { flex: 1; padding: 8px; background: #3a3a3a; color: white; border: 1px solid #777; border-radius: 4px; cursor: pointer; font-size: 0.9em; }
-.place { flex: 2; padding: 8px; background: #009dff; color: white; border-radius: 4px; border: 1px solid #11c0ff; font-weight: bold; cursor: pointer; font-size: 1em; }
+.place { 
+    flex: 2; 
+    padding: 8px; 
+    background: #009dff; 
+    color: white; 
+    border-radius: 4px; 
+    border: 1px solid #11c0ff; 
+    font-weight: bold; 
+    cursor: pointer; 
+    font-size: 1em; 
+}
+
+.place:hover {
+    background: #00b8ff;
+}
+
+.place:disabled {
+    background: #444;
+    border-color: #666;
+    cursor: not-allowed;
+}
+
+/* CSV Download Button - UPGRADE #3 */
+.csv-download-btn {
+    background: #1a4d2e;
+    color: #00ff88;
+    border: 1px solid #00ff88;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-left: 10px;
+}
+
+.csv-download-btn:hover {
+    background: #00ff88;
+    color: #000;
+}
 
 /* Chart area occupies roughly top of right panel; trade log fills remaining space and scrolls internally */
 .chart-box { background: #0b0f12; padding: 4px; border-radius: 5px; margin-bottom: 8px; height: 200px; min-height: 140px; overflow: hidden; }
@@ -102,4 +162,22 @@ table td { padding: 6px; border: 1px solid #333; }
     .panel.left { flex: none; width: auto; max-width: 100%; }
     .panel.right { flex: none; width: auto; }
     html, body { overflow: auto; }
+}
+
+/* Custom scrollbar for position container */
+#live_positions::-webkit-scrollbar {
+    width: 6px;
+}
+
+#live_positions::-webkit-scrollbar-track {
+    background: #0a1520;
+}
+
+#live_positions::-webkit-scrollbar-thumb {
+    background: #0ca7d4;
+    border-radius: 3px;
+}
+
+#live_positions::-webkit-scrollbar-thumb:hover {
+    background: #00b7ff;
 }
