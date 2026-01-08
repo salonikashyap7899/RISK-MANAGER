@@ -8,24 +8,70 @@ import io
 app = Flask(__name__)
 app.secret_key = "trading_secret_key_ultra_secure_2025"
 
-# Use simple client-side sessions (no flask-session needed)
+# Use simple client-side sessions
 app.config['SESSION_PERMANENT'] = False
 
 @app.route("/get_live_price/<symbol>")
 def live_price_api(symbol):
+    """Get live price for a symbol"""
     price = logic.get_live_price(symbol)
     return jsonify({"price": price if price else 0})
 
 @app.route("/get_open_positions")
 def get_open_positions_api():
-    """UPGRADE #1: Returns enhanced live positions with full P&L metrics"""
+    """FIX #2: Returns REAL live positions from Binance with timestamps"""
     positions = logic.get_open_positions()
     return jsonify({"positions": positions})
 
+@app.route("/get_trade_history")
+def get_trade_history_api():
+    """FIX #2: Get REAL trade history from Binance"""
+    trades = logic.get_trade_history()
+    return jsonify({"trades": trades})
+
+@app.route("/get_today_stats")
+def get_today_stats_api():
+    """FIX #1: Get today's trade statistics for limit display"""
+    stats = logic.get_today_stats()
+    return jsonify(stats)
+
+@app.route("/close_position/<symbol>", methods=["POST"])
+def close_position_api(symbol):
+    """Close entire position for a symbol"""
+    result = logic.close_position(symbol)
+    return jsonify(result)
+
+@app.route("/partial_close", methods=["POST"])
+def partial_close_api():
+    """FIX #5: Partial close position"""
+    data = request.get_json()
+    symbol = data.get('symbol')
+    close_percent = data.get('close_percent')
+    close_qty = data.get('close_qty')
+    
+    if not symbol:
+        return jsonify({"success": False, "message": "Symbol required"})
+    
+    result = logic.partial_close_position(symbol, close_percent, close_qty)
+    return jsonify(result)
+
+@app.route("/update_sl", methods=["POST"])
+def update_sl_api():
+    """FIX #6: Update stop loss with -1% to 0% restriction"""
+    data = request.get_json()
+    symbol = data.get('symbol')
+    new_sl_percent = float(data.get('new_sl_percent', 0))
+    
+    if not symbol:
+        return jsonify({"success": False, "message": "Symbol required"})
+    
+    result = logic.update_stop_loss(symbol, new_sl_percent)
+    return jsonify(result)
+
 @app.route("/download_trades")
 def download_trades():
-    """UPGRADE #3: Download complete trade history as CSV"""
-    trades = logic.get_completed_trades()
+    """Download trade history as CSV"""
+    trades = logic.get_trade_history()
     
     # Create CSV in memory
     output = io.StringIO()
@@ -33,9 +79,8 @@ def download_trades():
     
     # Write header
     writer.writerow([
-        'Time (UTC)', 'Symbol', 'Side', 'Units', 'Leverage', 
-        'Entry Price', 'Stop Loss', 'Take Profit 1', 'Take Profit 2', 
-        'Margin Mode'
+        'Time (UTC)', 'Symbol', 'Side', 'Quantity', 
+        'Price', 'Realized PnL', 'Commission'
     ])
     
     # Write trade data
@@ -44,13 +89,10 @@ def download_trades():
             trade.get('time', ''),
             trade.get('symbol', ''),
             trade.get('side', ''),
-            trade.get('units', ''),
-            f"{trade.get('leverage', '')}x",
-            trade.get('entry', ''),
-            trade.get('sl', 'N/A'),
-            trade.get('tp1', 'N/A'),
-            trade.get('tp2', 'N/A'),
-            trade.get('margin_mode', 'ISOLATED')
+            trade.get('qty', ''),
+            trade.get('price', ''),
+            trade.get('realized_pnl', ''),
+            trade.get('commission', '')
         ])
     
     # Prepare response
@@ -111,15 +153,14 @@ def index():
         session["trade_status"] = result
         session.modified = True
         return redirect(url_for("index"))
-
-    # Get trades for display
-    trades = session.get("trades", [])
+    
+    # Get today's stats for display
+    today_stats = logic.get_today_stats()
     
     return render_template(
         "index.html",
         trade_status=trade_status,
         sizing=sizing,
-        trades=trades,
         balance=round(balance, 2),
         unutilized=round(unutilized, 2),
         symbols=symbols,
@@ -132,7 +173,8 @@ def index():
         margin_mode=margin_mode,
         tp1=tp1,
         tp1_pct=tp1_pct,
-        tp2=tp2
+        tp2=tp2,
+        today_stats=today_stats
     )
 
 if __name__ == "__main__":

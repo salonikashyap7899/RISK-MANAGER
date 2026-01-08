@@ -1,6 +1,6 @@
 html, body {
     height: 100%;
-    overflow: hidden; /* disable outer scrollbars */
+    overflow: hidden;
 }
 
 body {
@@ -12,7 +12,6 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
-/* Main container fills viewport; internal elements handle scroll */
 .container {
     padding: 8px;
     display: flex;
@@ -20,11 +19,10 @@ body {
     gap: 10px;
     height: calc(100vh - 14px);
     box-sizing: border-box;
-    max-width: 1400px;
+    max-width: 1600px;
     margin: 7px auto;
 }
 
-/* Panels: left is fixed-width controls; right is flexible chart + log */
 .panel {
     padding: 8px;
     border: 2px solid #064d64;
@@ -36,10 +34,21 @@ body {
     overflow: hidden;
 }
 
-.panel.left { flex: 0 0 700px; min-width: 360px; max-width: 900px; overflow: auto; }
-.panel.right { flex: 1 1 420px; min-width: 380px; overflow: visible; display: flex; flex-direction: column; }
+.panel.left { 
+    flex: 0 0 700px; 
+    min-width: 360px; 
+    max-width: 900px; 
+    overflow: auto; 
+}
 
-/* Headers */
+.panel.right { 
+    flex: 1 1 420px; 
+    min-width: 380px; 
+    overflow: visible; 
+    display: flex; 
+    flex-direction: column; 
+}
+
 .header {
     background: #0b5d7a;
     padding: 6px 10px;
@@ -51,7 +60,6 @@ body {
     font-size: 1em;
 }
 
-/* Messages */
 .message {
     padding: 10px;
     border-radius: 5px;
@@ -71,22 +79,80 @@ body {
     border: 1px solid #ff4d4d;
 }
 
-/* Rows and form layout */
-.row { display: flex; gap: 8px; margin-bottom: 6px; }
-.col { flex: 1; display: flex; flex-direction: column; }
+.row { 
+    display: flex; 
+    gap: 8px; 
+    margin-bottom: 6px; 
+}
 
-label { font-size: 12px; opacity: 0.9; margin-bottom: 3px; color: #c9d6de; }
+.col { 
+    flex: 1; 
+    display: flex; 
+    flex-direction: column; 
+}
 
-input, select { background: #101b22; color: #00b7ff; border: 1px solid #0d4a5e; padding: 5px 8px; border-radius: 4px; font-size: 12.5px; height: 26px; }
+label { 
+    font-size: 12px; 
+    opacity: 0.9; 
+    margin-bottom: 3px; 
+    color: #c9d6de; 
+}
 
-.button-row { display: flex; gap: 6px; margin: 6px 0; flex-wrap: wrap; }
+input, select { 
+    background: #101b22; 
+    color: #00b7ff; 
+    border: 1px solid #0d4a5e; 
+    padding: 5px 8px; 
+    border-radius: 4px; 
+    font-size: 12.5px; 
+    height: 26px; 
+}
 
-.tab { flex: 1; padding: 5px 0; background: #0d4a5e; border: 1px solid #0ea8d5; color: white; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 0.85em; }
-.tab.active { background: #00baff; color: black; }
+.button-row { 
+    display: flex; 
+    gap: 6px; 
+    margin: 6px 0; 
+    flex-wrap: wrap; 
+}
 
-.status { background: #111d23; padding: 8px; border-radius: 4px; border: 1px solid #1d3a45; color: #a8ffcc; margin: 8px 0; font-size: 0.9em; }
+.tab { 
+    flex: 1; 
+    padding: 5px 0; 
+    background: #0d4a5e; 
+    border: 1px solid #0ea8d5; 
+    color: white; 
+    border-radius: 4px; 
+    font-weight: bold; 
+    cursor: pointer; 
+    font-size: 0.85em; 
+}
 
-.reset { flex: 1; padding: 8px; background: #3a3a3a; color: white; border: 1px solid #777; border-radius: 4px; cursor: pointer; font-size: 0.9em; }
+.tab.active { 
+    background: #00baff; 
+    color: black; 
+}
+
+.status { 
+    background: #111d23; 
+    padding: 8px; 
+    border-radius: 4px; 
+    border: 1px solid #1d3a45; 
+    color: #a8ffcc; 
+    margin: 8px 0; 
+    font-size: 0.9em; 
+}
+
+.reset { 
+    flex: 1; 
+    padding: 8px; 
+    background: #3a3a3a; 
+    color: white; 
+    border: 1px solid #777; 
+    border-radius: 4px; 
+    cursor: pointer; 
+    font-size: 0.9em; 
+}
+
 .place { 
     flex: 2; 
     padding: 8px; 
@@ -109,7 +175,26 @@ input, select { background: #101b22; color: #00b7ff; border: 1px solid #0d4a5e; 
     cursor: not-allowed;
 }
 
-/* CSV Download Button - UPGRADE #3 */
+/* Close All Positions Button */
+.close-all-btn {
+    background: #4d1a1a;
+    color: #ff4d4d;
+    border: 1px solid #ff4d4d;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-left: 10px;
+}
+
+.close-all-btn:hover {
+    background: #ff4d4d;
+    color: #000;
+}
+
+/* CSV Download Button */
 .csv-download-btn {
     background: #1a4d2e;
     color: #00ff88;
@@ -129,55 +214,136 @@ input, select { background: #101b22; color: #00b7ff; border: 1px solid #0d4a5e; 
     color: #000;
 }
 
-/* Chart area occupies roughly top of right panel; trade log fills remaining space and scrolls internally */
-.chart-box { background: #0b0f12; padding: 4px; border-radius: 5px; margin-bottom: 8px; height: 200px; min-height: 140px; overflow: hidden; }
+.chart-box { 
+    background: #0b0f12; 
+    padding: 4px; 
+    border-radius: 5px; 
+    margin-bottom: 8px; 
+    height: 200px; 
+    min-height: 140px; 
+    overflow: hidden; 
+}
 
-.trade-log-section { overflow: hidden; flex: 1 1 auto; padding-top: 4px; max-height: 140px; }
+.trade-log-section { 
+    overflow: hidden; 
+    flex: 1 1 auto; 
+    padding-top: 4px; 
+    max-height: 140px; 
+}
 
-/* Hide visible scrollbars but keep scroll functionality */
-.panel::-webkit-scrollbar, .trade-log-section::-webkit-scrollbar { display: none; }
-.panel { -ms-overflow-style: none; scrollbar-width: none; }
-.trade-log-section { -ms-overflow-style: none; scrollbar-width: none; }
+.panel::-webkit-scrollbar, 
+.trade-log-section::-webkit-scrollbar { 
+    display: none; 
+}
 
-/* Slightly reduce font-size and paddings to avoid vertical overflow */
-.panel { font-size: 0.92em; }
-.panel .header { padding: 5px 8px; }
-.button-row .tab { padding: 4px 6px; font-size: 0.82em; }
-.place, .reset { padding: 6px 10px; height: 30px; }
+.panel { 
+    -ms-overflow-style: none; 
+    scrollbar-width: none; 
+}
 
-/* hide scrollbar visually for left panel while allowing scroll */
-.panel.left::-webkit-scrollbar { display: none; }
-.panel.left { -ms-overflow-style: none; scrollbar-width: none; }
+.trade-log-section { 
+    -ms-overflow-style: none; 
+    scrollbar-width: none; 
+}
 
-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
-table th { background: #0a5168; color: white; padding: 6px; border: 1px solid #0ca7d4; }
-table td { padding: 6px; border: 1px solid #333; }
-.long { color: #00ff99; font-weight: bold; }
-.short { color: #ff5757; font-weight: bold; }
-.no-trades { padding: 5px; opacity: 0.8; }
+.panel { 
+    font-size: 0.92em; 
+}
 
-/* Small screens: stack panels */
-@media (max-width: 900px) {
-    .container { flex-direction: column; height: auto; }
-    .panel.left { flex: none; width: auto; max-width: 100%; }
-    .panel.right { flex: none; width: auto; }
-    html, body { overflow: auto; }
+.panel .header { 
+    padding: 5px 8px; 
+}
+
+.button-row .tab { 
+    padding: 4px 6px; 
+    font-size: 0.82em; 
+}
+
+.place, .reset { 
+    padding: 6px 10px; 
+    height: 30px; 
+}
+
+.panel.left::-webkit-scrollbar { 
+    display: none; 
+}
+
+.panel.left { 
+    -ms-overflow-style: none; 
+    scrollbar-width: none; 
+}
+
+table { 
+    width: 100%; 
+    border-collapse: collapse; 
+    font-size: 0.9em; 
+}
+
+table th { 
+    background: #0a5168; 
+    color: white; 
+    padding: 6px; 
+    border: 1px solid #0ca7d4; 
+}
+
+table td { 
+    padding: 6px; 
+    border: 1px solid #333; 
+}
+
+.long { 
+    color: #00ff99; 
+    font-weight: bold; 
+}
+
+.short { 
+    color: #ff5757; 
+    font-weight: bold; 
+}
+
+.no-trades { 
+    padding: 5px; 
+    opacity: 0.8; 
 }
 
 /* Custom scrollbar for position container */
-#live_positions::-webkit-scrollbar {
+#live_positions::-webkit-scrollbar,
+#trade_history::-webkit-scrollbar {
     width: 6px;
 }
 
-#live_positions::-webkit-scrollbar-track {
+#live_positions::-webkit-scrollbar-track,
+#trade_history::-webkit-scrollbar-track {
     background: #0a1520;
 }
 
-#live_positions::-webkit-scrollbar-thumb {
+#live_positions::-webkit-scrollbar-thumb,
+#trade_history::-webkit-scrollbar-thumb {
     background: #0ca7d4;
     border-radius: 3px;
 }
 
-#live_positions::-webkit-scrollbar-thumb:hover {
+#live_positions::-webkit-scrollbar-thumb:hover,
+#trade_history::-webkit-scrollbar-thumb:hover {
     background: #00b7ff;
+}
+
+/* Small screens: stack panels */
+@media (max-width: 900px) {
+    .container { 
+        flex-direction: column; 
+        height: auto; 
+    }
+    .panel.left { 
+        flex: none; 
+        width: auto; 
+        max-width: 100%; 
+    }
+    .panel.right { 
+        flex: none; 
+        width: auto; 
+    }
+    html, body { 
+        overflow: auto; 
+    }
 }
