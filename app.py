@@ -22,6 +22,12 @@ def live_price_api(symbol):
     price = logic.get_live_price(symbol)
     return jsonify({"price": price if price else 0})
 
+@app.route("/get_open_positions")
+def get_open_positions_api():
+    """NEW ENDPOINT - FIX #1: Returns live positions with P&L"""
+    positions = logic.get_open_positions()
+    return jsonify({"positions": positions})
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     logic.initialize_session()
@@ -95,4 +101,4 @@ def index():
     )
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8001, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)

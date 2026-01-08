@@ -131,6 +131,39 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
         "error": None
     }
 
+def get_open_positions():
+    """Get all open positions with live P&L - FIX #1"""
+    try:
+        client = get_client()
+        if client is None:
+            return []
+        
+        positions = client.futures_position_information()
+        open_positions = []
+        
+        for pos in positions:
+            position_amt = float(pos['positionAmt'])
+            if position_amt != 0:  # Only positions with non-zero amount
+                entry_price = float(pos['entryPrice'])
+                mark_price = float(pos['markPrice'])
+                unrealized_pnl = float(pos['unRealizedProfit'])
+                
+                open_positions.append({
+                    'symbol': pos['symbol'],
+                    'side': 'LONG' if position_amt > 0 else 'SHORT',
+                    'amount': abs(position_amt),
+                    'entry_price': entry_price,
+                    'mark_price': mark_price,
+                    'unrealized_pnl': unrealized_pnl,
+                    'leverage': pos['leverage'],
+                    'liquidation_price': float(pos['liquidationPrice'])
+                })
+        
+        return open_positions
+    except Exception as e:
+        print(f"Error getting open positions: {e}")
+        return []
+
 def execute_trade_action(
     balance, symbol, side, entry, order_type,
     sl_type, sl_value, sizing,
@@ -183,7 +216,7 @@ def execute_trade_action(
         actual_entry = mark
         print(f"📍 Entry price: {actual_entry}")
 
-        # -------- STOP LOSS ORDER --------
+        # -------- STOP LOSS ORDER - FIX #2 --------
         sl_price_value = None
         if sl_value > 0:
             sl_percent = sl_value if sl_type == "SL % Movement" else abs(entry - sl_value) / entry * 100
@@ -198,44 +231,39 @@ def execute_trade_action(
 
             try:
                 print(f"\n🛑 Placing SL order @ {sl_price}")
-                # Use STOP instead of STOP_MARKET with closePosition
+                # FIX: Use STOP_MARKET instead of STOP for futures
                 sl_order = client.futures_create_order(
                     symbol=symbol,
                     side=exit_side,
-                    type="STOP",
+                    type="STOP_MARKET",
                     stopPrice=sl_price,
-                    price=sl_price,  # Required for STOP orders
-                    timeInForce="GTC",
                     closePosition="true"
                 )
                 print(f"✅ Stop Loss placed: {sl_order['orderId']}")
             except BinanceAPIException as e:
                 print(f"❌ SL Order Error: {e}")
-                # Don't return error, continue with trade
                 print(f"⚠️ Trade executed but SL placement failed")
 
-        # -------- TAKE PROFIT 1 --------
+        # -------- TAKE PROFIT 1 - FIX #2 --------
         if tp1 > 0 and tp1_pct > 0:
             tp1_price = round_price(symbol, tp1)
             tp1_qty = round_qty(symbol, qty * (tp1_pct / 100))
             
             try:
                 print(f"\n🎯 Placing TP1 order: {tp1_qty} @ {tp1_price}")
-                # Use TAKE_PROFIT instead of TAKE_PROFIT_MARKET
+                # FIX: Use TAKE_PROFIT_MARKET instead of TAKE_PROFIT
                 tp1_order = client.futures_create_order(
                     symbol=symbol,
                     side=exit_side,
-                    type="TAKE_PROFIT",
+                    type="TAKE_PROFIT_MARKET",
                     stopPrice=tp1_price,
-                    price=tp1_price,  # Required for TAKE_PROFIT orders
-                    quantity=tp1_qty,
-                    timeInForce="GTC"
+                    quantity=tp1_qty
                 )
                 print(f"✅ TP1 placed: {tp1_order['orderId']}")
             except BinanceAPIException as e:
                 print(f"❌ TP1 Order Error: {e}")
         
-        # -------- TAKE PROFIT 2 --------
+        # -------- TAKE PROFIT 2 - FIX #2 --------
         if tp2 > 0:
             tp2_price = round_price(symbol, tp2)
             
@@ -248,21 +276,17 @@ def execute_trade_action(
                     tp2_order = client.futures_create_order(
                         symbol=symbol,
                         side=exit_side,
-                        type="TAKE_PROFIT",
+                        type="TAKE_PROFIT_MARKET",
                         stopPrice=tp2_price,
-                        price=tp2_price,  # Required for TAKE_PROFIT orders
-                        quantity=tp2_qty,
-                        timeInForce="GTC"
+                        quantity=tp2_qty
                     )
                 else:
                     # Close entire position using closePosition
                     tp2_order = client.futures_create_order(
                         symbol=symbol,
                         side=exit_side,
-                        type="TAKE_PROFIT",
+                        type="TAKE_PROFIT_MARKET",
                         stopPrice=tp2_price,
-                        price=tp2_price,
-                        timeInForce="GTC",
                         closePosition="true"
                     )
                 print(f"✅ TP2 placed: {tp2_order['orderId']}")
