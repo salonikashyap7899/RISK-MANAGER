@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for
-from flask_session import Session
 from datetime import datetime
 import logic
 import os
@@ -7,15 +6,8 @@ import os
 app = Flask(__name__)
 app.secret_key = "trading_secret_key_ultra_secure_2025"
 
-# Configure server-side session
-app.config['SESSION_TYPE'] = 'filesystem'
+# Use simple client-side sessions (no flask-session needed)
 app.config['SESSION_PERMANENT'] = False
-app.config['SESSION_USE_SIGNER'] = True
-app.config['SESSION_FILE_DIR'] = '/tmp/flask_session'
-app.config['SESSION_FILE_THRESHOLD'] = 500
-
-# Initialize session
-Session(app)
 
 @app.route("/get_live_price/<symbol>")
 def live_price_api(symbol):
