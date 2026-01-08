@@ -5,8 +5,14 @@ from binance.exceptions import BinanceAPIException
 import config
 import math
 import traceback
+import time
 
 _client = None
+_symbol_cache = None
+_symbol_cache_time = 0
+_price_cache = {}
+_price_cache_time = {}
+CACHE_DURATION = 5  # Cache duration in seconds
 
 def get_client():
     global _client
@@ -29,13 +35,27 @@ def initialize_session():
     session.modified = True
 
 def get_all_exchange_symbols():
+    """Get symbols with caching to avoid rate limits"""
+    global _symbol_cache, _symbol_cache_time
+    
+    current_time = time.time()
+    # Cache symbols for 1 hour
+    if _symbol_cache and (current_time - _symbol_cache_time) < 3600:
+        return _symbol_cache
+    
     try:
         client = get_client()
-        if client is None: return ["BTCUSDT", "ETHUSDT"]
+        if client is None: 
+            return ["BTCUSDT", "ETHUSDT"]
         info = client.futures_exchange_info()
-        return sorted([s["symbol"] for s in info["symbols"] if s["status"] == "TRADING" and s["quoteAsset"] == "USDT"])
-    except:
-        return ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
+        symbols = sorted([s["symbol"] for s in info["symbols"] if s["status"] == "TRADING" and s["quoteAsset"] == "USDT"])
+        _symbol_cache = symbols
+        _symbol_cache_time = current_time
+        return symbols
+    except Exception as e:
+        print(f"Error getting symbols: {e}")
+        # Return cached or default
+        return _symbol_cache if _symbol_cache else ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
 
 def get_live_balance():
     try:
@@ -48,13 +68,25 @@ def get_live_balance():
         return None, None
 
 def get_live_price(symbol):
+    """Get price with caching to avoid rate limits"""
+    global _price_cache, _price_cache_time
+    
+    current_time = time.time()
+    # Use cached price if less than CACHE_DURATION seconds old
+    if symbol in _price_cache and (current_time - _price_cache_time.get(symbol, 0)) < CACHE_DURATION:
+        return _price_cache[symbol]
+    
     try:
         client = get_client()
         if client is None: return None
-        return float(client.futures_symbol_ticker(symbol=symbol)["price"])
+        price = float(client.futures_symbol_ticker(symbol=symbol)["price"])
+        _price_cache[symbol] = price
+        _price_cache_time[symbol] = current_time
+        return price
     except Exception as e:
         print(f"Error getting price for {symbol}: {e}")
-        return None
+        # Return cached price if available
+        return _price_cache.get(symbol, None)
 
 def get_symbol_filters(symbol):
     try:
