@@ -1,35 +1,50 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Risk Manager Pro</title>
+    <title>Risk Manager Pro - Enhanced</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <div class="container">
     <div class="panel left">
         <div class="header">CORE CONTROLS</div>
-        {% if trade_status %}<div class="message {{ 'success' if trade_status.success else 'error' }}">{{ trade_status.message }}</div>{% endif %}
+        {% if trade_status %}
+        <div class="message {{ 'success' if trade_status.success else 'error' }}">
+            {{ trade_status.message }}
+        </div>
+        {% endif %}
 
         <form method="POST">
             <input type="hidden" name="side" id="side_hidden" value="{{default_side}}">
             <input type="hidden" name="prev_symbol" value="{{selected_symbol}}">
 
             <div class="row">
-                <div class="col"><label>Unutilized Capital (1% Risk Pool)</label><input value="${{unutilized | round(2)}}" disabled style="color: #7aff00;"></div>
+                <div class="col">
+                    <label>Unutilized Capital (1% Risk Pool)</label>
+                    <input value="${{unutilized | round(2)}}" disabled style="color: #7aff00;">
+                </div>
             </div>
 
             <div class="row">
                 <div class="col">
                     <label>Symbol</label>
                     <select name="symbol" onchange="this.form.submit()">
-                        {% for sym in symbols %}<option value="{{sym}}" {{ 'selected' if sym == selected_symbol }}>{{sym}}</option>{% endfor %}
+                        {% for sym in symbols %}
+                        <option value="{{sym}}" {{ 'selected' if sym == selected_symbol }}>{{sym}}</option>
+                        {% endfor %}
                     </select>
                 </div>
             </div>
 
             <div class="button-row">
-                <button type="button" class="tab {{ 'active' if default_side == 'LONG' }}" onclick="document.getElementById('side_hidden').value='LONG'; this.form.submit();">LONG</button>
-                <button type="button" class="tab {{ 'active' if default_side == 'SHORT' }}" onclick="document.getElementById('side_hidden').value='SHORT'; this.form.submit();">SHORT</button>
+                <button type="button" class="tab {{ 'active' if default_side == 'LONG' }}" 
+                        onclick="document.getElementById('side_hidden').value='LONG'; this.form.submit();">
+                    LONG
+                </button>
+                <button type="button" class="tab {{ 'active' if default_side == 'SHORT' }}" 
+                        onclick="document.getElementById('side_hidden').value='SHORT'; this.form.submit();">
+                    SHORT
+                </button>
             </div>
 
             <div class="row">
@@ -50,13 +65,25 @@
             </div>
 
             <div class="row">
-                <div class="col"><label>Entry Price</label><input type="number" name="entry" id="entry_input" value="{{default_entry}}" step="any"></div>
+                <div class="col">
+                    <label>Entry Price</label>
+                    <input type="number" name="entry" id="entry_input" value="{{default_entry}}" step="any">
+                </div>
             </div>
 
             <div class="row">
-                <div class="col"><label>TP 1 Price</label><input type="number" name="tp1" value="{{tp1}}" step="any"></div>
-                <div class="col"><label>TP 1 Qty %</label><input type="number" name="tp1_pct" value="{{tp1_pct}}"></div>
-                <div class="col"><label>TP 2 Price</label><input type="number" name="tp2" value="{{tp2}}" step="any"></div>
+                <div class="col">
+                    <label>TP 1 Price</label>
+                    <input type="number" name="tp1" value="{{tp1}}" step="any">
+                </div>
+                <div class="col">
+                    <label>TP 1 Qty %</label>
+                    <input type="number" name="tp1_pct" value="{{tp1_pct}}">
+                </div>
+                <div class="col">
+                    <label>TP 2 Price</label>
+                    <input type="number" name="tp2" value="{{tp2}}" step="any">
+                </div>
             </div>
 
             <div class="row">
@@ -67,19 +94,36 @@
                         <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>SL % Movement</option>
                     </select>
                 </div>
-                <div class="col"><label>SL Value (Mandatory)</label><input type="number" name="sl_value" value="{{default_sl_value}}" step="any" onchange="this.form.submit();" required></div>
+                <div class="col">
+                    <label>SL Value (Mandatory)</label>
+                    <input type="number" name="sl_value" value="{{default_sl_value}}" step="any" 
+                           onchange="this.form.submit();" required>
+                </div>
             </div>
 
             <div class="row">
-                <div class="col"><label>Pos Override</label><input type="number" name="user_units" step="any"><small>Sug: {{sizing.suggested_units}}</small></div>
-                <div class="col"><label>Lev Override</label><input type="number" name="user_lev" step="any"><small>Sug: {{sizing.suggested_leverage}}x</small></div>
+                <div class="col">
+                    <label>Pos Override</label>
+                    <input type="number" name="user_units" step="any">
+                    <small>Sug: {{sizing.suggested_units}}</small>
+                </div>
+                <div class="col">
+                    <label>Lev Override</label>
+                    <input type="number" name="user_lev" step="any">
+                    <small>Sug: {{sizing.suggested_leverage}}x</small>
+                </div>
             </div>
 
-            <button type="submit" name="place_order" class="place" {% if default_sl_value <= 0 %} disabled style="filter: grayscale(1);" {% endif %}>
-                {% if default_sl_value <= 0 %} LOCK: SET SL FIRST {% else %} EXECUTE EXCHANGE ORDER {% endif %}
+            <button type="submit" name="place_order" class="place" 
+                    {% if default_sl_value <= 0 %} disabled style="filter: grayscale(1);" {% endif %}>
+                {% if default_sl_value <= 0 %} 
+                    LOCK: SET SL FIRST 
+                {% else %} 
+                    EXECUTE EXCHANGE ORDER 
+                {% endif %}
             </button>
 
-           <div class="status-box">
+            <div class="status-box">
                 {% if not sizing.error %}
                     <div class="formula" style="background: #06212a; padding: 10px; border-radius: 4px; border: 1px solid #0ca7d4; margin-top: 10px;">
                         <b style="color: #00b7ff;">📐 Precision Logic:</b><br>
@@ -90,54 +134,187 @@
                             • <b>Formula:</b> (Risk / (SL% + 0.2)) × 100
                         </span>
                     </div>
+                {% else %}
+                    <div class="error">{{ sizing.error }}</div>
                 {% endif %}
             </div>
         </form>
     </div>
 
-  <div class="panel right">
-    <div id="tv_chart" style="height: 450px; width: 100%;"></div>
+    <div class="panel right">
+        <div id="tv_chart" style="height: 450px; width: 100%;"></div>
 
-    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+        <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+        <script type="text/javascript">
+          new TradingView.widget({
+            "autosize": true,
+            "symbol": "BINANCE:{{ selected_symbol or 'BTCUSDT' }}",
+            "interval": "5",
+            "timezone": "Etc/UTC",
+            "theme": "dark",
+            "style": "1",
+            "locale": "en",
+            "toolbar_bg": "#f1f3f6",
+            "enable_publishing": false,
+            "hide_top_toolbar": false,
+            "save_image": false,
+            "container_id": "tv_chart"
+          });
+        </script>
 
-    <script type="text/javascript">
-      new TradingView.widget({
-        "autosize": true,
-        "symbol": "BINANCE:{{ selected_symbol or 'BTCUSDT' }}",
-        "interval": "5",
-        "timezone": "Etc/UTC",
-        "theme": "dark",
-        "style": "1",
-        "locale": "en",
-        "toolbar_bg": "#f1f3f6",
-        "enable_publishing": false,
-        "hide_top_toolbar": false,
-        "save_image": false,
-        "container_id": "tv_chart"
-      });
-    </script>
-
-    <div class="header">LIVE LOG (Today's Limit: 4)</div>
-    <div style="background: #000; border: 1px solid #333; height: 250px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 11px; margin-top: 10px;">
-        {% for trade in trades|reverse %}
-        <div style="border-bottom: 1px solid #222; padding: 5px 0; color: #eee; display: flex; justify-content: space-between;">
-            <span>
-                <b style="color: {{ '#00ff88' if trade.side == 'LONG' else '#ff4d4d' }}">{{ trade.side }}</b> 
-                {{ trade.symbol }} ({{ trade.units }})
-            </span>
-            <span>
-                Ent: {{ trade.entry | round(2) }} | SL: {{ trade.sl | round(2) if trade.sl else 'None' }}
-            </span>
+        <!-- UPGRADE #1: ENHANCED LIVE POSITIONS WITH FULL BINANCE-STYLE METRICS -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+            <div class="header" style="margin: 0; flex: 1;">OPEN POSITIONS (Live P&L)</div>
         </div>
-        {% endfor %}
-        {% if not trades %}
-        <div style="text-align: center; color: #555; padding-top: 20px;">No trades placed yet.</div>
-        {% endif %}
+        
+        <div id="live_positions" style="background: #000; border: 1px solid #333; max-height: 280px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 11px; margin-top: 5px;">
+            <div style="text-align: center; color: #888; padding-top: 10px;">
+                Loading positions...
+            </div>
+        </div>
+
+        <!-- UPGRADE #3: CSV DOWNLOAD BUTTON -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+            <div class="header" style="margin: 0; flex: 1;">TRADE LOG (Today's Limit: 4 | Total: {{ trades|length }})</div>
+            <a href="/download_trades" class="csv-download-btn" title="Download Complete Trade History">
+                📥 CSV
+            </a>
+        </div>
+        
+        <div style="background: #000; border: 1px solid #333; height: 120px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 11px; margin-top: 5px;">
+            {% if trades %}
+                {% for trade in trades|reverse %}
+                <div style="border-bottom: 1px solid #222; padding: 5px 0; color: #eee;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>
+                            <b style="color: {{ '#00ff88' if trade.side == 'LONG' else '#ff4d4d' }}">{{ trade.side }}</b> 
+                            {{ trade.symbol }} ({{ trade.units }})
+                        </span>
+                        <span style="color: #888; font-size: 10px;">{{ trade.time }}</span>
+                    </div>
+                    <div style="font-size: 10px; color: #bbb; margin-top: 2px;">
+                        Ent: {{ trade.entry }} | 
+                        SL: {{ trade.sl if trade.sl else 'None' }} | 
+                        TP1: {{ trade.tp1 if trade.tp1 else 'N/A' }} | 
+                        TP2: {{ trade.tp2 if trade.tp2 else 'N/A' }} | 
+                        Lev: {{ trade.leverage }}x
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div style="text-align: center; color: #555; padding-top: 20px;">
+                    📉 No trades placed yet. Ready to execute!
+                </div>
+            {% endif %}
+        </div>
     </div>
-  </div>
 </div>
 
 <script>
+    // UPGRADE #1: Enhanced live positions with full Binance-style metrics
+    function updateLivePositions() {
+        fetch('/get_open_positions')
+            .then(r => r.json())
+            .then(data => {
+                const container = document.getElementById('live_positions');
+                if (data.positions && data.positions.length > 0) {
+                    let html = '';
+                    data.positions.forEach(pos => {
+                        const pnlColor = pos.unrealized_pnl >= 0 ? '#00ff88' : '#ff4d4d';
+                        const pnlSymbol = pos.unrealized_pnl >= 0 ? '+' : '';
+                        const roiColor = pos.roi_percent >= 0 ? '#00ff88' : '#ff4d4d';
+                        const roiSymbol = pos.roi_percent >= 0 ? '+' : '';
+                        
+                        html += `
+                            <div style="border: 1px solid #1a3a4a; border-radius: 6px; padding: 12px; margin-bottom: 10px; background: #0a1520;">
+                                <!-- Header Row -->
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <div>
+                                        <span style="background: ${pos.side === 'LONG' ? '#1a4d2e' : '#4d1a1a'}; color: ${pos.side === 'LONG' ? '#00ff88' : '#ff4d4d'}; padding: 2px 8px; border-radius: 3px; font-weight: bold; font-size: 10px;">
+                                            ${pos.symbol}
+                                        </span>
+                                        <span style="color: #888; font-size: 10px; margin-left: 8px;">
+                                            Perp | ${pos.side === 'LONG' ? 'Isolated' : 'Isolated'} ${pos.leverage}x
+                                        </span>
+                                    </div>
+                                    <button onclick="closePosition('${pos.symbol}')" style="background: #3a3a3a; border: 1px solid #555; color: #fff; padding: 3px 10px; border-radius: 3px; cursor: pointer; font-size: 10px;">
+                                        ✕ Close
+                                    </button>
+                                </div>
+                                
+                                <!-- Main Metrics Row -->
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px;">
+                                    <!-- Unrealized PNL -->
+                                    <div>
+                                        <div style="color: #888; font-size: 9px; margin-bottom: 2px;">Unrealized PNL (USDT)</div>
+                                        <div style="color: ${pnlColor}; font-weight: bold; font-size: 14px;">
+                                            ${pnlSymbol}${pos.unrealized_pnl.toFixed(2)}
+                                        </div>
+                                    </div>
+                                    <!-- ROI -->
+                                    <div>
+                                        <div style="color: #888; font-size: 9px; margin-bottom: 2px;">ROI</div>
+                                        <div style="color: ${roiColor}; font-weight: bold; font-size: 14px;">
+                                            ${roiSymbol}${pos.roi_percent.toFixed(2)}%
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Detailed Metrics Grid -->
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 10px;">
+                                    <!-- Size -->
+                                    <div>
+                                        <div style="color: #888; font-size: 9px;">Size (USDT)</div>
+                                        <div style="color: #eee;">${pos.size_usdt.toFixed(4)}</div>
+                                    </div>
+                                    <!-- Margin -->
+                                    <div>
+                                        <div style="color: #888; font-size: 9px;">Margin (USDT)</div>
+                                        <div style="color: #eee;">${pos.margin_usdt.toFixed(2)}</div>
+                                    </div>
+                                    <!-- Margin Ratio -->
+                                    <div>
+                                        <div style="color: #888; font-size: 9px;">Margin Ratio</div>
+                                        <div style="color: ${pos.margin_ratio > 80 ? '#ff4d4d' : '#eee'};">${pos.margin_ratio.toFixed(2)}%</div>
+                                    </div>
+                                    <!-- Entry Price -->
+                                    <div>
+                                        <div style="color: #888; font-size: 9px;">Entry Price (USDT)</div>
+                                        <div style="color: #eee;">${pos.entry_price.toFixed(6)}</div>
+                                    </div>
+                                    <!-- Mark Price -->
+                                    <div>
+                                        <div style="color: #888; font-size: 9px;">Mark Price (USDT)</div>
+                                        <div style="color: #eee;">${pos.mark_price.toFixed(6)}</div>
+                                    </div>
+                                    <!-- Liquidation Price -->
+                                    <div>
+                                        <div style="color: #888; font-size: 9px;">Liq. Price (USDT)</div>
+                                        <div style="color: #ff4d4d;">${pos.liquidation_price.toFixed(6)}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = '<div style="text-align: center; color: #555; padding-top: 10px;">✅ No open positions</div>';
+                }
+            })
+            .catch(err => {
+                console.log('Position update error:', err);
+                document.getElementById('live_positions').innerHTML = 
+                    '<div style="text-align: center; color: #ff4d4d; padding-top: 10px;">❌ Error loading positions</div>';
+            });
+    }
+
+    function closePosition(symbol) {
+        if(confirm(`Close position for ${symbol}?`)) {
+            alert('Close position feature - implement via Binance API');
+            // Implement close position logic here
+        }
+    }
+
     function updateLivePrice() {
         const symbol = document.querySelector('select[name="symbol"]').value;
         const orderType = document.getElementById('order_type_select').value;
@@ -146,10 +323,24 @@
         if (orderType === "MARKET") {
             fetch(`/get_live_price/${symbol}`)
                 .then(r => r.json())
-                .then(data => { if(data.price) entryInput.value = data.price; });
+                .then(data => { 
+                    if(data.price && data.price > 0) {
+                        entryInput.value = data.price;
+                    }
+                })
+                .catch(err => console.log('Price update error:', err));
         }
     }
-    setInterval(updateLivePrice, 2000);
+    
+    // Update price every 5 seconds
+    setInterval(updateLivePrice, 5000);
+    
+    // Update positions every 8 seconds
+    setInterval(updateLivePositions, 8000);
+    
+    // Initial updates
+    updateLivePrice();
+    updateLivePositions();
 </script>
 </body>
 </html>
