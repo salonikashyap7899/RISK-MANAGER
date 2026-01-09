@@ -19,13 +19,28 @@ def get_client():
     if _client is None:
         try:
             _client = Client(config.BINANCE_KEY, config.BINANCE_SECRET)
-            # Test connection
+
+            # 🔑 FIX: Sync Binance server time
+            server_time = _client.get_server_time()
+            server_ts = server_time["serverTime"]
+            local_ts = int(time.time() * 1000)
+
+            _client.timestamp_offset = server_ts - local_ts
+
+            # 🔑 FIX: Increase recv window tolerance
+            _client.RECV_WINDOW = 60000  # 60 seconds
+
+            # Test connection AFTER sync
             _client.futures_account()
-            print("✅ Binance client initialized successfully")
+
+            print("✅ Binance client initialized & time-synced successfully")
+
         except Exception as e:
             print(f"❌ Error initializing Binance client: {e}")
             _client = None
+
     return _client
+
 
 def initialize_session():
     if "trades" not in session:

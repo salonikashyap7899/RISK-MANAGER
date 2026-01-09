@@ -169,9 +169,9 @@
           });
         </script>
 
-        <!-- FIX #2 & #4: REAL-TIME LIVE POSITIONS WITH TIMESTAMPS -->
+        <!-- FIX #4: DYNAMIC POSITION COUNTER -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-            <div class="header" style="margin: 0; flex: 1;">POSITIONS (1) | Open Orders (0) | Bots</div>
+            <div class="header" style="margin: 0; flex: 1;" id="position_header">POSITIONS (0) | Open Orders (0) | Bots</div>
             <button onclick="closeAllPositions()" class="close-all-btn" data-testid="close-all-positions-button">
                 Close All Positions
             </button>
@@ -206,7 +206,13 @@
             .then(r => r.json())
             .then(data => {
                 const container = document.getElementById('live_positions');
+                const header = document.getElementById('position_header');
+                
                 if (data.positions && data.positions.length > 0) {
+                    // FIX #4: Update dynamic counter
+                    const totalOrders = data.positions.reduce((sum, pos) => sum + (pos.open_orders ? pos.open_orders.length : 0), 0);
+                    header.textContent = `POSITIONS (${data.positions.length}) | Open Orders (${totalOrders}) | Bots`;
+                    
                     let html = '';
                     data.positions.forEach(pos => {
                         const pnlColor = pos.unrealized_pnl >= 0 ? '#00ff88' : '#ff4d4d';
@@ -274,7 +280,7 @@
                                     </div>
                                     <div>
                                         <div style="color: #888; font-size: 9px;">Margin Ratio</div>
-                                        <div style="color: ${pos.margin_ratio > 80 ? '#ff4d4d' : '#eee'};">${pos.margin_ratio.toFixed(2)}%</div>
+                                        <div style="color: ${pos.margin_ratio > 80 ? '#ff4d4d' : '#eee'}">${pos.margin_ratio.toFixed(2)}%</div>
                                     </div>
                                     <div>
                                         <div style="color: #888; font-size: 9px;">Entry Price (USDT)</div>
@@ -318,6 +324,8 @@
                     });
                     container.innerHTML = html;
                 } else {
+                    // FIX #4: Reset counter to 0
+                    header.textContent = 'POSITIONS (0) | Open Orders (0) | Bots';
                     container.innerHTML = '<div style="text-align: center; color: #555; padding-top: 10px;" data-testid="no-positions">✅ No open positions</div>';
                 }
             })
@@ -382,7 +390,7 @@
 
     // FIX #5: Partial close modal
     function showPartialCloseModal(symbol, totalAmount) {
-        const percent = prompt(`Partial Close ${symbol}\\n\\nEnter percentage to close (1-99):`, '50');
+        const percent = prompt(`Partial Close ${symbol}\n\nEnter percentage to close (1-99):`, '50');
         if (percent && percent > 0 && percent < 100) {
             partialClosePosition(symbol, parseFloat(percent));
         }
@@ -425,8 +433,23 @@
     // Close all positions
     function closeAllPositions() {
         if(confirm('Close ALL positions?')) {
-            alert('Implement close all functionality');
-            // Iterate through all positions and close them
+            fetch('/get_open_positions')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.positions && data.positions.length > 0) {
+                        let promises = data.positions.map(pos => 
+                            fetch(`/close_position/${pos.symbol}`, {method: 'POST'})
+                        );
+                        Promise.all(promises).then(() => {
+                            alert('All positions closed!');
+                            updateLivePositions();
+                            updateTradeHistory();
+                        });
+                    } else {
+                        alert('No positions to close');
+                    }
+                })
+                .catch(err => alert('Error: ' + err));
         }
     }
 
