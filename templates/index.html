@@ -25,7 +25,7 @@
                 </div>
             </div>
 
-            <!-- FIX #1: Display trade limits -->
+            <!-- Display trade limits -->
             <div class="status" style="background: #1a1a2e; border-color: #16213e; margin-bottom: 10px;">
                 <strong>Daily Limits:</strong> 
                 <span id="total_trades_display">{{today_stats.total_trades}}/{{today_stats.max_trades}}</span> total trades | 
@@ -169,7 +169,7 @@
           });
         </script>
 
-        <!-- FIX #4: DYNAMIC POSITION COUNTER -->
+        <!-- FIXED: DYNAMIC POSITION COUNTER -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
             <div class="header" style="margin: 0; flex: 1;" id="position_header">POSITIONS (0) | Open Orders (0) | Bots</div>
             <button onclick="closeAllPositions()" class="close-all-btn" data-testid="close-all-positions-button">
@@ -183,7 +183,7 @@
             </div>
         </div>
 
-        <!-- FIX #2: LIVE TRADE HISTORY FROM BINANCE -->
+        <!-- FIXED: LIVE TRADE HISTORY FROM BINANCE -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
             <div class="header" style="margin: 0; flex: 1;">LIVE TRADE LOG (Binance)</div>
             <a href="/download_trades" class="csv-download-btn" title="Download Trade History" data-testid="download-csv-button">
@@ -200,7 +200,7 @@
 </div>
 
 <script>
-    // FIX #2 & #4: Enhanced live positions with REAL Binance data and timestamps
+    // FIXED: Enhanced live positions with REAL Binance data and timestamps
     function updateLivePositions() {
         fetch('/get_open_positions')
             .then(r => r.json())
@@ -209,7 +209,7 @@
                 const header = document.getElementById('position_header');
                 
                 if (data.positions && data.positions.length > 0) {
-                    // FIX #4: Update dynamic counter
+                    // Update dynamic counter
                     const totalOrders = data.positions.reduce((sum, pos) => sum + (pos.open_orders ? pos.open_orders.length : 0), 0);
                     header.textContent = `POSITIONS (${data.positions.length}) | Open Orders (${totalOrders}) | Bots`;
                     
@@ -220,7 +220,7 @@
                         const roiColor = pos.roi_percent >= 0 ? '#00ff88' : '#ff4d4d';
                         const roiSymbol = pos.roi_percent >= 0 ? '+' : '';
                         
-                        // FIX #4: Show live timestamp
+                        // Show live timestamp
                         html += `
                             <div style="border: 1px solid #1a3a4a; border-radius: 6px; padding: 12px; margin-bottom: 10px; background: #0a1520;" data-testid="position-${pos.symbol}">
                                 <!-- Header Row with timestamp -->
@@ -296,7 +296,7 @@
                                     </div>
                                 </div>
 
-                                <!-- FIX #6: Editable SL Section -->
+                                <!-- Editable SL Section -->
                                 <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #1a3a4a;">
                                     <div style="display: flex; align-items: center; gap: 10px;">
                                         <div style="flex: 1;">
@@ -324,7 +324,7 @@
                     });
                     container.innerHTML = html;
                 } else {
-                    // FIX #4: Reset counter to 0
+                    // Reset counter to 0
                     header.textContent = 'POSITIONS (0) | Open Orders (0) | Bots';
                     container.innerHTML = '<div style="text-align: center; color: #555; padding-top: 10px;" data-testid="no-positions">✅ No open positions</div>';
                 }
@@ -336,7 +336,7 @@
             });
     }
 
-    // FIX #2: Update trade history with REAL Binance data
+    // FIXED: Update trade history with REAL Binance data
     function updateTradeHistory() {
         fetch('/get_trade_history')
             .then(r => r.json())
@@ -375,7 +375,7 @@
             });
     }
 
-    // FIX #1: Update trade limits display
+    // Update trade limits display
     function updateTradeLimits() {
         fetch('/get_today_stats')
             .then(r => r.json())
@@ -388,7 +388,7 @@
             .catch(err => console.log('Stats error:', err));
     }
 
-    // FIX #5: Partial close modal
+    // Partial close modal
     function showPartialCloseModal(symbol, totalAmount) {
         const percent = prompt(`Partial Close ${symbol}\n\nEnter percentage to close (1-99):`, '50');
         if (percent && percent > 0 && percent < 100) {
@@ -396,7 +396,7 @@
         }
     }
 
-    // FIX #5: Partial close position
+    // Partial close position
     function partialClosePosition(symbol, closePercent) {
         fetch('/partial_close', {
             method: 'POST',
@@ -453,7 +453,7 @@
         }
     }
 
-    // FIX #6: Update stop loss
+    // Update stop loss
     function updateSL(symbol) {
         const input = document.getElementById(`sl_adjust_${symbol}`);
         const slPercent = parseFloat(input.value);
@@ -502,7 +502,7 @@
         }
     }
     
-    // FIX #4: Update intervals (3 seconds for positions, 5 seconds for trades)
+    // Update intervals (3 seconds for positions, 5 seconds for trades)
     setInterval(updateLivePrice, 5000);
     setInterval(updateLivePositions, 3000);  // Live position updates every 3 seconds
     setInterval(updateTradeHistory, 5000);   // Trade history every 5 seconds
