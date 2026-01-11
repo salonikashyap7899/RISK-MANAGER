@@ -25,7 +25,7 @@ def get_open_positions_api():
 
 @app.route("/get_trade_history")
 def get_trade_history_api():
-    """FIXED: Get REAL trade history from Binance"""
+    """FIXED: Get COMPLETE trade history from Binance - past and current"""
     trades = logic.get_trade_history()
     return jsonify({"trades": trades})
 
@@ -80,7 +80,7 @@ def download_trades():
     # Write header
     writer.writerow([
         'Time (UTC)', 'Symbol', 'Side', 'Quantity', 
-        'Price', 'Realized PnL', 'Commission'
+        'Price', 'Realized PnL', 'Commission', 'Order ID'
     ])
     
     # Write trade data
@@ -92,7 +92,8 @@ def download_trades():
             trade.get('qty', ''),
             trade.get('price', ''),
             trade.get('realized_pnl', ''),
-            trade.get('commission', '')
+            trade.get('commission', ''),
+            trade.get('order_id', '')
         ])
     
     # Prepare response

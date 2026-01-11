@@ -6,8 +6,9 @@ import config
 import math
 import traceback
 import time
-
-
+import hmac
+import hashlib
+import requests
 
 _client = None
 _symbol_cache = None
@@ -19,7 +20,7 @@ CACHE_DURATION = 5  # Cache duration in seconds
 def binance_algo_order(symbol, side, order_type, stopPrice, quantity=None, closePosition=False):
     """Universal ALGO order compatible with all Binance libraries"""
 
-    url = "https://fapi.binance.com/fapi/v1/algo/order"
+    url = "https://fapi.binance.com/fapi/v1/order"
     timestamp = int(time.time() * 1000)
 
     params = {
@@ -64,7 +65,6 @@ def binance_algo_order(symbol, side, order_type, stopPrice, quantity=None, close
 def sync_time_with_binance():
     """Sync local time with Binance server time"""
     try:
-        import requests
         response = requests.get('https://fapi.binance.com/fapi/v1/time')
         server_time = response.json()['serverTime']
         local_time = int(time.time() * 1000)
@@ -359,13 +359,18 @@ def update_trade_stats(symbol):
     session["stats"][today]["symbols"][symbol] += 1
     
     session.modified = True
+
 def execute_trade_action(
     balance, symbol, side, entry, order_type,
     sl_type, sl_value, sizing,
     user_units, user_lev, margin_mode,
     tp1, tp1_pct, tp2
 ):
-    """FIXED: Execute trade with corrected order types and better error handling"""
+    """FIXED: Execute trade with MANDATORY TP/SL and better error handling"""
+
+    # CRITICAL: Check if SL is provided (MANDATORY)
+    if sl_value <= 0:
+        return {"success": False, "message": "❌ STOP LOSS IS MANDATORY! Please set SL before executing trade."}
 
     # Check trade limits
     can_trade, limit_msg = check_trade_limits(symbol)
@@ -420,56 +425,73 @@ def execute_trade_action(
             actual_entry = float(client.futures_mark_price(symbol=symbol)["markPrice"])
 
         # -------------------------
-        #      STOP LOSS (ALGO)
+        #  MANDATORY STOP LOSS
         # -------------------------
         sl_order_id = None
         sl_price_value = None
 
-        if sl_value > 0:
-            sl_percent = sl_value if sl_type == "SL % Movement" else abs(entry - sl_value) / entry * 100
+        # Calculate SL price
+        sl_percent = sl_value if sl_type == "SL % Movement" else abs(entry - sl_value) / entry * 100
 
-            if side == "LONG":
-                sl_price = actual_entry * (1 - sl_percent / 100)
-            else:
-                sl_price = actual_entry * (1 + sl_percent / 100)
+        if side == "LONG":
+            sl_price = actual_entry * (1 - sl_percent / 100)
+        else:
+            sl_price = actual_entry * (1 + sl_percent / 100)
 
-            sl_price = round_price(symbol, sl_price)
-            sl_price_value = sl_price
+        sl_price = round_price(symbol, sl_price)
+        sl_price_value = sl_price
 
-            sl_resp = binance_algo_order(
+        # Place MANDATORY SL order using STOP_MARKET
+        try:
+            sl_order = client.futures_create_order(
                 symbol=symbol,
                 side=exit_side,
-                order_type="STOP",
+                type="STOP_MARKET",
                 stopPrice=sl_price,
-                closePosition=True
+                closePosition=True,
+                recvWindow=10000
             )
-
-            if sl_resp["success"]:
-                sl_order_id = sl_resp["orderId"]
-            else:
-                return {"success": False, "message": "SL Failed: " + str(sl_resp["error"])}
+            sl_order_id = sl_order['orderId']
+            print(f"✅ MANDATORY SL placed @ {sl_price}: Order ID {sl_order_id}")
+        except Exception as sl_error:
+            # If SL fails, close the position immediately
+            print(f"❌ SL Failed: {sl_error}. Closing position for safety.")
+            try:
+                client.futures_create_order(
+                    symbol=symbol,
+                    side=exit_side,
+                    type="MARKET",
+                    quantity=qty,
+                    recvWindow=10000
+                )
+            except:
+                pass
+            return {"success": False, "message": f"❌ SL placement failed: {str(sl_error)}. Position closed for safety."}
 
         # -------------------------
-        #     TAKE PROFIT 1 (ALGO)
+        #     TAKE PROFIT 1 (Optional)
         # -------------------------
         tp1_order_id = None
         if tp1 > 0 and tp1_pct > 0:
             tp1_price = round_price(symbol, tp1)
             tp1_qty = round_qty(symbol, qty * (tp1_pct / 100))
 
-            tp1_resp = binance_algo_order(
-                symbol=symbol,
-                side=exit_side,
-                order_type="TAKE_PROFIT",
-                stopPrice=tp1_price,
-                quantity=tp1_qty
-            )
-
-            if tp1_resp["success"]:
-                tp1_order_id = tp1_resp["orderId"]
+            try:
+                tp1_order = client.futures_create_order(
+                    symbol=symbol,
+                    side=exit_side,
+                    type="TAKE_PROFIT_MARKET",
+                    stopPrice=tp1_price,
+                    quantity=tp1_qty,
+                    recvWindow=10000
+                )
+                tp1_order_id = tp1_order['orderId']
+                print(f"✅ TP1 placed @ {tp1_price}: Order ID {tp1_order_id}")
+            except Exception as tp1_error:
+                print(f"⚠️ TP1 placement failed: {tp1_error}")
 
         # -------------------------
-        #     TAKE PROFIT 2 (ALGO)
+        #     TAKE PROFIT 2 (Optional)
         # -------------------------
         tp2_order_id = None
         if tp2 > 0:
@@ -477,20 +499,34 @@ def execute_trade_action(
 
             if tp1 > 0 and tp1_pct > 0:
                 tp2_qty = round_qty(symbol, qty * ((100 - tp1_pct) / 100))
+                use_close_position = False
             else:
                 tp2_qty = None
+                use_close_position = True
 
-            tp2_resp = binance_algo_order(
-                symbol=symbol,
-                side=exit_side,
-                order_type="TAKE_PROFIT",
-                stopPrice=tp2_price,
-                quantity=tp2_qty,
-                closePosition=(tp2_qty is None)
-            )
-
-            if tp2_resp["success"]:
-                tp2_order_id = tp2_resp["orderId"]
+            try:
+                if use_close_position:
+                    tp2_order = client.futures_create_order(
+                        symbol=symbol,
+                        side=exit_side,
+                        type="TAKE_PROFIT_MARKET",
+                        stopPrice=tp2_price,
+                        closePosition=True,
+                        recvWindow=10000
+                    )
+                else:
+                    tp2_order = client.futures_create_order(
+                        symbol=symbol,
+                        side=exit_side,
+                        type="TAKE_PROFIT_MARKET",
+                        stopPrice=tp2_price,
+                        quantity=tp2_qty,
+                        recvWindow=10000
+                    )
+                tp2_order_id = tp2_order['orderId']
+                print(f"✅ TP2 placed @ {tp2_price}: Order ID {tp2_order_id}")
+            except Exception as tp2_error:
+                print(f"⚠️ TP2 placement failed: {tp2_error}")
 
         # Save trade stats
         update_trade_stats(symbol)
@@ -707,14 +743,14 @@ def update_stop_loss(symbol, new_sl_percent):
         return {"success": False, "message": f"❌ Error: {str(e)}"}
 
 def get_trade_history():
-    """FIXED: Get REAL trade history from Binance with better filtering"""
+    """FIXED: Get COMPLETE trade history from Binance - both past and current trades"""
     try:
         client = get_client()
         if client is None:
             return []
         
-        # Get recent trades from Binance (last 100 trades)
-        trades = client.futures_account_trades(limit=100, recvWindow=10000)
+        # Get ALL recent trades from Binance (increased limit for complete history)
+        trades = client.futures_account_trades(limit=500, recvWindow=10000)
         
         trade_list = []
         for trade in trades:
@@ -725,12 +761,14 @@ def get_trade_history():
                 'qty': float(trade['qty']),
                 'price': float(trade['price']),
                 'realized_pnl': float(trade['realizedPnl']),
-                'commission': float(trade['commission'])
+                'commission': float(trade['commission']),
+                'order_id': trade['orderId']
             })
         
         # Sort by time (most recent first)
         trade_list.sort(key=lambda x: x['time'], reverse=True)
         
+        print(f"✅ Retrieved {len(trade_list)} trades from Binance")
         return trade_list
         
     except Exception as e:
