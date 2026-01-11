@@ -7,12 +7,59 @@ import math
 import traceback
 import time
 
+
+
 _client = None
 _symbol_cache = None
 _symbol_cache_time = 0
 _price_cache = {}
 _price_cache_time = {}
 CACHE_DURATION = 5  # Cache duration in seconds
+
+def binance_algo_order(symbol, side, order_type, stopPrice, quantity=None, closePosition=False):
+    """Universal ALGO order compatible with all Binance libraries"""
+
+    url = "https://fapi.binance.com/fapi/v1/algo/order"
+    timestamp = int(time.time() * 1000)
+
+    params = {
+        "symbol": symbol,
+        "side": side,
+        "type": order_type,
+        "stopPrice": stopPrice,
+        "timestamp": timestamp
+    }
+
+    if quantity:
+        params["quantity"] = quantity
+    
+    if closePosition:
+        params["closePosition"] = "true"
+
+    query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+    
+    signature = hmac.new(
+        config.BINANCE_SECRET.encode(),
+        query_string.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    params["signature"] = signature
+
+    headers = {
+        "X-MBX-APIKEY": config.BINANCE_KEY
+    }
+
+    r = requests.post(url, params=params, headers=headers)
+    data = r.json()
+
+    print("🚀 ALGO ORDER RESPONSE:", data)
+
+    if "orderId" in data:
+        return {"success": True, "orderId": data["orderId"], "raw": data}
+
+    return {"success": False, "error": data}
+
 
 def sync_time_with_binance():
     """Sync local time with Binance server time"""
@@ -312,7 +359,6 @@ def update_trade_stats(symbol):
     session["stats"][today]["symbols"][symbol] += 1
     
     session.modified = True
-
 def execute_trade_action(
     balance, symbol, side, entry, order_type,
     sl_type, sl_value, sizing,
@@ -320,7 +366,7 @@ def execute_trade_action(
     tp1, tp1_pct, tp2
 ):
     """FIXED: Execute trade with corrected order types and better error handling"""
-    
+
     # Check trade limits
     can_trade, limit_msg = check_trade_limits(symbol)
     if not can_trade:
@@ -330,7 +376,7 @@ def execute_trade_action(
         client = get_client()
         if client is None:
             return {"success": False, "message": "❌ Binance client not connected"}
-            
+        
         # Calculate quantities
         units = user_units if user_units > 0 else sizing["suggested_units"]
         qty = round_qty(symbol, units)
@@ -339,23 +385,20 @@ def execute_trade_action(
         leverage = int(user_lev) if user_lev > 0 else sizing["max_leverage"]
         try:
             client.futures_change_leverage(symbol=symbol, leverage=leverage, recvWindow=10000)
-            print(f"✅ Leverage set to {leverage}x for {symbol}")
         except BinanceAPIException as e:
-            print(f"⚠️ Leverage warning: {e}")
+            print("⚠️ Leverage warning:", e)
 
         # Set margin mode
         try:
             client.futures_change_margin_type(symbol=symbol, marginType=margin_mode, recvWindow=10000)
-            print(f"✅ Margin mode set to {margin_mode}")
         except BinanceAPIException as e:
             if "No need to change margin type" not in str(e):
-                print(f"⚠️ Margin mode warning: {e}")
+                print("⚠️ Margin mode warning:", e)
 
         entry_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
         # -------- ENTRY ORDER --------
-        print(f"\n📊 Placing {side} order: {qty} {symbol} @ market price")
         entry_order = client.futures_create_order(
             symbol=symbol,
             side=entry_side,
@@ -363,140 +406,96 @@ def execute_trade_action(
             quantity=qty,
             recvWindow=10000
         )
-        print(f"✅ Entry order placed: {entry_order['orderId']}")
-        
-        # FIXED: Wait longer and get actual fill price
-        time.sleep(2)
-        
-        # Get actual entry price from account trades
+
+        time.sleep(1)
+
+        # Get actual filled entry price
         try:
             recent_trades = client.futures_account_trades(symbol=symbol, limit=1, recvWindow=10000)
             if recent_trades:
                 actual_entry = float(recent_trades[0]['price'])
             else:
-                mark = float(client.futures_mark_price(symbol=symbol)["markPrice"])
-                actual_entry = mark
+                actual_entry = float(client.futures_mark_price(symbol=symbol)["markPrice"])
         except:
-            mark = float(client.futures_mark_price(symbol=symbol)["markPrice"])
-            actual_entry = mark
-            
-        print(f"📍 Entry price: {actual_entry}")
+            actual_entry = float(client.futures_mark_price(symbol=symbol)["markPrice"])
 
-        # FIXED: STOP LOSS ORDER - Using STOP_MARKET with correct parameters
-        sl_price_value = None
+        # -------------------------
+        #      STOP LOSS (ALGO)
+        # -------------------------
         sl_order_id = None
+        sl_price_value = None
+
         if sl_value > 0:
             sl_percent = sl_value if sl_type == "SL % Movement" else abs(entry - sl_value) / entry * 100
-            
+
             if side == "LONG":
                 sl_price = actual_entry * (1 - sl_percent / 100)
             else:
                 sl_price = actual_entry * (1 + sl_percent / 100)
-            
+
             sl_price = round_price(symbol, sl_price)
             sl_price_value = sl_price
 
-            try:
-                print(f"\n🛑 Placing SL order @ {sl_price}")
-                # FIXED: Using correct STOP_MARKET order for futures
-                sl_order = client.futures_create_order(
-                    symbol=symbol,
-                    side=exit_side,
-                    type="STOP_MARKET",
-                    stopPrice=sl_price,
-                    closePosition=True,
-                    recvWindow=10000
-                )
-                sl_order_id = sl_order['orderId']
-                print(f"✅ Stop Loss APPLIED to Binance: Order ID {sl_order_id}")
-            except BinanceAPIException as e:
-                print(f"❌ SL Order Error: {e}")
-                traceback.print_exc()
-                # Try alternative method with quantity
-                try:
-                    print(f"🔄 Retrying SL with quantity...")
-                    sl_order = client.futures_create_order(
-                        symbol=symbol,
-                        side=exit_side,
-                        type="STOP_MARKET",
-                        stopPrice=sl_price,
-                        quantity=qty,
-                        recvWindow=10000
-                    )
-                    sl_order_id = sl_order['orderId']
-                    print(f"✅ Stop Loss APPLIED (with qty): Order ID {sl_order_id}")
-                    
-                except Exception as e2:
-                    print(f"❌ SL retry failed: {e2}")
-                    return {"success": False, "message": f"Trade opened but SL failed: {str(e)}"}
+            sl_resp = binance_algo_order(
+                symbol=symbol,
+                side=exit_side,
+                order_type="STOP",
+                stopPrice=sl_price,
+                closePosition=True
+            )
 
-                    
+            if sl_resp["success"]:
+                sl_order_id = sl_resp["orderId"]
+            else:
+                return {"success": False, "message": "SL Failed: " + str(sl_resp["error"])}
 
-        # FIXED: TAKE PROFIT 1 - Using TAKE_PROFIT_MARKET correctly
+        # -------------------------
+        #     TAKE PROFIT 1 (ALGO)
+        # -------------------------
         tp1_order_id = None
         if tp1 > 0 and tp1_pct > 0:
             tp1_price = round_price(symbol, tp1)
             tp1_qty = round_qty(symbol, qty * (tp1_pct / 100))
-            
-            try:
-                print(f"\n🎯 Placing TP1 order: {tp1_qty} @ {tp1_price}")
-                tp1_order = client.futures_create_order(
-                    symbol=symbol,
-                    side=exit_side,
-                    type="TAKE_PROFIT_MARKET",
-                    stopPrice=tp1_price,
-                    quantity=tp1_qty,
-                    recvWindow=10000
-                )
-                tp1_order_id = tp1_order['orderId']
-                print(f"✅ TP1 APPLIED to Binance: Order ID {tp1_order_id}")
-            except BinanceAPIException as e:
-                print(f"❌ TP1 Order Error: {e}")
-                traceback.print_exc()
-        
-        # FIXED: TAKE PROFIT 2 - Using TAKE_PROFIT_MARKET correctly
+
+            tp1_resp = binance_algo_order(
+                symbol=symbol,
+                side=exit_side,
+                order_type="TAKE_PROFIT",
+                stopPrice=tp1_price,
+                quantity=tp1_qty
+            )
+
+            if tp1_resp["success"]:
+                tp1_order_id = tp1_resp["orderId"]
+
+        # -------------------------
+        #     TAKE PROFIT 2 (ALGO)
+        # -------------------------
         tp2_order_id = None
         if tp2 > 0:
             tp2_price = round_price(symbol, tp2)
-            
-            try:
-                print(f"\n🎯 Placing TP2 order @ {tp2_price}")
-                
-                if tp1 > 0 and tp1_pct > 0:
-                    tp2_qty = round_qty(symbol, qty * ((100 - tp1_pct) / 100))
-                    tp2_order = client.futures_create_order(
-                        symbol=symbol,
-                        side=exit_side,
-                        type="TAKE_PROFIT_MARKET",
-                        stopPrice=tp2_price,
-                        quantity=tp2_qty,
-                        recvWindow=10000
-                    )
-                else:
-                    tp2_order = client.futures_create_order(
-                        symbol=symbol,
-                        side=exit_side,
-                        type="TAKE_PROFIT_MARKET",
-                        stopPrice=tp2_price,
-                        closePosition=True,
-                        recvWindow=10000
-                    )
-                tp2_order_id = tp2_order['orderId']
-                print(f"✅ TP2 APPLIED to Binance: Order ID {tp2_order_id}")
-            except BinanceAPIException as e:
-                print(f"❌ TP2 Order Error: {e}")
-                traceback.print_exc()
 
-        # Update trade statistics
-              # Update trade statistics
+            if tp1 > 0 and tp1_pct > 0:
+                tp2_qty = round_qty(symbol, qty * ((100 - tp1_pct) / 100))
+            else:
+                tp2_qty = None
+
+            tp2_resp = binance_algo_order(
+                symbol=symbol,
+                side=exit_side,
+                order_type="TAKE_PROFIT",
+                stopPrice=tp2_price,
+                quantity=tp2_qty,
+                closePosition=(tp2_qty is None)
+            )
+
+            if tp2_resp["success"]:
+                tp2_order_id = tp2_resp["orderId"]
+
+        # Save trade stats
         update_trade_stats(symbol)
-        
-        today = datetime.utcnow().date().isoformat()
-        stats = session.get("stats", {}).get(today, {"total": 0, "symbols": {}})
-        
-        print(f"\n✅ Trade executed! Total today: {stats['total']}/{config.MAX_TRADES_PER_DAY}, {symbol}: {stats.get('symbols', {}).get(symbol, 0)}/{config.MAX_TRADES_PER_SYMBOL_PER_DAY}")
-        
-        # === FIX: SAVE TRADE TO LIVE LOG ===
+
+        # Save trade log locally
         if "trades" not in session:
             session["trades"] = []
 
@@ -518,11 +517,10 @@ def execute_trade_action(
         })
 
         session.modified = True
-        # === END FIX ===
 
         return {
-            "success": True, 
-            "message": f"✅ Order placed! Entry: {actual_entry}, SL: {sl_price_value} (Order IDs: SL={sl_order_id}, TP1={tp1_order_id}, TP2={tp2_order_id})",
+            "success": True,
+            "message": f"✅ Order placed! Entry: {actual_entry}, SL: {sl_price_value}",
             "order_ids": {
                 "entry": entry_order['orderId'],
                 "sl": sl_order_id,
@@ -531,17 +529,9 @@ def execute_trade_action(
             }
         }
 
-
-    except BinanceAPIException as e:
-        error_msg = f"Binance API Error: {e.message}"
-        print(f"❌ {error_msg}")
-        traceback.print_exc()
-        return {"success": False, "message": error_msg}
     except Exception as e:
-        error_msg = f"Error: {str(e)}"
-        print(f"❌ {error_msg}")
         traceback.print_exc()
-        return {"success": False, "message": error_msg}
+        return {"success": False, "message": str(e)}
 
 def partial_close_position(symbol, close_percent=None, close_qty=None):
     """FIX #5: Partial close functionality"""
