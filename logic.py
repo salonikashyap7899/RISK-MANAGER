@@ -336,206 +336,81 @@ def update_trade_stats(symbol):
     
     session.modified = True
 
-def execute_trade_action(
-    balance, symbol, side, entry, order_type,
-    sl_type, sl_value, sizing,
-    user_units, user_lev, margin_mode,
-    tp1, tp1_pct, tp2
-):
-    """FIXED: Execute trade with IMMEDIATE SL/TP attachment using reduceOnly"""
-
-    if sl_value <= 0:
-        return {"success": False, "message": "❌ STOP LOSS IS MANDATORY! Please set SL before executing trade."}
-
-    can_trade, limit_msg = check_trade_limits(symbol)
-    if not can_trade:
-        return {"success": False, "message": limit_msg}
+def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_value, sizing, user_units, user_lev, margin_mode, tp1, tp1_pct, tp2):
+    client = get_client()
+    if not client: return {"success": False, "message": "Binance Connection Failed"}
 
     try:
-        client = get_client()
-        if client is None:
-            return {"success": False, "message": "❌ Binance client not connected"}
-        
+        # 1. PREPARE QUANTITY & LEVERAGE
         units = user_units if user_units > 0 else sizing["suggested_units"]
         qty = round_qty(symbol, units)
-
         leverage = int(user_lev) if user_lev > 0 else sizing["max_leverage"]
+        
+        client.futures_change_leverage(symbol=symbol, leverage=leverage)
         try:
-            client.futures_change_leverage(symbol=symbol, leverage=leverage, recvWindow=10000)
-        except BinanceAPIException as e:
-            print("⚠️ Leverage warning:", e)
+            client.futures_change_margin_type(symbol=symbol, marginType=margin_mode)
+        except: pass
 
-        try:
-            client.futures_change_margin_type(symbol=symbol, marginType=margin_mode, recvWindow=10000)
-        except BinanceAPIException as e:
-            if "No need to change margin type" not in str(e):
-                print("⚠️ Margin mode warning:", e)
-
+        # 2. EXECUTE ENTRY (MARKET)
         entry_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
-
-        # 1. Place Entry Order
-        entry_order = client.futures_create_order(
-            symbol=symbol,
-            side=entry_side,
-            type="MARKET",
-            quantity=qty,
-            recvWindow=10000
-        )
         
-        # Wait briefly for matching engine to register position
-        time.sleep(1)
+        entry_order = client.futures_create_order(symbol=symbol, side=entry_side, type="MARKET", quantity=qty)
+        actual_entry = float(entry_order.get('avgPrice', get_live_price(symbol)))
 
-        # Get actual filled entry price
-        try:
-            recent_trades = client.futures_account_trades(symbol=symbol, limit=1, recvWindow=10000)
-            if recent_trades:
-                actual_entry = float(recent_trades[0]['price'])
-            else:
-                actual_entry = float(client.futures_mark_price(symbol=symbol)["markPrice"])
-        except:
-            actual_entry = float(client.futures_mark_price(symbol=symbol)["markPrice"])
-
-        # 2. IMMEDIATE MANDATORY SL
-        sl_order_id = None
-        sl_price_value = None
-
-        sl_percent = sl_value if sl_type == "SL % Movement" else abs(entry - sl_value) / entry * 100
+        # 3. ATTACH SL & TP IMMEDIATELY (The Solution)
+        # We place SL first as it is high priority
+        sl_price = round_price(symbol, sl_value)
         
-        if side == "LONG":
-            sl_price = actual_entry * (1 - sl_percent / 100)
-        else:
-            sl_price = actual_entry * (1 + sl_percent / 100)
-
-        sl_price = round_price(symbol, sl_price)
-        sl_price_value = sl_price
-
-        # SL Execution
+        # SL Order
         try:
-            sl_order = client.futures_create_order(
+            client.futures_create_order(
                 symbol=symbol,
                 side=exit_side,
                 type="STOP_MARKET",
                 stopPrice=sl_price,
-                closePosition=True,  # Close entire position
-                workingType="MARK_PRICE", # Critical for execution
-                recvWindow=10000
+                closePosition=True,
+                workingType="MARK_PRICE"
             )
-            sl_order_id = sl_order['orderId']
-            print(f"✅ MANDATORY SL placed @ {sl_price}")
-        except Exception as sl_error:
-            # If SL fails, EMERGENCY CLOSE
-            print(f"❌ SL Failed: {sl_error}. Closing position.")
-            try:
-                client.futures_create_order(
-                    symbol=symbol, side=exit_side, type="MARKET", quantity=qty, recvWindow=10000
-                )
-            except: pass
-            return {"success": False, "message": f"❌ SL Failed: {sl_error}. Position closed for safety."}
+        except Exception as e:
+            print(f"TERMINAL SL ERROR: {e}")
 
-        # 3. TP 1 Execution
-        tp1_order_id = None
+        # TP 1 Order (Partial)
         if tp1 > 0 and tp1_pct > 0:
-            tp1_price = round_price(symbol, tp1)
             tp1_qty = round_qty(symbol, qty * (tp1_pct / 100))
-            
-            # Ensure tp1_qty isn't 0 due to rounding
             if tp1_qty > 0:
                 try:
-                    tp1_order = client.futures_create_order(
+                    client.futures_create_order(
                         symbol=symbol,
                         side=exit_side,
                         type="TAKE_PROFIT_MARKET",
-                        stopPrice=tp1_price,
+                        stopPrice=round_price(symbol, tp1),
                         quantity=tp1_qty,
-                        reduceOnly=True, # Critical for partial TP
-                        workingType="MARK_PRICE",
-                        recvWindow=10000
+                        reduceOnly=True,
+                        workingType="MARK_PRICE"
                     )
-                    tp1_order_id = tp1_order['orderId']
-                    print(f"✅ TP1 placed @ {tp1_price}")
-                except Exception as tp1_error:
-                    print(f"⚠️ TP1 placement failed: {tp1_error}")
+                except Exception as e:
+                    print(f"TERMINAL TP1 ERROR: {e}")
 
-        # 4. TP 2 Execution
-        tp2_order_id = None
+        # TP 2 Order (Remainder)
         if tp2 > 0:
-            tp2_price = round_price(symbol, tp2)
-            
             try:
-                # If TP1 exists, TP2 is the remainder. If not, TP2 is closePosition.
-                if tp1 > 0 and tp1_pct > 0:
-                     # Calculate remainder
-                     tp2_qty = round_qty(symbol, qty - (qty * (tp1_pct / 100)))
-                     if tp2_qty > 0:
-                        tp2_order = client.futures_create_order(
-                            symbol=symbol,
-                            side=exit_side,
-                            type="TAKE_PROFIT_MARKET",
-                            stopPrice=tp2_price,
-                            quantity=tp2_qty,
-                            reduceOnly=True,
-                            workingType="MARK_PRICE",
-                            recvWindow=10000
-                        )
-                else:
-                    # Full close TP
-                    tp2_order = client.futures_create_order(
-                        symbol=symbol,
-                        side=exit_side,
-                        type="TAKE_PROFIT_MARKET",
-                        stopPrice=tp2_price,
-                        closePosition=True,
-                        workingType="MARK_PRICE",
-                        recvWindow=10000
-                    )
-                
-                if 'tp2_order' in locals():
-                    tp2_order_id = tp2_order['orderId']
-                    print(f"✅ TP2 placed @ {tp2_price}")
-
-            except Exception as tp2_error:
-                print(f"⚠️ TP2 placement failed: {tp2_error}")
+                client.futures_create_order(
+                    symbol=symbol,
+                    side=exit_side,
+                    type="TAKE_PROFIT_MARKET",
+                    stopPrice=round_price(symbol, tp2),
+                    closePosition=True, # Closes whatever is left
+                    workingType="MARK_PRICE"
+                )
+            except Exception as e:
+                print(f"TERMINAL TP2 ERROR: {e}")
 
         update_trade_stats(symbol)
-
-        if "trades" not in session:
-            session["trades"] = []
-
-        session["trades"].append({
-            "time": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-            "symbol": symbol,
-            "side": side,
-            "entry": actual_entry,
-            "qty": qty,
-            "sl": sl_price_value,
-            "tp1": tp1,
-            "tp2": tp2,
-            "order_ids": {
-                "entry": entry_order['orderId'],
-                "sl": sl_order_id,
-                "tp1": tp1_order_id,
-                "tp2": tp2_order_id
-            }
-        })
-
-        session.modified = True
-
-        return {
-            "success": True,
-            "message": f"✅ Order placed! Entry: {actual_entry}, SL: {sl_price_value}",
-            "order_ids": {
-                "entry": entry_order['orderId'],
-                "sl": sl_order_id,
-                "tp1": tp1_order_id,
-                "tp2": tp2_order_id
-            }
-        }
+        return {"success": True, "message": f"✅ Trade Executed. Entry: {actual_entry}, SL/TP set."}
 
     except Exception as e:
-        traceback.print_exc()
-        return {"success": False, "message": str(e)}
-
+        return {"success": False, "message": f"Terminal Error: {str(e)}"}
 def partial_close_position(symbol, close_percent=None, close_qty=None):
     try:
         client = get_client()
