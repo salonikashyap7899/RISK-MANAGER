@@ -75,32 +75,27 @@ def sync_time_with_binance():
         return 0
 
 def get_client():
-    """Get or create Binance client with error handling - FIX: Timestamp issue"""
+    """Get or create Binance client with error handling"""
     global _client
     if _client is None:
         try:
-            # FIX: Sync time with Binance first
             time_offset = sync_time_with_binance()
             print(f"⏰ Time offset with Binance: {time_offset}ms")
             
-            # Create client with larger recvWindow
             _client = Client(
                 config.BINANCE_KEY, 
                 config.BINANCE_SECRET,
                 {'timeout': 20}
             )
             
-            # Apply time offset
-            if abs(time_offset) > 1000:  # If offset > 1 second
+            if abs(time_offset) > 1000:
                 _client.timestamp_offset = time_offset
                 print(f"✅ Applied time offset: {time_offset}ms")
             
-            # Test connection with larger recvWindow
             _client.futures_account(recvWindow=60000)
             print("✅ Binance client initialized successfully")
         except Exception as e:
             print(f"❌ Error initializing Binance client: {e}")
-            print("💡 Tip: Make sure your system time is synced. Run: sudo ntpdate -s time.nist.gov")
             _client = None
     return _client
 
@@ -113,11 +108,10 @@ def initialize_session():
     session.modified = True
 
 def get_all_exchange_symbols():
-    """Get symbols with caching to avoid rate limits"""
+    """Get symbols with caching"""
     global _symbol_cache, _symbol_cache_time
     
     current_time = time.time()
-    # Cache symbols for 1 hour
     if _symbol_cache and (current_time - _symbol_cache_time) < 3600:
         return _symbol_cache
     
@@ -132,7 +126,6 @@ def get_all_exchange_symbols():
         return symbols
     except Exception as e:
         print(f"Error getting symbols: {e}")
-        # Return cached or default
         return _symbol_cache if _symbol_cache else ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
 
 def get_live_balance():
@@ -146,11 +139,10 @@ def get_live_balance():
         return None, None
 
 def get_live_price(symbol):
-    """Get price with caching to avoid rate limits"""
+    """Get price with caching"""
     global _price_cache, _price_cache_time
     
     current_time = time.time()
-    # Use cached price if less than CACHE_DURATION seconds old
     if symbol in _price_cache and (current_time - _price_cache_time.get(symbol, 0)) < CACHE_DURATION:
         return _price_cache[symbol]
     
@@ -163,7 +155,6 @@ def get_live_price(symbol):
         return price
     except Exception as e:
         print(f"Error getting price for {symbol}: {e}")
-        # Return cached price if available
         return _price_cache.get(symbol, None)
 
 def get_symbol_filters(symbol):
@@ -222,11 +213,9 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
         if sl_distance <= 0: 
             return {"error": "Invalid SL distance"}
 
-        # Leverage Formula: 100 / (SL% + 0.2)
         calculated_leverage = 100 / (sl_percent + 0.2)
         max_leverage = min(int(calculated_leverage), 125)
         
-        # Position Value Formula: [Risk ÷ (SL% + 0.2)] × 100
         pos_value_usdt = (risk_amount / (sl_percent + 0.2)) * 100
         position_size = pos_value_usdt / entry
     else:
@@ -242,42 +231,34 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     }
 
 def get_open_positions():
-    """FIXED: Get all open positions with REAL-TIME live P&L details"""
     try:
         client = get_client()
         if client is None:
             return []
         
-        # FIXED: Use larger recvWindow to avoid timestamp issues
         positions = client.futures_position_information(recvWindow=10000)
         open_positions = []
         
         for pos in positions:
             position_amt = float(pos['positionAmt'])
-            if abs(position_amt) > 0:  # FIXED: Check absolute value for better detection
+            if abs(position_amt) > 0:
                 entry_price = float(pos['entryPrice'])
                 mark_price = float(pos['markPrice'])
                 unrealized_pnl = float(pos['unRealizedProfit'])
                 liquidation_price = float(pos['liquidationPrice'])
                 leverage = int(pos['leverage'])
-                
-                # Calculate additional metrics like Binance
-                notional = float(pos['notional'])  # Position size in USDT
+                notional = float(pos['notional'])
                 initial_margin = abs(notional) / leverage if leverage > 0 else abs(notional)
-                
-                # Calculate ROI%
                 roi_percent = (unrealized_pnl / initial_margin * 100) if initial_margin > 0 else 0
                 
-                # Calculate Margin Ratio
                 if mark_price > 0 and liquidation_price > 0:
-                    if position_amt > 0:  # LONG
+                    if position_amt > 0:
                         margin_ratio = ((mark_price - liquidation_price) / mark_price) * 100
-                    else:  # SHORT
+                    else:
                         margin_ratio = ((liquidation_price - mark_price) / mark_price) * 100
                 else:
                     margin_ratio = 0
                 
-                # Get open orders for this symbol (TP/SL)
                 open_orders = get_open_orders_for_symbol(pos['symbol'])
                 
                 open_positions.append({
@@ -304,7 +285,6 @@ def get_open_positions():
         return []
 
 def get_open_orders_for_symbol(symbol):
-    """Get all open orders (TP/SL) for a specific symbol"""
     try:
         client = get_client()
         if client is None:
@@ -329,15 +309,12 @@ def get_open_orders_for_symbol(symbol):
         return []
 
 def check_trade_limits(symbol):
-    """FIX #1: Check both daily total and per-symbol limits"""
     today = datetime.utcnow().date().isoformat()
     stats = session.get("stats", {}).get(today, {"total": 0, "symbols": {}})
     
-    # Check total daily limit
     if stats["total"] >= config.MAX_TRADES_PER_DAY:
         return False, f"❌ Daily limit reached ({config.MAX_TRADES_PER_DAY} trades)"
     
-    # Check per-symbol limit
     symbol_count = stats.get("symbols", {}).get(symbol, 0)
     if symbol_count >= config.MAX_TRADES_PER_SYMBOL_PER_DAY:
         return False, f"❌ Symbol limit reached ({config.MAX_TRADES_PER_SYMBOL_PER_DAY} trades for {symbol} today)"
@@ -345,7 +322,6 @@ def check_trade_limits(symbol):
     return True, "OK"
 
 def update_trade_stats(symbol):
-    """Update trade statistics for limits tracking"""
     today = datetime.utcnow().date().isoformat()
     if "stats" not in session:
         session["stats"] = {}
@@ -366,13 +342,11 @@ def execute_trade_action(
     user_units, user_lev, margin_mode,
     tp1, tp1_pct, tp2
 ):
-    """FIXED: Execute trade with MANDATORY TP/SL and better error handling"""
+    """FIXED: Execute trade with IMMEDIATE SL/TP attachment using reduceOnly"""
 
-    # CRITICAL: Check if SL is provided (MANDATORY)
     if sl_value <= 0:
         return {"success": False, "message": "❌ STOP LOSS IS MANDATORY! Please set SL before executing trade."}
 
-    # Check trade limits
     can_trade, limit_msg = check_trade_limits(symbol)
     if not can_trade:
         return {"success": False, "message": limit_msg}
@@ -382,18 +356,15 @@ def execute_trade_action(
         if client is None:
             return {"success": False, "message": "❌ Binance client not connected"}
         
-        # Calculate quantities
         units = user_units if user_units > 0 else sizing["suggested_units"]
         qty = round_qty(symbol, units)
 
-        # Set leverage
         leverage = int(user_lev) if user_lev > 0 else sizing["max_leverage"]
         try:
             client.futures_change_leverage(symbol=symbol, leverage=leverage, recvWindow=10000)
         except BinanceAPIException as e:
             print("⚠️ Leverage warning:", e)
 
-        # Set margin mode
         try:
             client.futures_change_margin_type(symbol=symbol, marginType=margin_mode, recvWindow=10000)
         except BinanceAPIException as e:
@@ -403,7 +374,7 @@ def execute_trade_action(
         entry_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         exit_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
 
-        # -------- ENTRY ORDER --------
+        # 1. Place Entry Order
         entry_order = client.futures_create_order(
             symbol=symbol,
             side=entry_side,
@@ -411,7 +382,8 @@ def execute_trade_action(
             quantity=qty,
             recvWindow=10000
         )
-
+        
+        # Wait briefly for matching engine to register position
         time.sleep(1)
 
         # Get actual filled entry price
@@ -424,15 +396,12 @@ def execute_trade_action(
         except:
             actual_entry = float(client.futures_mark_price(symbol=symbol)["markPrice"])
 
-        # -------------------------
-        #  MANDATORY STOP LOSS
-        # -------------------------
+        # 2. IMMEDIATE MANDATORY SL
         sl_order_id = None
         sl_price_value = None
 
-        # Calculate SL price
         sl_percent = sl_value if sl_type == "SL % Movement" else abs(entry - sl_value) / entry * 100
-
+        
         if side == "LONG":
             sl_price = actual_entry * (1 - sl_percent / 100)
         else:
@@ -441,97 +410,95 @@ def execute_trade_action(
         sl_price = round_price(symbol, sl_price)
         sl_price_value = sl_price
 
-        # Place MANDATORY SL order using STOP_MARKET
+        # SL Execution
         try:
             sl_order = client.futures_create_order(
                 symbol=symbol,
                 side=exit_side,
                 type="STOP_MARKET",
                 stopPrice=sl_price,
-                closePosition=True,
+                closePosition=True,  # Close entire position
+                workingType="MARK_PRICE", # Critical for execution
                 recvWindow=10000
             )
             sl_order_id = sl_order['orderId']
-            print(f"✅ MANDATORY SL placed @ {sl_price}: Order ID {sl_order_id}")
+            print(f"✅ MANDATORY SL placed @ {sl_price}")
         except Exception as sl_error:
-            # If SL fails, close the position immediately
-            print(f"❌ SL Failed: {sl_error}. Closing position for safety.")
+            # If SL fails, EMERGENCY CLOSE
+            print(f"❌ SL Failed: {sl_error}. Closing position.")
             try:
                 client.futures_create_order(
-                    symbol=symbol,
-                    side=exit_side,
-                    type="MARKET",
-                    quantity=qty,
-                    recvWindow=10000
+                    symbol=symbol, side=exit_side, type="MARKET", quantity=qty, recvWindow=10000
                 )
-            except:
-                pass
-            return {"success": False, "message": f"❌ SL placement failed: {str(sl_error)}. Position closed for safety."}
+            except: pass
+            return {"success": False, "message": f"❌ SL Failed: {sl_error}. Position closed for safety."}
 
-        # -------------------------
-        #     TAKE PROFIT 1 (Optional)
-        # -------------------------
+        # 3. TP 1 Execution
         tp1_order_id = None
         if tp1 > 0 and tp1_pct > 0:
             tp1_price = round_price(symbol, tp1)
             tp1_qty = round_qty(symbol, qty * (tp1_pct / 100))
+            
+            # Ensure tp1_qty isn't 0 due to rounding
+            if tp1_qty > 0:
+                try:
+                    tp1_order = client.futures_create_order(
+                        symbol=symbol,
+                        side=exit_side,
+                        type="TAKE_PROFIT_MARKET",
+                        stopPrice=tp1_price,
+                        quantity=tp1_qty,
+                        reduceOnly=True, # Critical for partial TP
+                        workingType="MARK_PRICE",
+                        recvWindow=10000
+                    )
+                    tp1_order_id = tp1_order['orderId']
+                    print(f"✅ TP1 placed @ {tp1_price}")
+                except Exception as tp1_error:
+                    print(f"⚠️ TP1 placement failed: {tp1_error}")
 
-            try:
-                tp1_order = client.futures_create_order(
-                    symbol=symbol,
-                    side=exit_side,
-                    type="TAKE_PROFIT_MARKET",
-                    stopPrice=tp1_price,
-                    quantity=tp1_qty,
-                    recvWindow=10000
-                )
-                tp1_order_id = tp1_order['orderId']
-                print(f"✅ TP1 placed @ {tp1_price}: Order ID {tp1_order_id}")
-            except Exception as tp1_error:
-                print(f"⚠️ TP1 placement failed: {tp1_error}")
-
-        # -------------------------
-        #     TAKE PROFIT 2 (Optional)
-        # -------------------------
+        # 4. TP 2 Execution
         tp2_order_id = None
         if tp2 > 0:
             tp2_price = round_price(symbol, tp2)
-
-            if tp1 > 0 and tp1_pct > 0:
-                tp2_qty = round_qty(symbol, qty * ((100 - tp1_pct) / 100))
-                use_close_position = False
-            else:
-                tp2_qty = None
-                use_close_position = True
-
+            
             try:
-                if use_close_position:
+                # If TP1 exists, TP2 is the remainder. If not, TP2 is closePosition.
+                if tp1 > 0 and tp1_pct > 0:
+                     # Calculate remainder
+                     tp2_qty = round_qty(symbol, qty - (qty * (tp1_pct / 100)))
+                     if tp2_qty > 0:
+                        tp2_order = client.futures_create_order(
+                            symbol=symbol,
+                            side=exit_side,
+                            type="TAKE_PROFIT_MARKET",
+                            stopPrice=tp2_price,
+                            quantity=tp2_qty,
+                            reduceOnly=True,
+                            workingType="MARK_PRICE",
+                            recvWindow=10000
+                        )
+                else:
+                    # Full close TP
                     tp2_order = client.futures_create_order(
                         symbol=symbol,
                         side=exit_side,
                         type="TAKE_PROFIT_MARKET",
                         stopPrice=tp2_price,
                         closePosition=True,
+                        workingType="MARK_PRICE",
                         recvWindow=10000
                     )
-                else:
-                    tp2_order = client.futures_create_order(
-                        symbol=symbol,
-                        side=exit_side,
-                        type="TAKE_PROFIT_MARKET",
-                        stopPrice=tp2_price,
-                        quantity=tp2_qty,
-                        recvWindow=10000
-                    )
-                tp2_order_id = tp2_order['orderId']
-                print(f"✅ TP2 placed @ {tp2_price}: Order ID {tp2_order_id}")
+                
+                if 'tp2_order' in locals():
+                    tp2_order_id = tp2_order['orderId']
+                    print(f"✅ TP2 placed @ {tp2_price}")
+
             except Exception as tp2_error:
                 print(f"⚠️ TP2 placement failed: {tp2_error}")
 
-        # Save trade stats
         update_trade_stats(symbol)
 
-        # Save trade log locally
         if "trades" not in session:
             session["trades"] = []
 
@@ -570,13 +537,11 @@ def execute_trade_action(
         return {"success": False, "message": str(e)}
 
 def partial_close_position(symbol, close_percent=None, close_qty=None):
-    """FIX #5: Partial close functionality"""
     try:
         client = get_client()
         if client is None:
             return {"success": False, "message": "❌ Binance client not connected"}
         
-        # Get current position
         positions = client.futures_position_information(symbol=symbol, recvWindow=10000)
         position = None
         for pos in positions:
@@ -589,7 +554,6 @@ def partial_close_position(symbol, close_percent=None, close_qty=None):
         
         position_amt = float(position['positionAmt'])
         
-        # Calculate close quantity
         if close_qty:
             qty_to_close = abs(close_qty)
         elif close_percent:
@@ -598,11 +562,8 @@ def partial_close_position(symbol, close_percent=None, close_qty=None):
             return {"success": False, "message": "❌ Must specify close_percent or close_qty"}
         
         qty_to_close = round_qty(symbol, qty_to_close)
-        
-        # Determine side
         close_side = Client.SIDE_SELL if position_amt > 0 else Client.SIDE_BUY
         
-        # Execute partial close
         print(f"\n📉 Partial close: {qty_to_close} {symbol}")
         order = client.futures_create_order(
             symbol=symbol,
@@ -625,13 +586,11 @@ def partial_close_position(symbol, close_percent=None, close_qty=None):
         return {"success": False, "message": f"❌ Error: {str(e)}"}
 
 def close_position(symbol):
-    """FIXED: Close entire position for a symbol"""
     try:
         client = get_client()
         if client is None:
             return {"success": False, "message": "❌ Binance client not connected"}
         
-        # Get current position
         positions = client.futures_position_information(symbol=symbol, recvWindow=10000)
         position = None
         for pos in positions:
@@ -645,7 +604,6 @@ def close_position(symbol):
         position_amt = float(position['positionAmt'])
         close_side = Client.SIDE_SELL if position_amt > 0 else Client.SIDE_BUY
         
-        # Close position
         print(f"\n🛑 Closing position: {symbol}")
         order = client.futures_create_order(
             symbol=symbol,
@@ -655,7 +613,6 @@ def close_position(symbol):
             recvWindow=10000
         )
         
-        # Cancel all open orders for this symbol
         try:
             client.futures_cancel_all_open_orders(symbol=symbol, recvWindow=10000)
             print(f"✅ Cancelled all open orders for {symbol}")
@@ -675,9 +632,7 @@ def close_position(symbol):
         return {"success": False, "message": f"❌ Error: {str(e)}"}
 
 def update_stop_loss(symbol, new_sl_percent):
-    """FIX #6: Update stop loss with -1% to 0% restriction"""
     try:
-        # Validate SL adjustment range
         if new_sl_percent < config.SL_EDIT_MIN_PERCENT or new_sl_percent > config.SL_EDIT_MAX_PERCENT:
             return {
                 "success": False, 
@@ -688,7 +643,6 @@ def update_stop_loss(symbol, new_sl_percent):
         if client is None:
             return {"success": False, "message": "❌ Binance client not connected"}
         
-        # Get current position
         positions = client.futures_position_information(symbol=symbol, recvWindow=10000)
         position = None
         for pos in positions:
@@ -702,22 +656,19 @@ def update_stop_loss(symbol, new_sl_percent):
         position_amt = float(position['positionAmt'])
         entry_price = float(position['entryPrice'])
         
-        # Calculate new SL price
-        if position_amt > 0:  # LONG
+        if position_amt > 0:
             new_sl_price = entry_price * (1 + new_sl_percent / 100)
-        else:  # SHORT
+        else:
             new_sl_price = entry_price * (1 - new_sl_percent / 100)
         
         new_sl_price = round_price(symbol, new_sl_price)
         
-        # Cancel existing SL orders
         open_orders = client.futures_get_open_orders(symbol=symbol, recvWindow=10000)
         for order in open_orders:
             if order['type'] in ['STOP_MARKET', 'STOP']:
                 client.futures_cancel_order(symbol=symbol, orderId=order['orderId'], recvWindow=10000)
                 print(f"✅ Cancelled old SL order: {order['orderId']}")
         
-        # Place new SL order
         exit_side = Client.SIDE_SELL if position_amt > 0 else Client.SIDE_BUY
         
         sl_order = client.futures_create_order(
@@ -726,6 +677,7 @@ def update_stop_loss(symbol, new_sl_percent):
             type="STOP_MARKET",
             stopPrice=new_sl_price,
             closePosition=True,
+            workingType="MARK_PRICE",
             recvWindow=10000
         )
         
@@ -743,13 +695,11 @@ def update_stop_loss(symbol, new_sl_percent):
         return {"success": False, "message": f"❌ Error: {str(e)}"}
 
 def get_trade_history():
-    """FIXED: Get COMPLETE trade history from Binance - both past and current trades"""
     try:
         client = get_client()
         if client is None:
             return []
         
-        # Get ALL recent trades from Binance (increased limit for complete history)
         trades = client.futures_account_trades(limit=500, recvWindow=10000)
         
         trade_list = []
@@ -765,10 +715,7 @@ def get_trade_history():
                 'order_id': trade['orderId']
             })
         
-        # Sort by time (most recent first)
         trade_list.sort(key=lambda x: x['time'], reverse=True)
-        
-        print(f"✅ Retrieved {len(trade_list)} trades from Binance")
         return trade_list
         
     except Exception as e:
@@ -777,7 +724,6 @@ def get_trade_history():
         return []
 
 def get_today_stats():
-    """Get today's trade statistics"""
     today = datetime.utcnow().date().isoformat()
     stats = session.get("stats", {}).get(today, {"total": 0, "symbols": {}})
     return {
