@@ -17,6 +17,13 @@ _price_cache = {}
 _price_cache_time = {}
 CACHE_DURATION = 5  # Cache duration in seconds
 
+
+# At the top of logic.py
+_price_cache = {}
+_last_call_time = 0
+
+
+
 def binance_algo_order(symbol, side, order_type, stopPrice, quantity=None, closePosition=False):
     """Universal ALGO order compatible with all Binance libraries"""
     url = "https://fapi.binance.com/fapi/v1/order"
@@ -119,21 +126,25 @@ def get_live_balance():
         return None, None
 
 def get_live_price(symbol):
-    """Get price with caching"""
-    global _price_cache, _price_cache_time
+    global _price_cache, _last_call_time
     current_time = time.time()
-    if symbol in _price_cache and (current_time - _price_cache_time.get(symbol, 0)) < CACHE_DURATION:
+    
+    # Only hit Binance API if cache is older than 2 seconds
+    if symbol in _price_cache and (current_time - _last_call_time) < 2:
         return _price_cache[symbol]
+    
     try:
         client = get_client()
-        if client is None: return None
-        price = float(client.futures_symbol_ticker(symbol=symbol)["price"])
+        ticker = client.futures_symbol_ticker(symbol=symbol)
+        price = float(ticker['price'])
+        
+        # Update cache
         _price_cache[symbol] = price
-        _price_cache_time[symbol] = current_time
+        _last_call_time = current_time
         return price
     except Exception as e:
-        print(f"Error getting price for {symbol}: {e}")
-        return _price_cache.get(symbol, None)
+        print(f"Error fetching price: {e}")
+        return _price_cache.get(symbol, 0)
 
 def get_symbol_filters(symbol):
     try:
@@ -247,44 +258,101 @@ def update_trade_stats(symbol):
     session["stats"][today]["total"] += 1
     session["stats"][today]["symbols"][symbol] = session["stats"][today]["symbols"].get(symbol, 0) + 1
     session.modified = True
-
 def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_value, sizing, user_units, user_lev, margin_mode, tp1, tp1_pct, tp2):
-    """FIXED: Entry + Immediate Protection Orders with Syncing"""
+    """
+    FIXED: Handles SL % Calculation and Entry + Protection Orders
+    """
     client = get_client()
     if not client: return {"success": False, "message": "❌ Connection Failed"}
+    
     try:
+        # 1. SETUP (Leverage & Margin)
         qty = round_qty(symbol, user_units if user_units > 0 else sizing["suggested_units"])
         lev = int(user_lev) if user_lev > 0 else sizing["max_leverage"]
-        client.futures_change_leverage(symbol=symbol, leverage=lev)
+        
+        try: client.futures_change_leverage(symbol=symbol, leverage=lev)
+        except: pass # Ignore if already set
+        
         try: client.futures_change_margin_type(symbol=symbol, marginType=margin_mode)
-        except: pass
+        except: pass # Ignore if already set
 
+        # 2. DETERMINE SIDES
         e_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         x_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
         
-        # 1. MARKET ENTRY
-        client.futures_create_order(symbol=symbol, side=e_side, type="MARKET", quantity=qty)
-        time.sleep(0.8) # Sync buffer
-        
-        # 2. STOP LOSS (Priority)
-        sl_p = round_price(symbol, sl_value)
-        client.futures_create_order(symbol=symbol, side=x_side, type="STOP_MARKET", stopPrice=sl_p, closePosition=True, workingType="MARK_PRICE")
+        # 3. CALCULATE STOP LOSS PRICE (The Fix)
+        # If user selected %, calculate the price. If Price, use directly.
+        if sl_type == "SL % Movement":
+            if side == "LONG":
+                calculated_sl = entry * (1 - (sl_value / 100))
+            else: # SHORT
+                calculated_sl = entry * (1 + (sl_value / 100))
+        else:
+            calculated_sl = sl_value
 
-        # 3. TAKE PROFITS
-        if tp1 > 0:
-            t1_qty = round_qty(symbol, qty * (tp1_pct / 100))
-            try: client.futures_create_order(symbol=symbol, side=x_side, type="TAKE_PROFIT_MARKET", stopPrice=round_price(symbol, tp1), quantity=t1_qty, reduceOnly=True, workingType="MARK_PRICE")
-            except Exception as e: print(f"TP1 Error: {e}")
+        sl_p = round_price(symbol, calculated_sl)
         
+        # 4. MARKET ENTRY
+        client.futures_create_order(symbol=symbol, side=e_side, type="MARKET", quantity=qty)
+        time.sleep(0.5) # Short buffer to ensure entry fills
+        
+        # Reset cache so UI updates immediately
+        global _positions_cache_time
+        _positions_cache_time = 0
+
+        # 5. PLACE STOP LOSS (Priority)
+        # uses closePosition=True to protect entire size automatically
+        client.futures_create_order(
+            symbol=symbol, 
+            side=x_side, 
+            type="STOP_MARKET", 
+            stopPrice=sl_p, 
+            closePosition=True, 
+            workingType="MARK_PRICE"
+        )
+
+        # 6. PLACE TAKE PROFITS
+        # TP1 (Partial Close)
+        if tp1 > 0:
+            # logic to ensure TP is on correct side of entry
+            is_valid_tp = (side == "LONG" and tp1 > entry) or (side == "SHORT" and tp1 < entry)
+            if is_valid_tp:
+                t1_qty = round_qty(symbol, qty * (tp1_pct / 100))
+                # Only place if qty is valid
+                if t1_qty > 0:
+                    try: 
+                        client.futures_create_order(
+                            symbol=symbol, 
+                            side=x_side, 
+                            type="TAKE_PROFIT_MARKET", 
+                            stopPrice=round_price(symbol, tp1), 
+                            quantity=t1_qty, 
+                            reduceOnly=True, 
+                            workingType="MARK_PRICE"
+                        )
+                    except Exception as e: print(f"⚠️ TP1 Failed: {e}")
+
+        # TP2 (Final Close)
         if tp2 > 0:
-            try: client.futures_create_order(symbol=symbol, side=x_side, type="TAKE_PROFIT_MARKET", stopPrice=round_price(symbol, tp2), closePosition=True, workingType="MARK_PRICE")
-            except Exception as e: print(f"TP2 Error: {e}")
+            is_valid_tp = (side == "LONG" and tp2 > entry) or (side == "SHORT" and tp2 < entry)
+            if is_valid_tp:
+                try: 
+                    client.futures_create_order(
+                        symbol=symbol, 
+                        side=x_side, 
+                        type="TAKE_PROFIT_MARKET", 
+                        stopPrice=round_price(symbol, tp2), 
+                        closePosition=True, 
+                        workingType="MARK_PRICE"
+                    )
+                except Exception as e: print(f"⚠️ TP2 Failed: {e}")
 
         update_trade_stats(symbol)
-        return {"success": True, "message": f"✅ Executed on {symbol}. SL & TPs set."}
+        return {"success": True, "message": f"✅ {side} {symbol} Open. SL: {sl_p}"}
+        
     except Exception as e:
-        return {"success": False, "message": f"❌ Error: {str(e)}"}
-
+        traceback.print_exc()
+        return {"success": False, "message": f"❌ Execution Error: {str(e)}"}
 def partial_close_position(symbol, close_percent=None, close_qty=None):
     try:
         client = get_client()

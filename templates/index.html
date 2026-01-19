@@ -525,6 +525,47 @@
                 .catch(err => console.log('Price update error:', err));
         }
     }
+ 
+    // Configuration: Update every 3 seconds
+    const UPDATE_INTERVAL = 3000; 
+
+    function updateLiveDashboard() {
+        const symbol = "{{ selected_symbol }}";
+        
+        // 1. Fetch Live Price
+        fetch(`/get_live_price/${symbol}`)
+            .then(response => response.json())
+            .then(data => {
+                const priceElement = document.getElementById("live-price-display");
+                if (priceElement && data.price) {
+                    priceElement.innerText = `$${data.price.toLocaleString()}`;
+                }
+            });
+
+        // 2. Fetch Open Positions
+        fetch('/get_open_positions')
+            .then(response => response.json())
+            .then(data => {
+                const posContainer = document.getElementById("positions-table-body");
+                if (posContainer) {
+                    // This updates your positions list dynamically
+                    let html = "";
+                    data.positions.forEach(pos => {
+                        html += `<tr>
+                            <td>${pos.symbol}</td>
+                            <td class="${pos.pnl >= 0 ? 'text-success' : 'text-danger'}">${pos.pnl}</td>
+                            <td>${pos.entryPrice}</td>
+                            <td><button onclick="closePosition('${pos.symbol}')">Close</button></td>
+                        </tr>`;
+                    });
+                    posContainer.innerHTML = html;
+                }
+            });
+    }
+
+    // Start the loop
+    setInterval(updateLiveDashboard, UPDATE_INTERVAL);
+
     
     // Update intervals (3 seconds for positions, 5 seconds for trades)
     // In your index.html
@@ -540,4 +581,5 @@ setInterval(updateLivePrice, 1000); // Change from 5000 to 1000 for faster price
     updateTradeLimits();
 </script>
 </body>
+
 </html>
