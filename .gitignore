@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+env/
+venv/
+instance/
+bash.exe.stackdump
+trades.json
+.vscode/
+.env
+__pycache__/
+*.pyc

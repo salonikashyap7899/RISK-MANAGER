@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RISK MANAGER</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="container">
+    <div class="panel left">
+        <div class="header">TRADING CONTROLS</div>
+        {% if trade_status %}
+        <div class="message {{ 'success' if trade_status.success else 'error' }}">
+            {{ trade_status.message }}
+        </div>
+        {% endif %}
+
+        <form method="POST">
+            <input type="hidden" name="side" id="side_hidden" value="{{default_side}}">
+            <input type="hidden" name="prev_symbol" value="{{selected_symbol}}">
+
+            <div class="row">
+                <div class="col">
+                    <label>Unutilized Capital (1% Risk Pool)</label>
+                    <input value="${{unutilized | round(2)}}" disabled style="color: #7aff00;">
+                </div>
+            </div>
+
+            <!-- Display trade limits -->
+            <div class="status" style="background: #1a1a2e; border-color: #16213e; margin-bottom: 10px;">
+                <strong>Daily Limits:</strong> 
+                <span id="total_trades_display">{{today_stats.total_trades}}/{{today_stats.max_trades}}</span> total trades | 
+                Max <strong>2 trades per symbol</strong>
+            </div>
+
+            <div class="row">
+                <div class="col">
+                    <label>Symbol</label>
+                    <select name="symbol" onchange="this.form.submit()">
+                        {% for sym in symbols %}
+                        <option value="{{sym}}" {{ 'selected' if sym == selected_symbol }}>{{sym}}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button type="button" class="tab {{ 'active' if default_side == 'LONG' }}" 
+                        onclick="document.getElementById('side_hidden').value='LONG'; this.form.submit();" data-testid="long-button">
+                    LONG
+                </button>
+                <button type="button" class="tab {{ 'active' if default_side == 'SHORT' }}" 
+                        onclick="document.getElementById('side_hidden').value='SHORT'; this.form.submit();" data-testid="short-button">
+                    SHORT
+                </button>
+            </div>
+
+            <div class="row">
+                <div class="col">
+                    <label>Order Type</label>
+                    <select name="order_type" id="order_type_select">
+                        <option value="MARKET" {{ 'selected' if order_type == 'MARKET' }}>MARKET</option>
+                        <option value="LIMIT" {{ 'selected' if order_type == 'LIMIT' }}>LIMIT</option>
+                    </select>
+                </div>
+                <div class="col">
+                    <label>Margin Mode</label>
+                    <select name="margin_mode">
+                        <option value="ISOLATED" {{ 'selected' if margin_mode == 'ISOLATED' }}>ISOLATED</option>
+                        <option value="CROSS" {{ 'selected' if margin_mode == 'CROSS' }}>CROSS</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col">
+                    <label>Entry Price</label>
+                    <input type="number" name="entry" id="entry_input" value="{{default_entry}}" step="any">
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col">
+                    <label>TP 1 Price</label>
+                    <input type="number" name="tp1" value="{{tp1}}" step="any">
+                </div>
+                <div class="col">
+                    <label>TP 1 Qty %</label>
+                    <input type="number" name="tp1_pct" value="{{tp1_pct}}">
+                </div>
+                <div class="col">
+                    <label>TP 2 Price</label>
+                    <input type="number" name="tp2" value="{{tp2}}" step="any">
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col">
+                    <label>SL Method</label>
+                    <select name="sl_type" onchange="this.form.submit();">
+                        <option value="SL Points" {{ 'selected' if default_sl_type == 'SL Points' }}>SL Points</option>
+                        <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>SL % Movement</option>
+                    </select>
+                </div>
+                <div class="col">
+                    <label>SL Value (⚠️ MANDATORY)</label>
+                    <input type="number" name="sl_value" value="{{default_sl_value}}" step="any" 
+                           onchange="this.form.submit();" required>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col">
+                    <label>Pos Override</label>
+                    <input type="number" name="user_units" step="any">
+                    <small>Sug: {{sizing.suggested_units}}</small>
+                </div>
+                <div class="col">
+                    <label>Lev Override</label>
+                    <input type="number" name="user_lev" step="any">
+                    <small>Sug: {{sizing.suggested_leverage}}x</small>
+                </div>
+            </div>
+
+            <button type="submit" name="place_order" class="place" data-testid="execute-order-button"
+                    {% if default_sl_value <= 0 %} disabled style="filter: grayscale(1);" {% endif %}>
+                {% if default_sl_value <= 0 %} 
+                    🔒 LOCK: SET SL FIRST (MANDATORY)
+                {% else %} 
+                    ✅ EXECUTE EXCHANGE ORDER (SL: {{default_sl_value}})
+                {% endif %}
+            </button>
+
+            <div class="status-box">
+                {% if not sizing.error %}
+                    <div class="formula" style="background: #06212a; padding: 10px; border-radius: 4px; border: 1px solid #0ca7d4; margin-top: 10px;">
+                        <b style="color: #00b7ff;">📐 Precision Logic:</b><br>
+                        <span style="font-size: 0.85em;">
+                            • <b>Risk:</b> ${{ sizing.risk_amount }} (1%)<br>
+                            • <b>Max Lev:</b> {{ sizing.suggested_leverage }}x [100 / (SL% + 0.2)]<br>
+                            • <b>Pos Size:</b> {{ sizing.suggested_units }} units<br>
+                            • <b>Formula:</b> (Risk / (SL% + 0.2)) × 100
+                        </span>
+                    </div>
+                {% else %}
+                    <div class="error">{{ sizing.error }}</div>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <div class="panel right">
+        <div id="tv_chart" style="height: 400px; width: 100%;"></div>
+
+        <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+        <script type="text/javascript">
+          new TradingView.widget({
+            "autosize": true,
+            "symbol": "BINANCE:{{ selected_symbol or 'BTCUSDT' }}",
+            "interval": "5",
+            "timezone": "Etc/UTC",
+            "theme": "dark",
+            "style": "1",
+            "locale": "en",
+            "toolbar_bg": "#f1f3f6",
+            "enable_publishing": false,
+            "hide_top_toolbar": false,
+            "save_image": false,
+            "container_id": "tv_chart"
+          });
+        </script>
+
+        <!-- FIXED: DYNAMIC POSITION COUNTER -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+            <div class="header" style="margin: 0; flex: 1;" id="position_header">POSITIONS (0) | Open Orders (0) | Bots</div>
+            <button onclick="closeAllPositions()" class="close-all-btn" data-testid="close-all-positions-button">
+                Close All Positions
+            </button>
+        </div>
+        
+        <div id="live_positions" style="background: #000; border: 1px solid #333; max-height: 350px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 11px; margin-top: 5px;">
+            <div style="text-align: center; color: #888; padding-top: 10px;" data-testid="loading-positions">
+                Loading positions...
+            </div>
+        </div>
+
+        <!-- FIXED: COMPLETE LIVE TRADE HISTORY FROM BINANCE -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+            <div class="header" style="margin: 0; flex: 1;">📊 COMPLETE TRADE LOG (Binance)</div>
+            <a href="/download_trades" class="csv-download-btn" title="Download Trade History" data-testid="download-csv-button">
+                📥 CSV
+            </a>
+        </div>
+        
+        <div id="trade_history" style="background: #000; border: 1px solid #333; height: 140px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 11px; margin-top: 5px;">
+            <div style="text-align: center; color: #888; padding-top: 20px;" data-testid="loading-trades">
+                Loading complete trade history...
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // CRITICAL FIX: Store SL input values to prevent clearing during live updates
+    const slInputValues = {};
+
+    // FIXED: Enhanced live positions with REAL Binance data and PRESERVED SL inputs
+    function updateLivePositions() {
+        // Save all current SL input values BEFORE updating
+        document.querySelectorAll('[id^="sl_adjust_"]').forEach(input => {
+            if (input.value) {
+                slInputValues[input.id] = input.value;
+            }
+        });
+
+        fetch('/get_open_positions')
+            .then(r => r.json())
+            .then(data => {
+                const container = document.getElementById('live_positions');
+                const header = document.getElementById('position_header');
+                
+                if (data.positions && data.positions.length > 0) {
+                    // Update dynamic counter
+                    const totalOrders = data.positions.reduce((sum, pos) => sum + (pos.open_orders ? pos.open_orders.length : 0), 0);
+                    header.textContent = `POSITIONS (${data.positions.length}) | Open Orders (${totalOrders}) | Bots`;
+                    
+                    let html = '';
+                    data.positions.forEach(pos => {
+                        const pnlColor = pos.unrealized_pnl >= 0 ? '#00ff88' : '#ff4d4d';
+                        const pnlSymbol = pos.unrealized_pnl >= 0 ? '+' : '';
+                        const roiColor = pos.roi_percent >= 0 ? '#00ff88' : '#ff4d4d';
+                        const roiSymbol = pos.roi_percent >= 0 ? '+' : '';
+                        
+                        // Show live timestamp
+                        html += `
+                            <div style="border: 1px solid #1a3a4a; border-radius: 6px; padding: 12px; margin-bottom: 10px; background: #0a1520;" data-testid="position-${pos.symbol}">
+                                <!-- Header Row with timestamp -->
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <div>
+                                        <span style="background: ${pos.side === 'LONG' ? '#1a4d2e' : '#4d1a1a'}; color: ${pos.side === 'LONG' ? '#00ff88' : '#ff4d4d'}; padding: 2px 8px; border-radius: 3px; font-weight: bold; font-size: 10px;">
+                                            ${pos.symbol}
+                                        </span>
+                                        <span style="color: #888; font-size: 10px; margin-left: 8px;">
+                                            Perp | Isolated ${pos.leverage}x
+                                        </span>
+                                        <span style="color: #666; font-size: 9px; margin-left: 8px;">
+                                            🕐 ${pos.timestamp}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <button onclick="showPartialCloseModal('${pos.symbol}', ${pos.amount})" 
+                                                style="background: #3a3a3a; border: 1px solid #555; color: #fff; padding: 3px 10px; border-radius: 3px; cursor: pointer; font-size: 10px; margin-right: 5px;"
+                                                data-testid="partial-close-${pos.symbol}">
+                                            📉 Partial
+                                        </button>
+                                        <button onclick="closePosition('${pos.symbol}')" 
+                                                style="background: #4d1a1a; border: 1px solid #ff4d4d; color: #ff4d4d; padding: 3px 10px; border-radius: 3px; cursor: pointer; font-size: 10px;"
+                                                data-testid="close-${pos.symbol}">
+                                            ✕ Close
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Main Metrics Row -->
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px;">
+                                    <!-- Unrealized PNL -->
+                                    <div>
+                                        <div style="color: #888; font-size: 9px; margin-bottom: 2px;">Unrealized PNL (USDT)</div>
+                                        <div style="color: ${pnlColor}; font-weight: bold; font-size: 14px;" data-testid="pnl-${pos.symbol}">
+                                            ${pnlSymbol}${pos.unrealized_pnl.toFixed(2)}
+                                        </div>
+                                    </div>
+                                    <!-- ROI -->
+                                    <div>
+                                        <div style="color: #888; font-size: 9px; margin-bottom: 2px;">ROI</div>
+                                        <div style="color: ${roiColor}; font-weight: bold; font-size: 14px;" data-testid="roi-${pos.symbol}">
+                                            ${roiSymbol}${pos.roi_percent.toFixed(2)}%
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Detailed Metrics Grid -->
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 10px;">
+                                    <div>
+                                        <div style="color: #888; font-size: 9px;">Size (USDT)</div>
+                                        <div style="color: #eee;">${pos.size_usdt.toFixed(4)}</div>
+                                    </div>
+                                    <div>
+                                        <div style="color: #888; font-size: 9px;">Margin (USDT)</div>
+                                        <div style="color: #eee;">${pos.margin_usdt.toFixed(2)}</div>
+                                    </div>
+                                    <div>
+                                        <div style="color: #888; font-size: 9px;">Margin Ratio</div>
+                                        <div style="color: ${pos.margin_ratio > 80 ? '#ff4d4d' : '#eee'}">${pos.margin_ratio.toFixed(2)}%</div>
+                                    </div>
+                                    <div>
+                                        <div style="color: #888; font-size: 9px;">Entry Price (USDT)</div>
+                                        <div style="color: #eee;">${pos.entry_price.toFixed(6)}</div>
+                                    </div>
+                                    <div>
+                                        <div style="color: #888; font-size: 9px;">Mark Price (USDT)</div>
+                                        <div style="color: #eee;">${pos.mark_price.toFixed(6)}</div>
+                                    </div>
+                                    <div>
+                                        <div style="color: #888; font-size: 9px;">Liq. Price (USDT)</div>
+                                        <div style="color: #ff4d4d;">${pos.liquidation_price.toFixed(6)}</div>
+                                    </div>
+                                </div>
+
+                                <!-- FIXED: Editable SL Section with value preservation -->
+                                <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #1a3a4a;">
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <div style="flex: 1;">
+                                            <label style="color: #888; font-size: 9px; display: block; margin-bottom: 3px;">
+                                                ⚠️ Adjust SL (-1% to 0% only)
+                                            </label>
+                                            <input type="number" 
+                                                   id="sl_adjust_${pos.symbol}" 
+                                                   step="0.1" 
+                                                   min="-1" 
+                                                   max="0" 
+                                                   placeholder="e.g., -0.5"
+                                                   style="width: 100%; padding: 4px; background: #111; border: 1px solid #333; color: #fff; border-radius: 3px; font-size: 10px;"
+                                                   data-testid="sl-input-${pos.symbol}">
+                                        </div>
+                                        <button onclick="updateSL('${pos.symbol}')" 
+                                                style="background: #1a4d2e; border: 1px solid #00ff88; color: #00ff88; padding: 4px 12px; border-radius: 3px; cursor: pointer; font-size: 10px; margin-top: 14px;"
+                                                data-testid="update-sl-${pos.symbol}">
+                                            Update SL
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    container.innerHTML = html;
+
+                    // CRITICAL FIX: Restore saved SL input values AFTER DOM update
+                    setTimeout(() => {
+                        Object.keys(slInputValues).forEach(inputId => {
+                            const input = document.getElementById(inputId);
+                            if (input && slInputValues[inputId]) {
+                                input.value = slInputValues[inputId];
+                            }
+                        });
+                    }, 50);
+                } else {
+                    // Reset counter to 0
+                    header.textContent = 'POSITIONS (0) | Open Orders (0) | Bots';
+                    container.innerHTML = '<div style="text-align: center; color: #555; padding-top: 10px;" data-testid="no-positions">✅ No open positions</div>';
+                }
+            })
+            .catch(err => {
+                console.log('Position update error:', err);
+                document.getElementById('live_positions').innerHTML = 
+                    '<div style="text-align: center; color: #ff4d4d; padding-top: 10px;">❌ Error loading positions</div>';
+            });
+    }
+
+    // FIXED: Update trade history with COMPLETE Binance data (past + current)
+    function updateTradeHistory() {
+        fetch('/get_trade_history')
+            .then(r => r.json())
+            .then(data => {
+                const container = document.getElementById('trade_history');
+                if (data.trades && data.trades.length > 0) {
+                    let html = `<div style="color: #00ff88; font-size: 10px; margin-bottom: 5px; font-weight: bold;">✅ ${data.trades.length} trades loaded</div>`;
+                    
+                    data.trades.slice(0, 50).forEach(trade => {  // Show top 50 trades
+                        const pnlColor = trade.realized_pnl >= 0 ? '#00ff88' : '#ff4d4d';
+                        const pnlSymbol = trade.realized_pnl >= 0 ? '+' : '';
+                        
+                        html += `
+                            <div style="border-bottom: 1px solid #222; padding: 5px 0; color: #eee;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>
+                                        <b style="color: ${trade.side === 'LONG' ? '#00ff88' : '#ff4d4d'}">${trade.side}</b> 
+                                        ${trade.symbol} (${trade.qty})
+                                    </span>
+                                    <span style="color: #888; font-size: 10px;">🕐 ${trade.time}</span>
+                                </div>
+                                <div style="font-size: 10px; color: #bbb; margin-top: 2px;">
+                                    Price: ${trade.price} | 
+                                    PnL: <span style="color: ${pnlColor}">${pnlSymbol}${trade.realized_pnl.toFixed(4)}</span> | 
+                                    Fee: ${trade.commission} | 
+                                    ID: ${trade.order_id}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = '<div style="text-align: center; color: #555; padding-top: 20px;">📉 No trades yet</div>';
+                }
+            })
+            .catch(err => {
+                console.log('Trade history error:', err);
+            });
+    }
+
+    // Update trade limits display
+    function updateTradeLimits() {
+        fetch('/get_today_stats')
+            .then(r => r.json())
+            .then(data => {
+                const display = document.getElementById('total_trades_display');
+                if (display) {
+                    display.textContent = `${data.total_trades}/${data.max_trades}`;
+                }
+            })
+            .catch(err => console.log('Stats error:', err));
+    }
+
+    // Partial close modal
+    function showPartialCloseModal(symbol, totalAmount) {
+        const percent = prompt(`Partial Close ${symbol}\n\nEnter percentage to close (1-99):`, '50');
+        if (percent && percent > 0 && percent < 100) {
+            partialClosePosition(symbol, parseFloat(percent));
+        }
+    }
+
+    // Partial close position
+    function partialClosePosition(symbol, closePercent) {
+        fetch('/partial_close', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({symbol: symbol, close_percent: closePercent})
+        })
+        .then(r => r.json())
+        .then(data => {
+            alert(data.message);
+            if (data.success) {
+                updateLivePositions();
+                updateTradeHistory();
+            }
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    // Close single position
+    function closePosition(symbol) {
+        if(confirm(`Close entire position for ${symbol}?`)) {
+            fetch(`/close_position/${symbol}`, {method: 'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    alert(data.message);
+                    if (data.success) {
+                        updateLivePositions();
+                        updateTradeHistory();
+                    }
+                })
+                .catch(err => alert('Error: ' + err));
+        }
+    }
+
+    // Close all positions
+    function closeAllPositions() {
+        if(confirm('Close ALL positions?')) {
+            fetch('/get_open_positions')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.positions && data.positions.length > 0) {
+                        let promises = data.positions.map(pos => 
+                            fetch(`/close_position/${pos.symbol}`, {method: 'POST'})
+                        );
+                        Promise.all(promises).then(() => {
+                            alert('All positions closed!');
+                            updateLivePositions();
+                            updateTradeHistory();
+                        });
+                    } else {
+                        alert('No positions to close');
+                    }
+                })
+                .catch(err => alert('Error: ' + err));
+        }
+    }
+
+    // Update stop loss with validation
+    function updateSL(symbol) {
+        const input = document.getElementById(`sl_adjust_${symbol}`);
+        const slPercent = parseFloat(input.value);
+        
+        if (isNaN(slPercent)) {
+            alert('⚠️ Please enter a valid SL adjustment percentage');
+            return;
+        }
+        
+        if (slPercent < -1 || slPercent > 0) {
+            alert('⚠️ SL adjustment must be between -1% and 0%');
+            return;
+        }
+        
+        fetch('/update_sl', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({symbol: symbol, new_sl_percent: slPercent})
+        })
+        .then(r => r.json())
+        .then(data => {
+            alert(data.message);
+            if (data.success) {
+                // Clear the input value from storage after successful update
+                delete slInputValues[`sl_adjust_${symbol}`];
+                input.value = '';
+                updateLivePositions();
+            }
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    // Update live price
+    function updateLivePrice() {
+        const symbol = document.querySelector('select[name="symbol"]').value;
+        const orderType = document.getElementById('order_type_select').value;
+        const entryInput = document.getElementById('entry_input');
+
+        if (orderType === "MARKET") {
+            fetch(`/get_live_price/${symbol}`)
+                .then(r => r.json())
+                .then(data => { 
+                    if(data.price && data.price > 0) {
+                        entryInput.value = data.price;
+                    }
+                })
+                .catch(err => console.log('Price update error:', err));
+        }
+    }
+ 
+    // Configuration: Update every 3 seconds
+    const UPDATE_INTERVAL = 3000; 
+
+    function updateLiveDashboard() {
+        const symbol = "{{ selected_symbol }}";
+        
+        // 1. Fetch Live Price
+        fetch(`/get_live_price/${symbol}`)
+            .then(response => response.json())
+            .then(data => {
+                const priceElement = document.getElementById("live-price-display");
+                if (priceElement && data.price) {
+                    priceElement.innerText = `$${data.price.toLocaleString()}`;
+                }
+            });
+
+        // 2. Fetch Open Positions
+        fetch('/get_open_positions')
+            .then(response => response.json())
+            .then(data => {
+                const posContainer = document.getElementById("positions-table-body");
+                if (posContainer) {
+                    // This updates your positions list dynamically
+                    let html = "";
+                    data.positions.forEach(pos => {
+                        html += `<tr>
+                            <td>${pos.symbol}</td>
+                            <td class="${pos.pnl >= 0 ? 'text-success' : 'text-danger'}">${pos.pnl}</td>
+                            <td>${pos.entryPrice}</td>
+                            <td><button onclick="closePosition('${pos.symbol}')">Close</button></td>
+                        </tr>`;
+                    });
+                    posContainer.innerHTML = html;
+                }
+            });
+    }
+
+    // Start the loop
+    setInterval(updateLiveDashboard, UPDATE_INTERVAL);
+
+    
+    // Update intervals (3 seconds for positions, 5 seconds for trades)
+    // In your index.html
+setInterval(updateLivePrice, 1000); // Change from 5000 to 1000 for faster price
+    setInterval(updateLivePositions, 3000);  // Live position updates every 3 seconds
+    setInterval(updateTradeHistory, 5000);   // Complete trade history every 5 seconds
+    setInterval(updateTradeLimits, 10000);   // Trade limits every 10 seconds
+    
+    // Initial updates
+    updateLivePrice();
+    updateLivePositions();
+    updateTradeHistory();
+    updateTradeLimits();
+</script>
+</body>
+
+</html>
