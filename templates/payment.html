@@ -1,0 +1,20 @@
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+<button id="pay-btn">Pay ₹199</button>
+
+<script>
+var options = {
+    "key": "{{ razorpay_key }}",
+    "amount": "{{ order.amount }}",
+    "currency": "INR",
+    "order_id": "{{ order.id }}",
+    "handler": function (response){
+        window.location.href = "/payment-success";
+    }
+};
+
+document.getElementById('pay-btn').onclick = function(){
+    var rzp = new Razorpay(options);
+    rzp.open();
+}
+</script>

@@ -1,38 +1,48 @@
-from flask import Flask, render_template, request, session, jsonify, redirect, url_for, Response
+from flask import Flask, render_template, request, session, jsonify, redirect, url_for, Response, flash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from datetime import datetime
+from functools import wraps
+import razorpay  # <--- FIXED: Added missing import
 import logic
 import os
 import csv
 import io
 
-# Import your User model (ensure models.py exists as provided previously)
+# Import your User model
 from models import db, User
 
-app = Flask(__name__)
-app.secret_key = "trading_secret_key_ultra_secure_2025"
+# Load environment variables
+load_dotenv()
 
-# Database & Login Configuration
-# Replace your old SQLALCHEMY_DATABASE_URI line with this:
+app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", "trading_secret_key_ultra_secure_2025")
+
+# Database Configuration
+# Handles Render/Heroku Postgres URL differences automatically
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///users.db').replace("postgres://", "postgresql://", 1)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SESSION_PERMANENT'] = False
 
+# Initialize Extensions
 db.init_app(app)
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
 
+# Initialize Razorpay Client
+razorpay_client = razorpay.Client(
+    auth=(os.getenv('RAZORPAY_KEY_ID'), os.getenv('RAZORPAY_KEY_SECRET'))
+)
+
 # Google OAuth Setup
 oauth = OAuth(app)
 google = oauth.register(
     name='google',
-
-client_id=os.getenv('GOOGLE_CLIENT_ID'), # REPLACE THIS
-    client_secret=os.getenv('GOOGLE_CLIENT_SECRET'), # REPLACE THIS
+    client_id=os.getenv('GOOGLE_CLIENT_ID'),
+    client_secret=os.getenv('GOOGLE_CLIENT_SECRET'),
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
     client_kwargs={'scope': 'openid email profile'}
 )
@@ -41,12 +51,97 @@ client_id=os.getenv('GOOGLE_CLIENT_ID'), # REPLACE THIS
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+
+# --- SUBSCRIPTION DECORATOR ---
+def subscription_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Check if user is subscribed OR if they are an admin (optional)
+        if not current_user.is_subscribed:
+            flash('Please subscribe to access the trading dashboard.', 'warning')
+            return redirect(url_for('subscribe'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# --- SUBSCRIPTION ROUTES ---
+
+@app.route('/subscribe')
+@login_required
+def subscribe():
+    """Page to show subscription details"""
+    return render_template('subscribe.html', key_id=os.getenv('RAZORPAY_KEY_ID'))
+
+@app.route('/create-subscription', methods=['POST'])
+@login_required
+def create_subscription():
+    """Creates a subscription order on Razorpay"""
+    try:
+        subscription_data = {
+            "plan_id": os.getenv("RAZORPAY_PLAN_ID"), # Ensure this is in your .env file
+            "total_count": 12, # Number of billing cycles (e.g. 12 months)
+            "quantity": 1,
+            "customer_notify": 1,
+            "notes": {
+                "user_id": current_user.id,
+                "email": current_user.email
+            }
+        }
+        subscription = razorpay_client.subscription.create(subscription_data)
+        
+        # Store ID temporarily if needed, or just send to frontend
+        current_user.razorpay_subscription_id = subscription['id']
+        db.session.commit()
+
+        return jsonify({
+            "subscription_id": subscription['id'],
+            "status": "created"
+        })
+
+    except Exception as e:
+        print(f"Razorpay Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/payment-success', methods=['POST'])
+@login_required
+def payment_success():
+    """Verifies the payment signature and activates subscription"""
+    data = request.json
+    razorpay_payment_id = data.get('razorpay_payment_id')
+    razorpay_subscription_id = data.get('razorpay_subscription_id')
+    razorpay_signature = data.get('razorpay_signature')
+
+    try:
+        # Verify Signature
+        params_dict = {
+            'razorpay_payment_id': razorpay_payment_id,
+            'razorpay_subscription_id': razorpay_subscription_id,
+            'razorpay_signature': razorpay_signature
+        }
+        
+        razorpay_client.utility.verify_subscription_payment_signature(params_dict)
+
+        # Activate User
+        current_user.is_subscribed = True
+        current_user.subscription_status = 'active'
+        current_user.razorpay_payment_id = razorpay_payment_id
+        current_user.razorpay_subscription_id = razorpay_subscription_id
+        current_user.subscription_start = datetime.utcnow()
+        
+        db.session.commit()
+        return jsonify({"success": True})
+
+    except razorpay.errors.SignatureVerificationError:
+        return jsonify({"success": False, "message": "Invalid Signature"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 # --- AUTHENTICATION ROUTES ---
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        # Using pbkdf2:sha256 for modern compatibility
         hashed_pw = generate_password_hash(request.form.get('password'))
         new_user = User(
             username=request.form.get('username'),
@@ -64,7 +159,11 @@ def login():
         user = User.query.filter_by(email=request.form.get('email')).first()
         if user and check_password_hash(user.password, request.form.get('password')):
             login_user(user)
-            return redirect(url_for('index'))
+            # Check if they are subscribed to determine where they go
+            if user.is_subscribed:
+                return redirect(url_for('index'))
+            else:
+                return redirect(url_for('subscribe'))
     return render_template('login.html')
 
 @app.route('/login/google')
@@ -77,7 +176,6 @@ def google_authorize():
     user_info = token.get('userinfo')
     user = User.query.filter_by(email=user_info['email']).first()
     if not user:
-        # Create new user if they don't exist
         user = User(
             username=user_info['name'], 
             email=user_info['email'], 
@@ -86,7 +184,11 @@ def google_authorize():
         db.session.add(user)
         db.session.commit()
     login_user(user)
-    return redirect(url_for('index'))
+    
+    if user.is_subscribed:
+        return redirect(url_for('index'))
+    else:
+        return redirect(url_for('subscribe'))
 
 @app.route('/logout')
 @login_required
@@ -94,7 +196,8 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# --- ORIGINAL TRADING ROUTES (All Preserved) ---
+
+# --- TRADING API ROUTES ---
 
 @app.route("/get_live_price/<symbol>")
 @login_required
@@ -161,8 +264,12 @@ def download_trades():
     output.seek(0)
     return Response(output.getvalue(), mimetype='text/csv', headers={'Content-Disposition': f'attachment; filename=trade_history_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'})
 
+
+# --- MAIN TRADING DASHBOARD ---
+
 @app.route("/", methods=["GET", "POST"])
 @login_required
+@subscription_required  # <--- FIXED: Added this to lock the dashboard
 def index():
     logic.initialize_session()
     symbols = logic.get_all_exchange_symbols()
@@ -202,7 +309,7 @@ def index():
     
     return render_template(
         "index.html",
-        user=current_user, # Passed user info to template
+        user=current_user, 
         trade_status=trade_status,
         sizing=sizing,
         balance=round(balance, 2),
@@ -221,9 +328,8 @@ def index():
         today_stats=today_stats
     )
 
-# Database initialization
-with app.app_context():
-    db.create_all()
-
+# --- APP EXECUTION ---
 if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()  # Ensures database is created on startup
     app.run(host='0.0.0.0', port=5000, debug=True)
