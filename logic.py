@@ -303,57 +303,61 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         # 5. PLACE STOP LOSS (Priority)
         # uses closePosition=True to protect entire size automatically
         client.futures_create_order(
-            symbol=symbol, 
-            side=x_side, 
-            type="STOP_MARKET", 
-            stopPrice=sl_p, 
-            closePosition=True, 
-            workingType="MARK_PRICE"
-        )
-
+    symbol=symbol,
+    side=x_side,
+    type="STOP_MARKET",
+    stopPrice=sl_p,
+    quantity=qty,
+    reduceOnly=True,
+    workingType="MARK_PRICE",
+    priceProtect=True
+)
         # 6. PLACE TAKE PROFITS
         # TP1 (Partial Close)
-        if tp1 > 0:
-            # logic to ensure TP is on correct side of entry
-            is_valid_tp = (side == "LONG" and tp1 > entry) or (side == "SHORT" and tp1 < entry)
-            if is_valid_tp:
-                t1_qty = round_qty(symbol, qty * (tp1_pct / 100))
-                # Only place if qty is valid
-                if t1_qty > 0:
-                    try: 
-                        client.futures_create_order(
-                            symbol=symbol, 
-                            side=x_side, 
-                            type="TAKE_PROFIT_MARKET", 
-                            stopPrice=round_price(symbol, tp1), 
-                            quantity=t1_qty, 
-                            reduceOnly=True, 
-                            workingType="MARK_PRICE"
-                        )
-                    except Exception as e: print(f"⚠️ TP1 Failed: {e}")
+    remaining_qty = qty
 
-        # TP2 (Final Close)
-        if tp2 > 0:
-            is_valid_tp = (side == "LONG" and tp2 > entry) or (side == "SHORT" and tp2 < entry)
-            if is_valid_tp:
-                try: 
-                    client.futures_create_order(
-                        symbol=symbol, 
-                        side=x_side, 
-                        type="TAKE_PROFIT_MARKET", 
-                        stopPrice=round_price(symbol, tp2), 
-                        closePosition=True, 
-                        workingType="MARK_PRICE"
-                    )
-                except Exception as e: print(f"⚠️ TP2 Failed: {e}")
+# TP1
+    if tp1 > 0:
+        is_valid_tp = (side == "LONG" and tp1 > entry) or (side == "SHORT" and tp1 < entry)
+     if is_valid_tp:
+        t1_qty = round_qty(symbol, qty * (tp1_pct / 100))
+        if t1_qty > 0:
+            client.futures_create_order(
+                symbol=symbol,
+                side=x_side,
+                type="TAKE_PROFIT_MARKET",
+                stopPrice=round_price(symbol, tp1),
+                quantity=t1_qty,
+                reduceOnly=True,
+                workingType="MARK_PRICE",
+                priceProtect=True
+            )
+            remaining_qty -= t1_qty
+
+# TP2 (close remaining only)
+# 
+  if tp2 > 0 and remaining_qty > 0:
+          is_valid_tp = (side == "LONG" and tp2 > entry) or (side == "SHORT" and tp2 < entry)
+  if is_valid_tp:
+        client.futures_create_order(
+            symbol=symbol,
+            side=x_side,
+            type="TAKE_PROFIT_MARKET",
+            stopPrice=round_price(symbol, tp2),
+            quantity=remaining_qty,
+            reduceOnly=True,
+            workingType="MARK_PRICE",
+            priceProtect=True
+        ) 
+        except Exception as e: print(f"⚠️ TP2 Failed: {e}")
 
         update_trade_stats(symbol)
         return {"success": True, "message": f"✅ {side} {symbol} Open. SL: {sl_p}"}
         
-    except Exception as e:
+     except Exception as e:
         traceback.print_exc()
-        return {"success": False, "message": f"❌ Execution Error: {str(e)}"}
-def partial_close_position(symbol, close_percent=None, close_qty=None):
+  return {"success": False, "message": f"❌ Execution Error: {str(e)}"}
+    def partial_close_position(symbol, close_percent=None, close_qty=None):
     try:
         client = get_client()
         positions = client.futures_position_information(symbol=symbol)
