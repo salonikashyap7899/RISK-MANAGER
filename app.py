@@ -38,6 +38,10 @@ db.init_app(app)
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
 # Google OAuth Setup
 oauth = OAuth(app)
 google = oauth.register(
@@ -57,8 +61,7 @@ def get_month_end(dt=None):
     next_month = dt.replace(day=28) + timedelta(days=4)  # always goes to next month
     return next_month.replace(day=1) - timedelta(seconds=1)
 
-def load_user(user_id):
-    return User.query.get(int(user_id))
+
 
 # --- 2. THE GATEKEEPER (Checks Expiry Date) ---
 def subscription_required(f):
