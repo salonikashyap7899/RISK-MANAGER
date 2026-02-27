@@ -83,6 +83,19 @@ def subscription_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def has_active_subscription(user):
+    if not user.is_subscribed:
+        return False
+
+    if user.subscription_end and user.subscription_end > datetime.utcnow():
+        return True
+
+    # Auto-expire if date passed
+    user.is_subscribed = False
+    user.subscription_status = "expired"
+    db.session.commit()
+    return False
+
 # --- PUBLIC PAGES ---
 
 @app.route('/') # Change this from /home to /
@@ -184,9 +197,10 @@ def login():
         user.active_session = session_id
 
         db.session.commit()
-        return redirect(url_for('index'))
-
-    return render_template('login.html')
+        if has_active_subscription(user):
+         return redirect(url_for('index'))
+    else:
+       return redirect(url_for('subscribe'))
 def dashboard_defaults():
     return {
         "trade_status": None,
@@ -232,7 +246,10 @@ def google_authorize():
         db.session.commit()
     login_user(user)
     # Redirect to subscription page instead of index
-    return redirect(url_for('subscribe'))
+    if has_active_subscription(user):
+       return redirect(url_for('index'))
+    else:
+       return redirect(url_for('subscribe'))
 
 @app.route('/logout')
 @login_required
@@ -250,8 +267,14 @@ def logout():
 @app.route('/subscribe')
 @login_required
 def subscribe():
-    """Render subscription page with Razorpay key"""
-    return render_template('subscribe.html', key_id=config.RAZORPAY_KEY_ID, user=current_user)
+    if has_active_subscription(current_user):
+        return redirect(url_for('index'))
+
+    return render_template(
+        'subscribe.html',
+        key_id=config.RAZORPAY_KEY_ID,
+        user=current_user
+    )
 
 @app.route('/create-subscription', methods=['POST'])
 @login_required
@@ -375,7 +398,10 @@ def check_subscription():
         'status': 'inactive'
     })
 
+
 # --- ORIGINAL TRADING ROUTES ---
+
+
 
 @app.route("/get_live_price/<symbol>")
 @login_required
