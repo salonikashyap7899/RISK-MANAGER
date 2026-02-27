@@ -1,3 +1,4 @@
+
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for, Response
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -5,7 +6,9 @@ from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import redirect, url_for, flash
+from flask import redirect, url_for
+from pydoc import getpager
+from urllib.parse import urlparse, urljoin
 from flask_login import current_user
 from datetime import datetime, timedelta
 from models import db, User
@@ -23,6 +26,15 @@ import hmac
 app = Flask(__name__)
 app.secret_key = "trading_secret_key_ultra_secure_2025"
 
+
+
+def is_safe_url(target):
+    ref_url = urlparse(request.host_url)
+    test_url = urlparse(urljoin(request.host_url, target))
+    return (
+        test_url.scheme in ('http', 'https') and
+        ref_url.netloc == test_url.netloc
+    )
 
 # Database & Login Configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///users.db').replace("postgres://", "postgresql://", 1)
@@ -162,7 +174,6 @@ def register():
             return redirect(url_for('login')) 
 
     return render_template('register.html')
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -183,7 +194,7 @@ def login():
         # ✅ LOGIN USER
         login_user(user)
 
-        # 🎁 FIRST LOGIN / TRIAL → VALID TILL MONTH END
+        # 🎁 FIRST LOGIN / TRIAL
         if not user.subscription_end:
             user.is_subscribed = True
             user.subscription_type = "trial"
@@ -197,10 +208,22 @@ def login():
         user.active_session = session_id
 
         db.session.commit()
+
+        # ✅ SAFE NEXT PAGE HANDLING
+        next_page = request.args.get("next")
+
+        if next_page and is_safe_url(next_page):
+            if next_page != url_for('subscribe'):
+                return redirect(next_page)
+
+        # ✅ SUBSCRIPTION-AWARE DEFAULT
         if has_active_subscription(user):
-         return redirect(url_for('index'))
-    else:
-       return redirect(url_for('subscribe'))
+            return redirect(url_for('index'))
+        else:
+            return redirect(url_for('subscribe'))
+
+    # GET request
+    return render_template('login.html')
 def dashboard_defaults():
     return {
         "trade_status": None,
@@ -267,6 +290,7 @@ def logout():
 @app.route('/subscribe')
 @login_required
 def subscribe():
+    # 🔒 Prevent redirect loop
     if has_active_subscription(current_user):
         return redirect(url_for('index'))
 
