@@ -5,6 +5,12 @@
     <link rel="stylesheet" href="../static/style.css">
 <body>
 <div class="container">
+    {% if banner %}
+<div class="alert alert-{{ banner.type }} text-center">
+    {{ banner.message }}
+    <a href="{{ url_for('subscribe') }}" class="btn btn-sm btn-light ms-2">Renew</a>
+</div>
+{% endif %}
     <div class="panel left">
         <div class="header">TRADING CONTROLS</div>
         {% if trade_status %}
@@ -12,7 +18,7 @@
             {{ trade_status.message }}
         </div>
         {% endif %}
-
+ 
         <form method="POST">
             <input type="hidden" name="side" id="side_hidden" value="{{default_side}}">
             <input type="hidden" name="prev_symbol" value="{{selected_symbol}}">
@@ -128,7 +134,11 @@
                     ✅ EXECUTE EXCHANGE ORDER (SL: {{default_sl_value}})
                 {% endif %}
             </button>
-           <button> <a href="./home.html">⬅️ Return to Home</a></button>
+           <div style="margin-bottom: 15px;">
+    <a href="{{ url_for('home') }}" class="btn btn-secondary">
+        ⬅ Back to Home
+    </a>
+</div>
             <div class="status-box">
                 {% if not sizing.error %}
                     <div class="formula" style="background: #06212a; padding: 10px; border-radius: 4px; border: 1px solid #0ca7d4; margin-top: 10px;">
