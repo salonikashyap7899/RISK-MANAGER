@@ -279,18 +279,22 @@ def create_subscription():
             }), 400
 
         subscription_data = {
-            "plan_id": plan_id,          # 🔥 THIS WAS MISSING
-            "customer_notify": 1,
-             "total_count": 12,
-             "customer_notify": 1,
-            "quantity": 1,
-            "notes": {
-                "user_id": current_user.id,
-                "email": current_user.email
-            }
-        }
+    "plan_id": plan_id,
+    "total_count": 12 if plan_type == "monthly" else 1,
+    "quantity": 1,
+    "customer_notify": 1,
+    "notes": {
+        "user_id": current_user.id,
+        "email": current_user.email
+    }
+}
+        
         subscription = razorpay_client.subscription.create(subscription_data)
 
+         
+        session["pending_plan_type"] = plan_type
+
+          
         return jsonify({
             "success": True,
             "subscription_id": subscription["id"]
@@ -303,7 +307,6 @@ def create_subscription():
             "error": str(e)
         }), 400
 
-# Change the route and function name to avoid the collision
 # Rename this specific block in app.py
 @app.route('/verify-subscription', methods=['POST'])
 @login_required
@@ -311,36 +314,27 @@ def verify_subscription():
     try:
         data = request.get_json()
 
-        # 1️⃣ Verify Razorpay signature (SECURITY – DO NOT REMOVE)
+        # 1️⃣ Verify Razorpay signature (SECURITY)
         razorpay_client.utility.verify_subscription_payment_signature({
             "razorpay_payment_id": data.get("razorpay_payment_id"),
             "razorpay_subscription_id": data.get("razorpay_subscription_id"),
             "razorpay_signature": data.get("razorpay_signature")
         })
 
-        # 2️⃣ Detect plan type (monthly / yearly)
-        subscription_id = data.get("razorpay_subscription_id")
+        # 2️⃣ Get plan type saved during creation
+        plan_type = session.pop("pending_plan_type", "monthly")
 
-        if subscription_id == RAZORPAY_MONTHLY_PLAN_ID:
-            duration_days = 30
-            plan_type = "monthly"
-        elif subscription_id == RAZORPAY_YEARLY_PLAN_ID:
-            duration_days = 365
-            plan_type = "yearly"
-        else:
-            # fallback (safety)
-            duration_days = 30
-            plan_type = "monthly"
+        # 3️⃣ Decide duration
+        duration_days = 365 if plan_type == "yearly" else 30
 
-        # 3️⃣ Update user subscription details
+        # 4️⃣ Update user subscription details
         current_user.is_subscribed = True
-        current_user.subscription_id = subscription_id
+        current_user.subscription_id = data.get("razorpay_subscription_id")
         current_user.subscription_status = "active"
         current_user.subscription_type = plan_type
         current_user.subscription_start = datetime.utcnow()
-        current_user.subscription_end = get_month_end()
+        current_user.subscription_end = datetime.utcnow() + timedelta(days=duration_days)
 
-        # 4️⃣ Save to database
         db.session.commit()
 
         return jsonify({
