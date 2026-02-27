@@ -195,12 +195,12 @@ def login():
         login_user(user)
 
         # 🎁 FIRST LOGIN / TRIAL
-        if not user.subscription_end:
-            user.is_subscribed = True
-            user.subscription_type = "trial"
-            user.subscription_status = "active"
-            user.subscription_start = datetime.utcnow()
-            user.subscription_end = get_month_end()
+        if not user.subscription_end and not user.is_subscribed:
+         user.subscription_type = "trial"
+         user.subscription_status = "active"
+         user.subscription_start = datetime.utcnow()
+         user.subscription_end = get_month_end()
+         user.is_subscribed = True
 
         # 🔑 Track session
         session_id = str(uuid.uuid4())
@@ -258,21 +258,35 @@ def google_login():
 def google_authorize():
     token = google.authorize_access_token()
     user_info = token.get('userinfo')
-    user = User.query.filter_by(email=user_info['email']).first()
-    if not user:
+
+    email = user_info['email']
+
+    # ✅ Always match by email first
+    user = User.query.filter_by(email=email).first()
+
+    if user:
+        # 🔗 Link Google account if not linked
+        if not user.google_id:
+            user.google_id = user_info['sub']
+            db.session.commit()
+    else:
+        # 🆕 Create user ONLY if email not found
         user = User(
-            username=user_info['name'], 
-            email=user_info['email'], 
-            google_id=user_info['sub']
+            username=user_info.get('name'),
+            email=email,
+            google_id=user_info['sub'],
+            is_subscribed=False
         )
         db.session.add(user)
         db.session.commit()
+
     login_user(user)
-    # Redirect to subscription page instead of index
+
+    # ✅ Subscription-aware redirect
     if has_active_subscription(user):
-       return redirect(url_for('index'))
+        return redirect(url_for('index'))
     else:
-       return redirect(url_for('subscribe'))
+        return redirect(url_for('subscribe'))
 
 @app.route('/logout')
 @login_required

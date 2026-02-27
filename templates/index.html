@@ -128,12 +128,13 @@
                     ✅ EXECUTE EXCHANGE ORDER (SL: {{default_sl_value}})
                 {% endif %}
             </button>
-           <button> ⬅️ Return to Home</button>
+           <button> <a href="./home.html">⬅️ Return to Home</a></button>
             <div class="status-box">
                 {% if not sizing.error %}
                     <div class="formula" style="background: #06212a; padding: 10px; border-radius: 4px; border: 1px solid #0ca7d4; margin-top: 10px;">
                         <b style="color: #00b7ff;">📐 Precision Logic:</b><br>
                         <span style="font-size: 0.85em;">
+                            
                             • <b>Risk:</b> ${{ sizing.risk_amount }} (1%)<br>
                             • <b>Max Lev:</b> {{ sizing.suggested_leverage }}x [100 / (SL% + 0.2)]<br>
                             • <b>Pos Size:</b> {{ sizing.suggested_units }} units<br>
