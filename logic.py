@@ -18,8 +18,7 @@ _price_cache = {}
 _price_cache_time = {}
 _positions_cache_time = 0
 _last_call_time = 0
-CACHE_DURATION = 5  # Cache duration in seconds
-
+CACHE_DURATION = 5
 
 def binance_algo_order(symbol, side, order_type, stopPrice, quantity=None, closePosition=False):
     """Universal ALGO order compatible with all Binance libraries"""
@@ -57,7 +56,6 @@ def binance_algo_order(symbol, side, order_type, stopPrice, quantity=None, close
         print(f"❌ Error in binance_algo_order: {e}")
         return {"success": False, "error": str(e)}
 
-
 def sync_time_with_binance():
     """Sync local time with Binance server time"""
     try:
@@ -69,7 +67,6 @@ def sync_time_with_binance():
     except Exception as e:
         print(f"⚠️ Could not sync time: {e}")
         return 0
-
 
 def get_client():
     """Get or create Binance client with error handling"""
@@ -93,7 +90,6 @@ def get_client():
             _client = None
     return _client
 
-
 def initialize_session():
     """Initialize session variables"""
     if "trades" not in session:
@@ -102,48 +98,63 @@ def initialize_session():
         session["stats"] = {}
     session.modified = True
 
-
 def get_all_exchange_symbols():
-    """Fetches all TRADING symbols paired with USDT dynamically from Binance"""
+    """Fetches ALL USDT trading symbols from Binance Futures with improved caching"""
     global _symbol_cache, _symbol_cache_time
     now = time.time()
     
-    # Check if we have a fresh cache (valid for 1 hour)
-    if _symbol_cache and (now - _symbol_cache_time < 3600):
+    # Check cache (valid for 30 minutes instead of 1 hour for more frequent updates)
+    if _symbol_cache and (now - _symbol_cache_time < 1800):
+        print(f"✅ Returning {len(_symbol_cache)} cached symbols")
         return _symbol_cache
 
     try:
-        client = get_client() # Uses your API keys from config
+        client = get_client()
         if not client:
             raise Exception("Binance client not initialized")
-            
-        # Get all exchange information from Binance Futures
+        
+        print("🔄 Fetching fresh symbols from Binance...")
+        
+        # Get exchange info
         info = client.futures_exchange_info()
         
-        # Filter: Must be 'TRADING' status AND 'USDT' quote asset
+        if not info or 'symbols' not in info:
+            raise Exception("Invalid response from Binance")
+        
+        # Filter: TRADING status AND USDT quote asset
         symbols = sorted([
             s['symbol'] for s in info['symbols'] 
-            if s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT'
+            if s['status'] == 'TRADING' 
+            and s['quoteAsset'] == 'USDT'
+            and s['contractType'] == 'PERPETUAL'  # Only perpetual contracts
         ])
         
-        if not symbols:
-            raise Exception("No USDT symbols found")
-            
+        if not symbols or len(symbols) < 10:  # Sanity check
+            raise Exception(f"Too few symbols returned: {len(symbols)}")
+        
         _symbol_cache = symbols
         _symbol_cache_time = now
-        print(f"✅ Dynamically loaded {len(symbols)} symbols.")
+        print(f"✅ Successfully loaded {len(symbols)} USDT perpetual symbols")
         return symbols
 
     except Exception as e:
-        print(f"⚠️ Dynamic Fetch Error: {e}")
-        # Emergency Fallback so the dropdown isn't empty if the API is down
-        return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
-
-    except Exception as e:
-        print(f"❌ Error getting symbols: {e}")
-        # 4. Expanded Fallback List in case API fails
-        fallback = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT", "DOTUSDT", "DOGEUSDT", "LINKUSDT"]
-        return _symbol_cache if _symbol_cache else fallback
+        print(f"⚠️ Symbol Fetch Error: {e}")
+        traceback.print_exc()
+        
+        # Return cached symbols if available
+        if _symbol_cache:
+            print(f"⚠️ Using stale cache with {len(_symbol_cache)} symbols")
+            return _symbol_cache
+        
+        # Expanded fallback list
+        fallback = [
+            "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", 
+            "ADAUSDT", "AVAXUSDT", "DOTUSDT", "DOGEUSDT", "LINKUSDT",
+            "MATICUSDT", "UNIUSDT", "LTCUSDT", "ATOMUSDT", "ETCUSDT",
+            "FILUSDT", "TRXUSDT", "NEARUSDT", "ALGOUSDT", "VETUSDT"
+        ]
+        print(f"⚠️ Using fallback list with {len(fallback)} symbols")
+        return fallback
 
 def get_live_balance():
     """Get live wallet balance and margin used"""
@@ -158,13 +169,11 @@ def get_live_balance():
         print(f"Error getting balance: {e}")
         return None, None
 
-
 def get_live_price(symbol):
     """Get live price with caching"""
     global _price_cache, _last_call_time
     current_time = time.time()
     
-    # Only hit Binance API if cache is older than 2 seconds
     if symbol in _price_cache and (current_time - _last_call_time) < 2:
         return _price_cache[symbol]
     
@@ -176,14 +185,12 @@ def get_live_price(symbol):
         ticker = client.futures_symbol_ticker(symbol=symbol)
         price = float(ticker['price'])
         
-        # Update cache
         _price_cache[symbol] = price
         _last_call_time = current_time
         return price
     except Exception as e:
         print(f"Error fetching price for {symbol}: {e}")
         return _price_cache.get(symbol, 0)
-
 
 def get_symbol_filters(symbol):
     """Get symbol filters for trading rules"""
@@ -201,14 +208,12 @@ def get_symbol_filters(symbol):
     
     return []
 
-
 def get_lot_step(symbol):
     """Get lot size step for a symbol"""
     for f in get_symbol_filters(symbol):
         if f["filterType"] == "LOT_SIZE": 
             return float(f["stepSize"])
     return 0.001
-
 
 def round_qty(symbol, qty):
     """Round quantity to valid lot size"""
@@ -220,7 +225,6 @@ def round_qty(symbol, qty):
     rounded = round(qty - (qty % step), precision)
     return rounded if rounded > 0 else step
 
-
 def round_price(symbol, price):
     """Round price to valid tick size"""
     for f in get_symbol_filters(symbol):
@@ -231,7 +235,6 @@ def round_price(symbol, price):
             precision = abs(int(round(-math.log10(tick))))
             return round(price - (price % tick), precision)
     return round(price, 2)
-
 
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     """Calculate position size based on risk management"""
@@ -266,7 +269,6 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
         "risk_amount": round(risk_amount, 2),
         "error": None
     }
-
 
 def get_open_positions():
     """Get all open positions"""
@@ -319,7 +321,6 @@ def get_open_positions():
         print(f"Error getting open positions: {e}")
         return []
 
-
 def get_open_orders_for_symbol(symbol):
     """Get open orders for a specific symbol"""
     try:
@@ -340,7 +341,6 @@ def get_open_orders_for_symbol(symbol):
         print(f"Error getting open orders for {symbol}: {e}")
         return []
 
-
 def update_trade_stats(symbol):
     """Update daily trade statistics"""
     today = datetime.utcnow().date().isoformat()
@@ -354,11 +354,8 @@ def update_trade_stats(symbol):
     session["stats"][today]["symbols"][symbol] = session["stats"][today]["symbols"].get(symbol, 0) + 1
     session.modified = True
 
-
 def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_value, sizing, user_units, user_lev, margin_mode, tp1, tp1_pct, tp2):
-    """
-    Execute trade with entry, stop loss, and take profit orders
-    """
+    """Execute trade with entry, stop loss, and take profit orders"""
     global _positions_cache_time
     
     client = get_client()
@@ -366,7 +363,6 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         return {"success": False, "message": "❌ Connection Failed"}
     
     try:
-        # 1. SETUP (Leverage & Margin)
         qty = round_qty(symbol, user_units if user_units > 0 else sizing["suggested_units"])
         lev = int(user_lev) if user_lev > 0 else sizing["max_leverage"]
         
@@ -380,22 +376,19 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         except Exception as e: 
             print(f"⚠️ Could not set margin type: {e}")
 
-        # 2. DETERMINE SIDES
         e_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         x_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
         
-        # 3. CALCULATE STOP LOSS PRICE
         if sl_type == "SL % Movement":
             if side == "LONG":
                 calculated_sl = entry * (1 - (sl_value / 100))
-            else:  # SHORT
+            else:
                 calculated_sl = entry * (1 + (sl_value / 100))
         else:
             calculated_sl = sl_value
 
         sl_p = round_price(symbol, calculated_sl)
         
-        # 4. MARKET ENTRY
         entry_order = client.futures_create_order(
             symbol=symbol, 
             side=e_side, 
@@ -403,12 +396,10 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
             quantity=qty
         )
         print(f"✅ Entry order placed: {entry_order}")
-        time.sleep(0.5)  # Short buffer to ensure entry fills
+        time.sleep(0.5)
         
-        # Reset cache so UI updates immediately
         _positions_cache_time = 0
 
-        # 5. PLACE STOP LOSS (Priority)
         try:
             sl_order = client.futures_create_order(
                 symbol=symbol, 
@@ -422,8 +413,6 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         except Exception as e:
             print(f"❌ SL order failed: {e}")
 
-        # 6. PLACE TAKE PROFITS
-        # TP1 (Partial Close)
         if tp1 > 0:
             is_valid_tp = (side == "LONG" and tp1 > entry) or (side == "SHORT" and tp1 < entry)
             if is_valid_tp:
@@ -443,7 +432,6 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                     except Exception as e: 
                         print(f"⚠️ TP1 Failed: {e}")
 
-        # TP2 (Final Close)
         if tp2 > 0:
             is_valid_tp = (side == "LONG" and tp2 > entry) or (side == "SHORT" and tp2 < entry)
             if is_valid_tp:
@@ -466,7 +454,6 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
     except Exception as e:
         traceback.print_exc()
         return {"success": False, "message": f"❌ Execution Error: {str(e)}"}
-
 
 def partial_close_position(symbol, close_percent=None, close_qty=None):
     """Partially close a position"""
@@ -540,4 +527,4 @@ def get_trade_history():
 def get_today_stats():
     today = datetime.utcnow().date().isoformat()
     stats = session.get("stats", {}).get(today, {"total": 0, "symbols": {}})
-    return {"total_trades": stats.get("total", 0), "max_trades": config.MAX_TRADES_PER_DAY, "symbol_trades": stats.get("symbols", {}), "max_per_symbol": config.MAX_TRADES_PER_SYMBOL_PER_DAY} 
+    return {"total_trades": stats.get("total", 0), "max_trades": config.MAX_TRADES_PER_DAY, "symbol_trades": stats.get("symbols", {}), "max_per_symbol": config.MAX_TRADES_PER_SYMBOL_PER_DAY}

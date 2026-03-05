@@ -17,14 +17,13 @@
             --border-color: #1f2937;
         }
 
-        /* 1. REMOVE SCROLLBARS */
         html, body {
             overflow-x: hidden;
-            scrollbar-width: none; /* Firefox */
-            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;
+            -ms-overflow-style: none;
         }
         body::-webkit-scrollbar {
-            display: none; /* Chrome, Safari, Opera */
+            display: none;
         }
 
         body {
@@ -66,7 +65,6 @@
             transform: translateY(-5px);
         }
 
-        /* Highlight the Yearly Plan */
         .pricing-card.featured {
             border-color: var(--primary-cyan);
             background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
@@ -231,9 +229,6 @@
 <a href="/home" class="back-link">← Return to Dashboard</a>
 
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>
     async function handleSubscription(planType) {
         const btnId = planType === 'yearly' ? 'rzp-button-yearly' : 'rzp-button-monthly';
@@ -253,34 +248,32 @@
             const data = await response.json();
             if (!response.ok) throw new Error(data.error);
 
-          // Replace the Razorpay options in subscribe.html with this:
-const options = {
-    key: "{{ key_id }}",
-    subscription_id: data.subscription_id,
-    name: "PRO TRADING",
-    description: planType === 'yearly' ? "Annual Plan" : "Monthly Plan",
-    handler: async function (response) {
-        // Send payment details to backend for verification
-        const verifyRes = await fetch('/verify-subscription', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_subscription_id: response.razorpay_subscription_id,
-                razorpay_signature: response.razorpay_signature
-            })
-        });
-        
-        const result = await verifyRes.json();
-        if (result.success) {
-            window.location.href = "/index"; // Redirect to dashboard on success
-        } else {
-            alert("Verification failed: " + result.error);
-        }
-    },
-    prefill: { name: "{{ user.username }}", email: "{{ user.email }}" },
-    theme: { color: "#06b6d4" }
-};
+            const options = {
+                key: "{{ key_id }}",
+                subscription_id: data.subscription_id,
+                name: "PRO TRADING",
+                description: planType === 'yearly' ? "Annual Plan" : "Monthly Plan",
+                handler: async function (response) {
+                    const verifyRes = await fetch('/verify-subscription', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            razorpay_payment_id: response.razorpay_payment_id,
+                            razorpay_subscription_id: response.razorpay_subscription_id,
+                            razorpay_signature: response.razorpay_signature
+                        })
+                    });
+                    
+                    const result = await verifyRes.json();
+                    if (result.success) {
+                        window.location.href = "/index";
+                    } else {
+                        alert("Verification failed: " + result.error);
+                    }
+                },
+                prefill: { name: "{{ user.username }}", email: "{{ user.email }}" },
+                theme: { color: "#06b6d4" }
+            };
 
             const rzp = new Razorpay(options);
             rzp.open();
