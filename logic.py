@@ -98,7 +98,7 @@ def get_client(user_id=None):
     """
     Get or create Binance client with error handling.
     If user_id is provided, tries to use user's connected exchange.
-    Otherwise uses default config (for demo purposes).
+    Otherwise uses default config (for demo/backward compatibility).
     """
     global _default_client
     
@@ -109,10 +109,11 @@ def get_client(user_id=None):
             return user_client
     
     # Fallback to default client (your API keys - for demo/backward compatibility)
+    # Only attempt to create default client if keys are actually configured
     if _default_client is None:
         try:
-            # Only use default if keys are configured
-            if config.BINANCE_KEY and config.BINANCE_SECRET:
+            # Only use default if keys are configured and not empty (min 5 chars)
+            if config.BINANCE_KEY and config.BINANCE_SECRET and len(config.BINANCE_KEY) > 5:
                 time_offset = sync_time_with_binance()
                 print(f"⏰ Time offset with Binance: {time_offset}ms")
                 _default_client = Client(
@@ -126,11 +127,12 @@ def get_client(user_id=None):
                 _default_client.futures_account(recvWindow=60000)
                 print("✅ Default Binance client initialized successfully")
             else:
-                print("⚠️ No default API keys configured")
+                print("⚠️ No default API keys configured - returning None")
                 return None
         except Exception as e:
             print(f"❌ Error initializing default Binance client: {e}")
             _default_client = None
+            return None
     
     return _default_client
 

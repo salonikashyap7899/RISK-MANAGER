@@ -668,5 +668,56 @@ def index():
 with app.app_context():
     db.create_all()
 
+# ============================================
+# ERROR HANDLERS - Add these after app creation
+# ============================================
+
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('home.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()  # Rollback any failed database transactions
+    print(f"❌ Internal Server Error: {error}")
+    return render_template('home.html'), 500
+
+@app.errorhandler(Exception)
+def handle_exception(error):
+    # Pass through HTTP errors
+    if hasattr(error, 'code') and 400 <= error.code < 600:
+        return error
+    
+    # Handle all other exceptions
+    print(f"❌ Unhandled Exception: {error}")
+    import traceback
+    traceback.print_exc()
+    return render_template('home.html'), 500
+
+# Debug route to check server status
+@app.route('/debug-status')
+def debug_status():
+    """Debug route to check server status and configuration"""
+    from models import User, ExchangeConnection
+    
+    try:
+        user_count = User.query.count()
+        connection_count = ExchangeConnection.query.count()
+        
+        return jsonify({
+            'status': 'ok',
+            'database': 'connected',
+            'users': user_count,
+            'connections': connection_count,
+            'binance_key_configured': bool(config.BINANCE_KEY),
+            'razorpay_key_configured': bool(config.RAZORPAY_KEY_ID),
+            'secret_key_set': bool(app.secret_key)
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)
