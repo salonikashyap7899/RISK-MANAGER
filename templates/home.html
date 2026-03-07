@@ -76,7 +76,7 @@
               {{ current_user.username[:1]|upper }}
             </div>
             <div>
-              <h2 class="text-2xl font-bold text-white">Welcome back, {{ current_user.username }}!</h2>
+
               <p class="text-cyan-400">Ready to trade with institutional precision?</p>
             </div>
           </div>
@@ -119,12 +119,11 @@
                     <a href="#pricing" class="nav-link text-gray-300 hover:text-cyan-400 transition-colors font-medium">Pricing</a>
                     <a href="#contact" class="nav-link text-gray-300 hover:text-cyan-400 transition-colors font-medium">Contact</a>
                     {% if current_user.is_authenticated %}
-                    {% if current_user.is_subscribed %}
-                    <a href="/index" class="text-gray-300 hover:text-cyan-400 transition-colors font-medium">Dashboard</a>
+
                     {% endif %}
                     <a href="/logout" class="bg-slate-800 hover:bg-slate-700 text-white px-6 py-2 rounded-lg font-semibold transition-all">Logout</a>
                     {% else %}
-                    <a href="/login" class="btn-primary text-white px-6 py-2.5 rounded-lg font-semibold">Login</a>
+
                     {% endif %}
                 </div>
                 <button id="mobile-menu-btn" class="md:hidden text-white focus:outline-none">

@@ -6,7 +6,6 @@
     <title>Connect Exchange - Pro Trading</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
             --primary-cyan: #06b6d4;
@@ -14,371 +13,264 @@
             --bg-dark: #0b0f19;
             --card-bg: #111827;
             --border-color: #1f2937;
-            --success-green: #10b981;
-            --danger-red: #ef4444;
         }
         body {
             background-color: var(--bg-dark);
             color: #f3f4f6;
             font-family: 'Inter', sans-serif;
             min-height: 100vh;
+            background: radial-gradient(circle at top, #1e293b 0%, #0b0f19 100%);
+        }
+        .navbar {
+            background: rgba(17, 24, 39, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
         }
         .exchange-card {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 24px;
+            border-radius: 20px;
+            padding: 30px;
             transition: all 0.3s ease;
+            cursor: pointer;
         }
         .exchange-card:hover {
             border-color: var(--primary-cyan);
+            transform: translateY(-5px);
+            box-shadow: 0 10px 40px rgba(6, 182, 212, 0.2);
         }
         .exchange-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
+            width: 60px;
+            height: 60px;
+            border-radius: 15px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24px;
-            background: linear-gradient(135deg, var(--primary-blue), var(--primary-cyan));
-            color: white;
+            font-size: 1.5rem;
+            margin-bottom: 15px;
         }
+        .binance { background: linear-gradient(135deg, #F0B90B, #F9D423); }
+        .bybit { background: linear-gradient(135deg, #FFB800, #FF8B00); }
+        .okx { background: linear-gradient(135deg, #000, #fff); }
+        .metatrader { background: linear-gradient(135deg, #27AE60, #2ECC71); }
+        .upstox { background: linear-gradient(135deg, #6C5CE7, #A29BFE); }
         .status-badge {
-            padding: 4px 12px;
+            padding: 5px 12px;
             border-radius: 20px;
             font-size: 0.75rem;
             font-weight: 600;
         }
-        .status-connected {
-            background: rgba(16, 185, 129, 0.2);
-            color: var(--success-green);
-        }
-        .status-disconnected {
-            background: rgba(239, 68, 68, 0.2);
-            color: var(--danger-red);
-        }
-        .modal-content {
+        .status-connected { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+        .status-disconnected { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .connected-account {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 15px;
         }
-        .modal-header {
-            border-bottom-color: var(--border-color);
-        }
-        .modal-footer {
-            border-top-color: var(--border-color);
-        }
-        .form-control, .form-select {
-            background: #1f2937;
-            border: 1px solid #374151;
-            color: #f3f4f6;
-        }
-        .form-control:focus, .form-select:focus {
-            background: #1f2937;
-            border-color: var(--primary-cyan);
-            color: #f3f4f6;
-        }
-        .btn-primary {
+        .btn-primary-custom {
             background: linear-gradient(135deg, var(--primary-blue), var(--primary-cyan));
             border: none;
+            padding: 12px 30px;
+            border-radius: 12px;
+            font-weight: 600;
+            transition: all 0.3s ease;
         }
-        .btn-primary:hover {
-            filter: brightness(1.1);
+        .btn-primary-custom:hover {
+            transform: scale(1.02);
+            box-shadow: 0 10px 30px rgba(6, 182, 212, 0.3);
         }
-        .api-note {
-            font-size: 0.8rem;
+        .btn-outline-custom {
+            background: transparent;
+            border: 1px solid var(--border-color);
             color: #9ca3af;
-            background: rgba(6, 182, 212, 0.1);
-            border-left: 3px solid var(--primary-cyan);
-            padding: 12px;
-            border-radius: 4px;
-            margin-bottom: 16px;
+            padding: 12px 30px;
+            border-radius: 12px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .btn-outline-custom:hover {
+            border-color: var(--primary-cyan);
+            color: var(--primary-cyan);
+        }
+        .form-control-custom {
+            background: rgba(31, 41, 55, 0.5);
+            border: 1px solid var(--border-color);
+            color: #fff;
+            padding: 12px 16px;
+            border-radius: 12px;
+        }
+        .form-control-custom:focus {
+            border-color: var(--primary-cyan);
+            box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
+        }
+        .modal-content-custom {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
         }
     </style>
 </head>
 <body>
-    <div class="container py-5">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <div>
-                <h2 class="mb-1">Connect Your Exchange</h2>
-                <p class="text-muted mb-0">Link your trading account to enable automated trading</p>
-            </div>
-            <a href="{{ url_for('index') }}" class="btn btn-outline-light">
-                <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+    <nav class="navbar navbar-expand-lg navbar-dark py-3">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/home">
+                <span class="text-cyan-400">Pro</span>Trading
             </a>
+            <div class="d-flex align-items-center gap-3">
+                <a href="/index" class="text-gray-300 hover:text-cyan-400 text-decoration-none">Dashboard</a>
+                <a href="/home" class="text-gray-300 hover:text-cyan-400 text-decoration-none">Home</a>
+                <a href="/logout" class="btn btn-outline-danger btn-sm">Logout</a>
+            </div>
+    </nav>
+
+    <div class="container py-5">
+        <div class="text-center mb-5">
+            <h1 class="fw-extrabold display-5 mb-3">Connect Your Exchange</h1>
+            <p class="text-secondary">Link your exchange account to start trading. Your API keys are encrypted and stored securely.</p>
         </div>
 
-        <!-- Alert for connection requirements -->
-        <div class="alert alert-info border-0" style="background: rgba(6, 182, 212, 0.1); border-left: 4px solid var(--primary-cyan) !important;">
-            <i class="fas fa-info-circle me-2"></i>
-            <strong>How it works:</strong> Your API keys are stored securely and used only to execute trades on your behalf. 
-            We never withdraw funds - only trade with your connected account.
-        </div>
-
-        <!-- Connected Exchanges -->
         {% if connections %}
         <div class="mb-5">
-            <h4 class="mb-3">Connected Exchanges</h4>
-            <div class="row">
-                {% for conn in connections %}
-                <div class="col-md-6 mb-3">
-                    <div class="exchange-card">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div class="d-flex align-items-center">
-                                <div class="exchange-icon me-3">
-                                    {% if conn.exchange_type == 'binance' %}
-                                    <i class="fab fa-bitcoin"></i>
-                                    {% elif conn.exchange_type == 'bybit' %}
-                                    <i class="fas fa-chart-line"></i>
-                                    {% elif conn.exchange_type == 'metatrader' %}
-                                    <i class="fas fa-chart-bar"></i>
-                                    {% elif conn.exchange_type == 'upstox' %}
-                                    <i class="fas fa-indian-rupee-sign"></i>
-                                    {% else %}
-                                    <i class="fas fa-exchange-alt"></i>
-                                    {% endif %}
-                                </div>
-                                <div>
-                                    <h5 class="mb-0">{{ conn.connection_name or conn.exchange_type|title }}</h5>
-                                    <small class="text-muted">{{ conn.exchange_type|title }}</small>
-                                </div>
-                            </div>
-                            <span class="status-badge {% if conn.is_connected %}status-connected{% else %}status-disconnected{% endif %}">
-                                {% if conn.is_connected %}<i class="fas fa-check-circle me-1"></i>Connected{% else %}<i class="fas fa-times-circle me-1"></i>Disconnected{% endif %}
-                            </span>
-                        </div>
-                        {% if conn.last_verified %}
-                        <p class="text-muted small mt-2 mb-0">Last verified: {{ conn.last_verified.strftime('%Y-%m-%d %H:%M') }}</p>
-                        {% endif %}
-                        <div class="mt-3">
-                            {% if conn.is_connected %}
-                            <button class="btn btn-sm btn-outline-danger" onclick="disconnectExchange({{ conn.id }})">
-                                <i class="fas fa-unlink me-1"></i>Disconnect
-                            </button>
-                            {% else %}
-                            <button class="btn btn-sm btn-outline-primary" onclick="verifyExchange({{ conn.id }})">
-                                <i class="fas fa-sync me-1"></i>Re-verify
-                            </button>
-                            {% endif %}
-                        </div>
+            <h4 class="fw-bold mb-3">Connected Exchanges</h4>
+            {% for conn in connections %}
+            <div class="connected-account d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="exchange-icon {{ conn.exchange_type }}">
+                        {% if conn.exchange_type == 'binance' %}B{% elif conn.exchange_type == 'bybit' %}B{% elif conn.exchange_type == 'okx' %}O{% elif conn.exchange_type == 'metatrader' %}M{% elif conn.exchange_type == 'upstox' %}U{% endif %}
                     </div>
+                    <div>
+                        <h6 class="mb-0 fw-bold">{{ conn.connection_name or conn.exchange_type|title }}</h6>
+                        <small class="text-muted">Last verified: {{ conn.last_verified.strftime('%Y-%m-%d %H:%M') if conn.last_verified else 'Never' }}</small>
+                    </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="status-badge {{ 'status-connected' if conn.is_connected else 'status-disconnected' }}">
+                        {{ 'Connected' if conn.is_connected else 'Disconnected' }}
+                    </span>
+                    <button class="btn btn-sm btn-outline-danger" onclick="disconnectExchange({{ conn.id }})">
+                        Disconnect
+                    </button>
                 </div>
-                {% endfor %}
-            </div>
+            {% endfor %}
         </div>
         {% endif %}
 
-        <!-- Available Exchanges -->
-        <h4 class="mb-3">Available Exchanges</h4>
-        <div class="row">
+        <h4 class="fw-bold mb-3">Available Exchanges</h4>
+        <div class="row g-4">
             {% for exchange_key, exchange_info in supported_exchanges.items() %}
-            {% if exchange_key not in ['metatrader', 'upstox'] %}  <!-- Show only ready exchanges -->
-            <div class="col-md-6 col-lg-4 mb-4">
-                <div class="exchange-card h-100">
-                    <div class="d-flex align-items-center mb-3">
-                        <div class="exchange-icon me-3">
-                            {% if exchange_key == 'binance' %}
-                            <i class="fab fa-bitcoin"></i>
-                            {% elif exchange_key == 'bybit' %}
-                            <i class="fas fa-chart-line"></i>
-                            {% elif exchange_key == 'okx' %}
-                            <i class="fas fa-coins"></i>
-                            {% else %}
-                            <i class="fas fa-exchange-alt"></i>
-                            {% endif %}
-                        </div>
-                        <div>
-                            <h5 class="mb-0">{{ exchange_info.name }}</h5>
-                        </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="exchange-card" onclick="selectExchange('{{ exchange_key }}')">
+                    <div class="exchange-icon {{ exchange_key }}">
+                        {% if exchange_key == 'binance' %}B{% elif exchange_key == 'bybit' %}B{% elif exchange_key == 'okx' %}O{% elif exchange_key == 'metatrader' %}M{% elif exchange_key == 'upstox' %}U{% endif %}
                     </div>
-                    <p class="text-muted small mb-3">{{ exchange_info.description }}</p>
-                    
-                    <!-- Check if already connected -->
-                    {% set already_connected = false %}
-                    {% for conn in connections %}
-                        {% if conn.exchange_type == exchange_key %}
-                            {% set already_connected = true %}
-                        {% endif %}
-                    {% endfor %}
-                    
-                    {% if already_connected %}
-                    <button class="btn btn-secondary w-100" disabled>
-                        <i class="fas fa-check me-2"></i>Already Connected
-                    </button>
-                    {% else %}
-                    <button class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#connectModal" onclick="openConnectModal('{{ exchange_key }}', '{{ exchange_info.name }}')">
-                        <i class="fas fa-link me-2"></i>Connect {{ exchange_info.name }}
-                    </button>
-                    {% endif %}
+                    <h5 class="fw-bold">{{ exchange_info.name }}</h5>
+                    <p class="text-muted small mb-0">{{ exchange_info.description }}</p>
                 </div>
-            </div>
-            {% endif %}
             {% endfor %}
         </div>
-    </div>
 
-    <!-- Connect Exchange Modal -->
-    <div class="modal fade" id="connectModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Connect <span id="modalExchangeName"></span></h5>
+        <div class="text-center mt-5">
+            <a href="/index" class="btn btn-outline-custom">Skip for now</a>
+        </div>
+
+    <div class="modal fade" id="addExchangeModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content modal-content-custom">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-bold">Connect <span id="modalExchangeName"></span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="api-note">
-                        <i class="fas fa-shield-alt me-2"></i>
-                        <strong>Security Note:</strong> Your API keys are encrypted and stored securely. 
-                        We recommend creating API keys with only "Futures" and "Read Only" permissions.
-                    </div>
-                    
-                    <input type="hidden" id="exchangeType">
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Connection Name (Optional)</label>
-                        <input type="text" class="form-control" id="connectionName" placeholder="My Trading Account">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">API Key <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="apiKey" placeholder="Enter your API key">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">API Secret <span class="text-danger">*</span></label>
-                        <input type="password" class="form-control" id="apiSecret" placeholder="Enter your API secret">
-                    </div>
-                    
-                    <div id="binanceInstructions" class="api-note" style="display:none;">
-                        <strong>How to create Binance API Key:</strong>
-                        <ol class="mt-2 mb-0">
-                            <li>Go to Binance → Account → API Management</li>
-                            <li>Create new API key (name it "ProTrading")</li>
-                            <li>Enable "Futures" permission</li>
-                            <li>Copy the API Key and Secret</li>
-                        </ol>
-                    </div>
-                    
-                    <div id="loadingIndicator" class="text-center py-3" style="display:none;">
-                        <div class="spinner-border text-primary" role="status"></div>
-                        <p class="mt-2">Verifying connection...</p>
-                    </div>
-                    
-                    <div id="errorMessage" class="alert alert-danger mt-3" style="display:none;"></div>
+                    <form id="addExchangeForm">
+                        <div class="mb-3">
+                            <label class="form-label">Connection Name (Optional)</label>
+                            <input type="text" class="form-control form-control-custom" id="connectionName" placeholder="My Binance Account">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">API Key <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-custom" id="apiKey" required placeholder="Enter your API key">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">API Secret <span class="text-danger">*</span></label>
+                            <input type="password" class="form-control form-control-custom" id="apiSecret" required placeholder="Enter your API secret">
+                        </div>
+                        <div class="alert alert-warning">
+                            <small><strong>Important:</strong> Create API keys with "Enable Futures" permission.</small>
+                        </div>
+                        <button type="submit" class="btn btn-primary-custom w-100" id="submitBtn">Connect Exchange</button>
+                    </form>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" onclick="connectExchange()">
-                        <i class="fas fa-link me-2"></i>Connect
-                    </button>
-                </div>
-            </div>
         </div>
-    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function openConnectModal(exchangeType, exchangeName) {
-            document.getElementById('exchangeType').value = exchangeType;
-            document.getElementById('modalExchangeName').textContent = exchangeName;
-            document.getElementById('connectionName').value = '';
-            document.getElementById('apiKey').value = '';
-            document.getElementById('apiSecret').value = '';
-            document.getElementById('errorMessage').style.display = 'none';
-            
-            // Show exchange-specific instructions
-            document.getElementById('binanceInstructions').style.display = exchangeType === 'binance' ? 'block' : 'none';
-        }
-        
-        async function connectExchange() {
-            const exchangeType = document.getElementById('exchangeType').value;
-            const apiKey = document.getElementById('apiKey').value.trim();
-            const apiSecret = document.getElementById('apiSecret').value.trim();
-            const connectionName = document.getElementById('connectionName').value.trim();
-            
-            // Validation
-            if (!apiKey || !apiSecret) {
-                showError('Please fill in all required fields');
-                return;
+        var selectedExchange = null;
+        var modal = null;
+
+        function selectExchange(exchange) {
+            selectedExchange = exchange;
+            var exchangeNames = {
+                'binance': 'Binance Futures',
+                'bybit': 'Bybit',
+                'okx': 'OKX',
+                'metatrader': 'MetaTrader',
+                'upstox': 'Upstox'
+            };
+            document.getElementById('modalExchangeName').textContent = exchangeNames[exchange] || exchange;
+            if (!modal) {
+                modal = new bootstrap.Modal(document.getElementById('addExchangeModal'));
             }
+            modal.show();
+        }
+
+        document.getElementById('addExchangeForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            var submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Connecting...';
             
-            // Show loading
-            document.getElementById('loadingIndicator').style.display = 'block';
-            document.querySelector('#connectModal .btn-primary').disabled = true;
-            document.getElementById('errorMessage').style.display = 'none';
-            
-            try {
-                const response = await fetch('/add-exchange', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        exchange_type: exchangeType,
-                        api_key: apiKey,
-                        api_secret: apiSecret,
-                        connection_name: connectionName
-                    })
-                });
-                
-                const data = await response.json();
-                
+            fetch('/add-exchange', {
+POST',
+                headers                method: ': { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    exchange_type: selectedExchange,
+                    api_key: document.getElementById('apiKey').value,
+                    api_secret: document.getElementById('apiSecret').value,
+                    connection_name: document.getElementById('connectionName').value
+                })
+            }).then(function(response) { return response.json(); })
+            .then(function(data) {
                 if (data.success) {
-                    // Close modal and reload
-                    bootstrap.Modal.getInstance(document.getElementById('connectModal')).hide();
+                    alert(data.message);
                     location.reload();
                 } else {
-                    showError(data.error);
+                    alert('Error: ' + data.error);
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Connect Exchange';
                 }
-            } catch (error) {
-                showError('An error occurred. Please try again.');
-            } finally {
-                document.getElementById('loadingIndicator').style.display = 'none';
-                document.querySelector('#connectModal .btn-primary').disabled = false;
-            }
-        }
-        
-        function showError(message) {
-            const errorDiv = document.getElementById('errorMessage');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-        }
-        
-        async function disconnectExchange(connectionId) {
+            }).catch(function(err) {
+                alert('Error: ' + err.message);
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Connect Exchange';
+            });
+        });
+
+        function disconnectExchange(connectionId) {
             if (!confirm('Are you sure you want to disconnect this exchange?')) return;
-            
-            try {
-                const response = await fetch(`/disconnect-exchange/${connectionId}`, {
-                    method: 'POST'
-                });
-                
-                const data = await response.json();
-                
+            fetch('/disconnect-exchange/' + connectionId, { method: 'POST' })
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
                 if (data.success) {
+                    alert(data.message);
                     location.reload();
                 } else {
-                    alert(data.error || 'Failed to disconnect');
+                    alert('Error: ' + data.error);
                 }
-            } catch (error) {
-                alert('An error occurred');
-            }
-        }
-        
-        async function verifyExchange(connectionId) {
-            try {
-                const response = await fetch(`/verify-exchange/${connectionId}`, {
-                    method: 'POST'
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert(data.error || 'Verification failed');
-                }
-            } catch (error) {
-                alert('An error occurred');
-            }
+            }).catch(function(err) {
+                alert('Error: ' + err.message);
+            });
         }
     </script>
-
+</body>
 </html>
