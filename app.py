@@ -67,6 +67,12 @@ def subscription_required(f):
         if not current_user.is_authenticated:
             return redirect(url_for('login'))
         
+        # Admin bypass - allow access without subscription for admin users
+        # Add admin emails to the list below for testing
+        admin_emails = ['admin@mindriskcontrol.com', 'test@test.com']  # Add your admin emails here
+        if current_user.email.lower() in [email.lower() for email in admin_emails]:
+            return f(*args, **kwargs)
+        
         now = datetime.utcnow()
         if not current_user.is_subscribed or (current_user.subscription_end and now > current_user.subscription_end):
             if current_user.is_subscribed:
