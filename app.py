@@ -245,6 +245,33 @@ def clear_session_debug():
     db.session.commit()
     return "All user sessions cleared! <a href='/login'>Go to Login</a>"
 
+# Debug route to create test admin user - use in browser: /create-admin
+@app.route('/create-admin')
+def create_admin_debug():
+    """Debug route to create a test admin user"""
+    from models import User
+    from werkzeug.security import generate_password_hash
+    
+    # Check if admin already exists
+    admin = User.query.filter_by(email='test@test.com').first()
+    if admin:
+        return "Admin user already exists! <br>Email: test@test.com <br>Password: Test@123 <br><a href='/login'>Go to Login</a>"
+    
+    # Create admin user
+    hashed_pw = generate_password_hash('Test@123')
+    admin = User(
+        username='Admin',
+        email='test@test.com',
+        password=hashed_pw,
+        is_subscribed=True,
+        subscription_status='active',
+        subscription_type='pro'
+    )
+    db.session.add(admin)
+    db.session.commit()
+    
+    return "Admin user created successfully! <br>Email: test@test.com <br>Password: Test@123 <br><a href='/login'>Go to Login</a>"
+
 @app.route('/subscribe')
 @login_required
 def subscribe():

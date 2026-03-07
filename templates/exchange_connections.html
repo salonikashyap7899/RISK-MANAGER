@@ -144,6 +144,7 @@
                         <h6 class="mb-0 fw-bold">{{ conn.connection_name or conn.exchange_type|title }}</h6>
                         <small class="text-muted">Last verified: {{ conn.last_verified.strftime('%Y-%m-%d %H:%M') if conn.last_verified else 'Never' }}</small>
                     </div>
+                </div>
                 <div class="d-flex align-items-center gap-2">
                     <span class="status-badge {{ 'status-connected' if conn.is_connected else 'status-disconnected' }}">
                         {{ 'Connected' if conn.is_connected else 'Disconnected' }}
@@ -152,6 +153,7 @@
                         Disconnect
                     </button>
                 </div>
+            </div>
             {% endfor %}
         </div>
         {% endif %}
@@ -167,12 +169,14 @@
                     <h5 class="fw-bold">{{ exchange_info.name }}</h5>
                     <p class="text-muted small mb-0">{{ exchange_info.description }}</p>
                 </div>
+            </div>
             {% endfor %}
         </div>
 
         <div class="text-center mt-5">
             <a href="/index" class="btn btn-outline-custom">Skip for now</a>
         </div>
+    </div>
 
     <div class="modal fade" id="addExchangeModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
@@ -201,7 +205,9 @@
                         <button type="submit" class="btn btn-primary-custom w-100" id="submitBtn">Connect Exchange</button>
                     </form>
                 </div>
+            </div>
         </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>

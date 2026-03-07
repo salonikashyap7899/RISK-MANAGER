@@ -149,11 +149,9 @@
                     <a href="#pricing" class="nav-link text-gray-300 hover:text-cyan-400 transition-colors font-medium">Pricing</a>
                     <a href="#contact" class="nav-link text-gray-300 hover:text-cyan-400 transition-colors font-medium">Contact</a>
                     {% if current_user.is_authenticated %}
-
-                    {% endif %}
                     <a href="/logout" class="bg-slate-800 hover:bg-slate-700 text-white px-6 py-2 rounded-lg font-semibold transition-all">Logout</a>
                     {% else %}
-
+                    <a href="/login" class="btn-primary text-white px-6 py-2 rounded-lg font-semibold">Login</a>
                     {% endif %}
                 </div>
                 <button id="mobile-menu-btn" class="md:hidden text-white focus:outline-none">
