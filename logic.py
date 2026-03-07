@@ -9,8 +9,10 @@ import time
 import hmac
 import hashlib
 import requests
+import json
 
-# Global variables
+# Global variables - Default client (for demo/fallback)
+_default_client = None
 _client = None
 _symbol_cache = None
 _symbol_cache_time = 0
@@ -20,41 +22,65 @@ _positions_cache_time = 0
 _last_call_time = 0
 CACHE_DURATION = 5
 
-def binance_algo_order(symbol, side, order_type, stopPrice, quantity=None, closePosition=False):
-    """Universal ALGO order compatible with all Binance libraries"""
+# User-specific client storage
+_user_clients = {}
+
+
+def get_user_exchange_client(user_id):
+    """
+    Get Binance client for a specific user based on their connected exchange.
+    Returns the user's own API keys if connected, otherwise None.
+    """
+    from models import ExchangeConnection
+    
+    # Check if we already have a cached client for this user
+    if user_id in _user_clients:
+        return _user_clients[user_id]
+    
+    # Get user's exchange connection from database
+    connection = ExchangeConnection.query.filter_by(
+        user_id=user_id, 
+        exchange_type='binance',
+        is_connected=True
+    ).first()
+    
+    if not connection or not connection.api_key or not connection.api_secret:
+        return None
+    
     try:
-        url = "https://fapi.binance.com/fapi/v1/order"
-        timestamp = int(time.time() * 1000)
-        params = {
-            "symbol": symbol,
-            "side": side,
-            "type": order_type,
-            "stopPrice": stopPrice,
-            "timestamp": timestamp
-        }
-        if quantity:
-            params["quantity"] = quantity
-        if closePosition:
-            params["closePosition"] = "true"
-
-        query_string = "&".join([f"{k}={v}" for k, v in params.items()])
-        signature = hmac.new(
-            config.BINANCE_SECRET.encode(),
-            query_string.encode(),
-            hashlib.sha256
-        ).hexdigest()
-
-        params["signature"] = signature
-        headers = {"X-MBX-APIKEY": config.BINANCE_KEY}
-        r = requests.post(url, params=params, headers=headers, timeout=10)
-        data = r.json()
-        print("🚀 ALGO ORDER RESPONSE:", data)
-        if "orderId" in data:
-            return {"success": True, "orderId": data["orderId"], "raw": data}
-        return {"success": False, "error": data}
+        # Create client with user's API keys
+        client = Client(
+            connection.api_key,
+            connection.api_secret,
+            {'timeout': 20}
+        )
+        
+        # Verify the connection works
+        client.futures_account(recvWindow=60000)
+        
+        # Cache the client
+        _user_clients[user_id] = client
+        return client
+        
     except Exception as e:
-        print(f"❌ Error in binance_algo_order: {e}")
-        return {"success": False, "error": str(e)}
+        print(f"❌ Error creating user client: {e}")
+        # Mark connection as failed
+        connection.is_connected = False
+        from models import db
+        db.session.commit()
+        return None
+
+
+def set_user_client(user_id, client):
+    """Manually set the client for a user (for testing)"""
+    _user_clients[user_id] = client
+
+
+def clear_user_client(user_id):
+    """Clear cached client for a user (when they disconnect)"""
+    if user_id in _user_clients:
+        del _user_clients[user_id]
+
 
 def sync_time_with_binance():
     """Sync local time with Binance server time"""
@@ -68,27 +94,45 @@ def sync_time_with_binance():
         print(f"⚠️ Could not sync time: {e}")
         return 0
 
-def get_client():
-    """Get or create Binance client with error handling"""
-    global _client
-    if _client is None:
+def get_client(user_id=None):
+    """
+    Get or create Binance client with error handling.
+    If user_id is provided, tries to use user's connected exchange.
+    Otherwise uses default config (for demo purposes).
+    """
+    global _default_client
+    
+    # If user_id provided, try to get user's own exchange
+    if user_id:
+        user_client = get_user_exchange_client(user_id)
+        if user_client:
+            return user_client
+    
+    # Fallback to default client (your API keys - for demo/backward compatibility)
+    if _default_client is None:
         try:
-            time_offset = sync_time_with_binance()
-            print(f"⏰ Time offset with Binance: {time_offset}ms")
-            _client = Client(
-                config.BINANCE_KEY, 
-                config.BINANCE_SECRET,
-                {'timeout': 20}
-            )
-            if abs(time_offset) > 1000:
-                _client.timestamp_offset = time_offset
-                print(f"✅ Applied time offset: {time_offset}ms")
-            _client.futures_account(recvWindow=60000)
-            print("✅ Binance client initialized successfully")
+            # Only use default if keys are configured
+            if config.BINANCE_KEY and config.BINANCE_SECRET:
+                time_offset = sync_time_with_binance()
+                print(f"⏰ Time offset with Binance: {time_offset}ms")
+                _default_client = Client(
+                    config.BINANCE_KEY, 
+                    config.BINANCE_SECRET,
+                    {'timeout': 20}
+                )
+                if abs(time_offset) > 1000:
+                    _default_client.timestamp_offset = time_offset
+                    print(f"✅ Applied time offset: {time_offset}ms")
+                _default_client.futures_account(recvWindow=60000)
+                print("✅ Default Binance client initialized successfully")
+            else:
+                print("⚠️ No default API keys configured")
+                return None
         except Exception as e:
-            print(f"❌ Error initializing Binance client: {e}")
-            _client = None
-    return _client
+            print(f"❌ Error initializing default Binance client: {e}")
+            _default_client = None
+    
+    return _default_client
 
 def initialize_session():
     """Initialize session variables"""
@@ -98,7 +142,7 @@ def initialize_session():
         session["stats"] = {}
     session.modified = True
 
-def get_all_exchange_symbols():
+def get_all_exchange_symbols(user_id=None):
     """Fetches ALL USDT trading symbols from Binance Futures with improved caching"""
     global _symbol_cache, _symbol_cache_time
     now = time.time()
@@ -109,7 +153,7 @@ def get_all_exchange_symbols():
         return _symbol_cache
 
     try:
-        client = get_client()
+        client = get_client(user_id)
         if not client:
             raise Exception("Binance client not initialized")
         
@@ -156,10 +200,10 @@ def get_all_exchange_symbols():
         print(f"⚠️ Using fallback list with {len(fallback)} symbols")
         return fallback
 
-def get_live_balance():
+def get_live_balance(user_id=None):
     """Get live wallet balance and margin used"""
     try:
-        client = get_client()
+        client = get_client(user_id)
         if client is None: 
             return None, None
         
@@ -169,33 +213,35 @@ def get_live_balance():
         print(f"Error getting balance: {e}")
         return None, None
 
-def get_live_price(symbol):
+def get_live_price(symbol, user_id=None):
     """Get live price with caching"""
     global _price_cache, _last_call_time
     current_time = time.time()
     
-    if symbol in _price_cache and (current_time - _last_call_time) < 2:
-        return _price_cache[symbol]
+    cache_key = f"{symbol}_{user_id}" if user_id else symbol
+    
+    if cache_key in _price_cache and (current_time - _last_call_time) < 2:
+        return _price_cache[cache_key]
     
     try:
-        client = get_client()
+        client = get_client(user_id)
         if client is None:
-            return _price_cache.get(symbol, 0)
+            return _price_cache.get(cache_key, 0)
         
         ticker = client.futures_symbol_ticker(symbol=symbol)
         price = float(ticker['price'])
         
-        _price_cache[symbol] = price
+        _price_cache[cache_key] = price
         _last_call_time = current_time
         return price
     except Exception as e:
         print(f"Error fetching price for {symbol}: {e}")
-        return _price_cache.get(symbol, 0)
+        return _price_cache.get(cache_key, 0)
 
-def get_symbol_filters(symbol):
+def get_symbol_filters(symbol, user_id=None):
     """Get symbol filters for trading rules"""
     try:
-        client = get_client()
+        client = get_client(user_id)
         if client is None: 
             return []
         
@@ -208,16 +254,16 @@ def get_symbol_filters(symbol):
     
     return []
 
-def get_lot_step(symbol):
+def get_lot_step(symbol, user_id=None):
     """Get lot size step for a symbol"""
-    for f in get_symbol_filters(symbol):
+    for f in get_symbol_filters(symbol, user_id):
         if f["filterType"] == "LOT_SIZE": 
             return float(f["stepSize"])
     return 0.001
 
-def round_qty(symbol, qty):
+def round_qty(symbol, qty, user_id=None):
     """Round quantity to valid lot size"""
-    step = get_lot_step(symbol)
+    step = get_lot_step(symbol, user_id)
     if step == 0: 
         step = 0.001
     
@@ -225,9 +271,9 @@ def round_qty(symbol, qty):
     rounded = round(qty - (qty % step), precision)
     return rounded if rounded > 0 else step
 
-def round_price(symbol, price):
+def round_price(symbol, price, user_id=None):
     """Round price to valid tick size"""
-    for f in get_symbol_filters(symbol):
+    for f in get_symbol_filters(symbol, user_id):
         if f["filterType"] == "PRICE_FILTER":
             tick = float(f["tickSize"])
             if tick == 0: 
@@ -270,10 +316,10 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
         "error": None
     }
 
-def get_open_positions():
+def get_open_positions(user_id=None):
     """Get all open positions"""
     try:
-        client = get_client()
+        client = get_client(user_id)
         if client is None: 
             return []
         
@@ -297,7 +343,7 @@ def get_open_positions():
                 else: 
                     margin_ratio = 0
                 
-                open_orders = get_open_orders_for_symbol(pos['symbol'])
+                open_orders = get_open_orders_for_symbol(pos['symbol'], user_id)
                 
                 open_positions.append({
                     'symbol': pos['symbol'], 
@@ -321,10 +367,10 @@ def get_open_positions():
         print(f"Error getting open positions: {e}")
         return []
 
-def get_open_orders_for_symbol(symbol):
+def get_open_orders_for_symbol(symbol, user_id=None):
     """Get open orders for a specific symbol"""
     try:
-        client = get_client()
+        client = get_client(user_id)
         if client is None: 
             return []
         
@@ -354,16 +400,16 @@ def update_trade_stats(symbol):
     session["stats"][today]["symbols"][symbol] = session["stats"][today]["symbols"].get(symbol, 0) + 1
     session.modified = True
 
-def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_value, sizing, user_units, user_lev, margin_mode, tp1, tp1_pct, tp2):
+def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_value, sizing, user_units, user_lev, margin_mode, tp1, tp1_pct, tp2, user_id=None):
     """Execute trade with entry, stop loss, and take profit orders"""
     global _positions_cache_time
     
-    client = get_client()
+    client = get_client(user_id)
     if not client: 
-        return {"success": False, "message": "❌ Connection Failed"}
+        return {"success": False, "message": "❌ Connection Failed - Please connect your exchange account"}
     
     try:
-        qty = round_qty(symbol, user_units if user_units > 0 else sizing["suggested_units"])
+        qty = round_qty(symbol, user_units if user_units > 0 else sizing["suggested_units"], user_id)
         lev = int(user_lev) if user_lev > 0 else sizing["max_leverage"]
         
         try: 
@@ -387,7 +433,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         else:
             calculated_sl = sl_value
 
-        sl_p = round_price(symbol, calculated_sl)
+        sl_p = round_price(symbol, calculated_sl, user_id)
         
         entry_order = client.futures_create_order(
             symbol=symbol, 
@@ -416,14 +462,14 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         if tp1 > 0:
             is_valid_tp = (side == "LONG" and tp1 > entry) or (side == "SHORT" and tp1 < entry)
             if is_valid_tp:
-                t1_qty = round_qty(symbol, qty * (tp1_pct / 100))
+                t1_qty = round_qty(symbol, qty * (tp1_pct / 100), user_id)
                 if t1_qty > 0:
                     try: 
                         tp1_order = client.futures_create_order(
                             symbol=symbol, 
                             side=x_side, 
                             type="TAKE_PROFIT_MARKET", 
-                            stopPrice=round_price(symbol, tp1), 
+                            stopPrice=round_price(symbol, tp1, user_id), 
                             quantity=t1_qty, 
                             reduceOnly=True, 
                             workingType="MARK_PRICE"
@@ -440,7 +486,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                         symbol=symbol, 
                         side=x_side, 
                         type="TAKE_PROFIT_MARKET", 
-                        stopPrice=round_price(symbol, tp2), 
+                        stopPrice=round_price(symbol, tp2, user_id), 
                         closePosition=True, 
                         workingType="MARK_PRICE"
                     )
@@ -455,10 +501,10 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         traceback.print_exc()
         return {"success": False, "message": f"❌ Execution Error: {str(e)}"}
 
-def partial_close_position(symbol, close_percent=None, close_qty=None):
+def partial_close_position(symbol, close_percent=None, close_qty=None, user_id=None):
     """Partially close a position"""
     try:
-        client = get_client()
+        client = get_client(user_id)
         if client is None: 
             return {"success": False, "message": "Connection Failed"}
         
@@ -469,7 +515,7 @@ def partial_close_position(symbol, close_percent=None, close_qty=None):
             return {"success": False, "message": "No position found"}
         
         amt = float(pos['positionAmt'])
-        q = round_qty(symbol, close_qty if close_qty else abs(amt) * (close_percent / 100))
+        q = round_qty(symbol, close_qty if close_qty else abs(amt) * (close_percent / 100), user_id)
         side = Client.SIDE_SELL if amt > 0 else Client.SIDE_BUY
         
         order = client.futures_create_order(
@@ -485,9 +531,9 @@ def partial_close_position(symbol, close_percent=None, close_qty=None):
         print(f"Error in partial_close_position: {e}")
         return {"success": False, "message": str(e)}
 
-def close_position(symbol):
+def close_position(symbol, user_id=None):
     try:
-        client = get_client()
+        client = get_client(user_id)
         positions = client.futures_position_information(symbol=symbol)
         pos = next((p for p in positions if abs(float(p['positionAmt'])) > 0), None)
         if not pos: return {"success": False, "message": "No position"}
@@ -498,16 +544,16 @@ def close_position(symbol):
         return {"success": True, "message": "Position Closed"}
     except Exception as e: return {"success": False, "message": str(e)}
 
-def update_stop_loss(symbol, new_sl_percent):
+def update_stop_loss(symbol, new_sl_percent, user_id=None):
     try:
-        client = get_client()
+        client = get_client(user_id)
         positions = client.futures_position_information(symbol=symbol)
         pos = next((p for p in positions if abs(float(p['positionAmt'])) > 0), None)
         if not pos: return {"success": False, "message": "No position"}
         
         amt = float(pos['positionAmt'])
         entry = float(pos['entryPrice'])
-        price = round_price(symbol, entry * (1 + new_sl_percent/100) if amt > 0 else entry * (1 - new_sl_percent/100))
+        price = round_price(symbol, entry * (1 + new_sl_percent/100) if amt > 0 else entry * (1 - new_sl_percent/100), user_id)
         
         orders = client.futures_get_open_orders(symbol=symbol)
         for o in orders:
@@ -517,9 +563,9 @@ def update_stop_loss(symbol, new_sl_percent):
         return {"success": True, "message": f"SL updated to {price}"}
     except Exception as e: return {"success": False, "message": str(e)}
 
-def get_trade_history():
+def get_trade_history(user_id=None):
     try:
-        client = get_client()
+        client = get_client(user_id)
         trades = client.futures_account_trades(limit=500)
         return [{'time': datetime.fromtimestamp(t['time']/1000).strftime("%Y-%m-%d %H:%M:%S"), 'symbol': t['symbol'], 'side': 'LONG' if t['side']=='BUY' else 'SHORT', 'qty': float(t['qty']), 'price': float(t['price']), 'realized_pnl': float(t['realizedPnl']), 'commission': float(t['commission']), 'order_id': t['orderId']} for t in sorted(trades, key=lambda x: x['time'], reverse=True)]
     except: return []

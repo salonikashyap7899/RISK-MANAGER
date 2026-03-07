@@ -5,7 +5,7 @@ from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from functools import wraps
-from models import db, User
+from models import db, User, ExchangeConnection
 import logic
 import config
 import os
@@ -15,6 +15,7 @@ import uuid
 import razorpay
 import hashlib
 import hmac
+import json
 
 app = Flask(__name__)
 app.secret_key = "trading_secret_key_ultra_secure_2025"
@@ -366,6 +367,182 @@ def check_subscription():
             return jsonify({'subscribed': False, 'status': 'expired'})
     
     return jsonify({'subscribed': False, 'status': 'inactive'})
+
+
+# =============================================================================
+# EXCHANGE CONNECTION ROUTES - Let users connect their own exchange accounts
+# =============================================================================
+
+@app.route('/exchange-connections')
+@login_required
+@subscription_required
+def exchange_connections():
+    """Show user's connected exchanges"""
+    connections = ExchangeConnection.query.filter_by(user_id=current_user.id).all()
+    return render_template(
+        'exchange_connections.html',
+        connections=connections,
+        supported_exchanges=config.SUPPORTED_EXCHANGES
+    )
+
+
+@app.route('/add-exchange', methods=['POST'])
+@login_required
+@subscription_required
+def add_exchange():
+    """Add a new exchange connection"""
+    try:
+        data = request.get_json()
+        exchange_type = data.get('exchange_type')
+        api_key = data.get('api_key', '').strip()
+        api_secret = data.get('api_secret', '').strip()
+        connection_name = data.get('connection_name', '').strip()
+        
+        # Validate exchange type
+        if exchange_type not in config.SUPPORTED_EXCHANGES:
+            return jsonify({'success': False, 'error': 'Invalid exchange type'}), 400
+        
+        # Check required fields
+        required_fields = config.SUPPORTED_EXCHANGES[exchange_type]['api_required']
+        if not api_key or not api_secret:
+            return jsonify({'success': False, 'error': f'Missing required fields: {", ".join(required_fields)}'}), 400
+        
+        # Check if already connected
+        existing = ExchangeConnection.query.filter_by(
+            user_id=current_user.id,
+            exchange_type=exchange_type,
+            is_connected=True
+        ).first()
+        
+        if existing:
+            return jsonify({'success': False, 'error': f'You already have a {exchange_type} connection. Please disconnect it first.'}), 400
+        
+        # Create new connection
+        connection = ExchangeConnection(
+            user_id=current_user.id,
+            exchange_type=exchange_type,
+            api_key=api_key,
+            api_secret=api_secret,
+            connection_name=connection_name or f"My {exchange_type} Account",
+            is_connected=False  # Will be verified
+        )
+        
+        db.session.add(connection)
+        db.session.commit()
+        
+        # Try to verify the connection
+        if exchange_type == 'binance':
+            from binance.client import Client
+            try:
+                client = Client(api_key, api_secret, {'timeout': 20})
+                client.futures_account(recvWindow=60000)
+                connection.is_connected = True
+                connection.last_verified = datetime.utcnow()
+                db.session.commit()
+                
+                # Clear any cached client
+                logic.clear_user_client(current_user.id)
+                
+                return jsonify({'success': True, 'message': f'{exchange_type} connected successfully!'})
+            except Exception as e:
+                db.session.delete(connection)
+                db.session.commit()
+                return jsonify({'success': False, 'error': f'Failed to connect: {str(e)}'}), 400
+        
+        # For other exchanges, just save and mark as pending verification
+        connection.is_connected = True
+        connection.last_verified = datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': f'{exchange_type} added successfully!'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+
+@app.route('/verify-exchange/<int:connection_id>', methods=['POST'])
+@login_required
+@subscription_required
+def verify_exchange(connection_id):
+    """Verify an exchange connection"""
+    connection = ExchangeConnection.query.get_or_404(connection_id)
+    
+    # Make sure it belongs to the current user
+    if connection.user_id != current_user.id:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        if connection.exchange_type == 'binance':
+            from binance.client import Client
+            try:
+                client = Client(connection.api_key, connection.api_secret, {'timeout': 20})
+                client.futures_account(recvWindow=60000)
+                
+                connection.is_connected = True
+                connection.last_verified = datetime.utcnow()
+                db.session.commit()
+                
+                # Clear cached client
+                logic.clear_user_client(current_user.id)
+                
+                return jsonify({'success': True, 'message': 'Connection verified successfully!'})
+            except Exception as e:
+                connection.is_connected = False
+                db.session.commit()
+                return jsonify({'success': False, 'error': f'Verification failed: {str(e)}'}), 400
+        
+        return jsonify({'success': True, 'message': 'Connection is active'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+
+@app.route('/disconnect-exchange/<int:connection_id>', methods=['POST'])
+@login_required
+@subscription_required
+def disconnect_exchange(connection_id):
+    """Disconnect an exchange"""
+    connection = ExchangeConnection.query.get_or_404(connection_id)
+    
+    # Make sure it belongs to the current user
+    if connection.user_id != current_user.id:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        # Clear user's cached client
+        logic.clear_user_client(current_user.id)
+        
+        # Delete the connection
+        db.session.delete(connection)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Exchange disconnected successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+
+@app.route('/get-exchange-status')
+@login_required
+@subscription_required
+def get_exchange_status():
+    """Get current user's exchange connection status"""
+    connections = ExchangeConnection.query.filter_by(
+        user_id=current_user.id,
+        is_connected=True
+    ).all()
+    
+    return jsonify({
+        'success': True,
+        'connections': [{
+            'id': c.id,
+            'exchange_type': c.exchange_type,
+            'connection_name': c.connection_name,
+            'last_verified': c.last_verified.strftime('%Y-%m-%d %H:%M') if c.last_verified else None
+        } for c in connections]
+    })
 
 # TRADING ROUTES - ALL PROTECTED WITH subscription_required
 @app.route("/get_live_price/<symbol>")

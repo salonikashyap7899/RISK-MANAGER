@@ -40,3 +40,30 @@ class SubscriptionHistory(db.Model):
     end_date = db.Column(db.DateTime, nullable=False)
     status = db.Column(db.String(20), default='active')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# Exchange Connection Model - Store user's exchange API credentials
+class ExchangeConnection(db.Model):
+    __tablename__ = 'exchange_connections'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    
+    # Exchange Type: binance, metatrader, upstox, bybit, okx
+    exchange_type = db.Column(db.String(50), nullable=False)
+    
+    # API Credentials (encrypted in production - storing plain for demo)
+    api_key = db.Column(db.String(500), nullable=True)
+    api_secret = db.Column(db.String(500), nullable=True)
+    
+    # Additional fields based on exchange
+    additional_data = db.Column(db.Text, nullable=True)  # JSON string for extra params
+    
+    # Connection Status
+    is_connected = db.Column(db.Boolean, default=False)
+    last_verified = db.Column(db.DateTime, nullable=True)
+    
+    # Nickname for user's reference
+    connection_name = db.Column(db.String(100), nullable=True)
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
