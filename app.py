@@ -563,7 +563,6 @@ def get_exchange_status():
 
 @app.route("/get_live_price/<symbol>")
 @login_required
-@subscription_required
 def live_price_api(symbol):
     price = logic.get_live_price(symbol, current_user.id)
     return jsonify({"price": price if price else 0})
