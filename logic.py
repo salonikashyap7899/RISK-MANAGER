@@ -32,6 +32,56 @@ def get_user_exchange_client(user_id):
     Returns the user's own API keys if connected, otherwise None.
     """
     from models import ExchangeConnection
+    import config  # Add config import for proxy
+
+    # Check if we already have a cached client for this user
+    if user_id in _user_clients:
+        return _user_clients[user_id]
+    
+    # Get user's exchange connection from database
+    connection = ExchangeConnection.query.filter_by(
+        user_id=user_id, 
+        exchange_type='binance',
+        is_connected=True
+    ).first()
+    
+    if not connection or not connection.api_key or not connection.api_secret:
+        return None
+    
+    try:
+        # Proxy support for geo-restrictions (e.g., config.PROXY_URL)
+        requests_params = {}
+        if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
+            requests_params = {'proxies': {'https': config.PROXY_URL, 'http': config.PROXY_URL}}
+            print(f"🌐 Using proxy: {config.PROXY_URL}")
+        
+        # Create client with user's API keys + proxy support
+        client = Client(
+            connection.api_key,
+            connection.api_secret,
+            {'timeout': 20, 'requests_params': requests_params}
+        )
+        
+        # Verify the connection works (with geo-error handling)
+        try:
+            client.futures_account(recvWindow=60000)
+        except BinanceAPIException as e:
+            error_msg = str(e)
+            if 'restricted location' in error_msg.lower() or 'eligibility' in error_msg.lower():
+                raise Exception(f"🌍 Binance geo-restriction detected: {error_msg}. Use VPN/proxy (US/Singapore server) from allowed location.")
+            raise
+        
+        # Cache the client
+        _user_clients[user_id] = client
+        return client
+        
+    except Exception as e:
+        print(f"❌ Error creating user client: {e}")
+        # Mark connection as failed
+        connection.is_connected = False
+        from models import db
+        db.session.commit()
+        return None
     
     # Check if we already have a cached client for this user
     if user_id in _user_clients:
@@ -84,13 +134,21 @@ def clear_user_client(user_id):
 
 def sync_time_with_binance():
     """Sync local time with Binance server time"""
+    import config
     try:
-        response = requests.get('https://fapi.binance.com/fapi/v1/time', timeout=10)
+        proxies = {}
+        if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
+            proxies = {'https': config.PROXY_URL, 'http': config.PROXY_URL}
+        
+        response = requests.get('https://fapi.binance.com/fapi/v1/time', timeout=10, proxies=proxies)
         server_time = response.json()['serverTime']
         local_time = int(time.time() * 1000)
         time_offset = server_time - local_time
         return time_offset
     except Exception as e:
+        error_msg = str(e)
+        if 'restricted location' in error_msg.lower() or 'eligibility' in error_msg.lower():
+            raise Exception(f"🌍 Binance geo-restriction on public endpoint: {error_msg}. Use VPN/proxy first.")
         print(f"⚠️ Could not sync time: {e}")
         return 0
 
@@ -101,6 +159,7 @@ def get_client(user_id=None):
     Otherwise uses default config (for demo/backward compatibility).
     """
     global _default_client
+    import config  # Ensure config available
     
     # If user_id provided, try to get user's own exchange
     if user_id:
@@ -116,10 +175,17 @@ def get_client(user_id=None):
             if config.BINANCE_KEY and config.BINANCE_SECRET and len(config.BINANCE_KEY) > 5:
                 time_offset = sync_time_with_binance()
                 print(f"⏰ Time offset with Binance: {time_offset}ms")
+                
+                # Proxy support for default client
+                requests_params = {}
+                if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
+                    requests_params = {'proxies': {'https': config.PROXY_URL, 'http': config.PROXY_URL}}
+                    print(f"🌐 Using proxy for default client: {config.PROXY_URL}")
+                
                 _default_client = Client(
                     config.BINANCE_KEY, 
                     config.BINANCE_SECRET,
-                    {'timeout': 20}
+                    {'timeout': 20, 'requests_params': requests_params}
                 )
                 if abs(time_offset) > 1000:
                     _default_client.timestamp_offset = time_offset
@@ -129,6 +195,11 @@ def get_client(user_id=None):
             else:
                 print("⚠️ No default API keys configured - returning None")
                 return None
+        except BinanceAPIException as e:
+            error_msg = str(e)
+            if 'restricted location' in error_msg.lower() or 'eligibility' in error_msg.lower():
+                raise Exception(f"🌍 Binance geo-restriction detected: {error_msg}. Use VPN/proxy (US/Singapore server) from allowed location. Set config.PROXY_URL for proxy support.")
+            raise
         except Exception as e:
             print(f"❌ Error initializing default Binance client: {e}")
             _default_client = None

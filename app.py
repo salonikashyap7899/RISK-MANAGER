@@ -783,13 +783,49 @@ def debug_status():
             'connections': connection_count,
             'binance_key_configured': bool(config.BINANCE_KEY),
             'razorpay_key_configured': bool(config.RAZORPAY_KEY_ID),
-            'secret_key_set': bool(app.secret_key)
+            'secret_key_set': bool(app.secret_key),
+            'proxy_configured': bool(getattr(config, 'PROXY_URL', False))
         })
     except Exception as e:
         return jsonify({
             'status': 'error',
             'error': str(e)
         }), 500
+
+
+@app.route('/test-binance')
+@login_required
+@subscription_required
+def test_binance():
+    """Test Binance connectivity for logged-in user"""
+    try:
+        import logic
+        client = logic.get_client(current_user.id)
+        balance, margin = logic.get_live_balance(current_user.id)
+        btc_price = logic.get_live_price('BTCUSDT', current_user.id)
+        symbols = logic.get_all_exchange_symbols(current_user.id)[:5]  # First 5
+        
+        proxy_status = 'Configured' if getattr(config, 'PROXY_URL', None) else 'Not set'
+        
+        test_result = {
+            'status': 'success',
+            'client_available': client is not None,
+            'balance': balance,
+            'margin_used': margin,
+            'btc_price': btc_price,
+            'symbol_count': len(symbols),
+            'sample_symbols': symbols,
+            'proxy_status': proxy_status,
+            'message': '✅ Binance connection OK!' if client else '⚠️ No connection - add your exchange keys'
+        }
+        return jsonify(test_result)
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'message': '❌ Test failed - check VPN/proxy if geo-restricted'
+        }), 500
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)
