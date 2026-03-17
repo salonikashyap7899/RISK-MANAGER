@@ -5,7 +5,7 @@ from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from functools import wraps
-from models import db, User, ExchangeConnection
+from models import db, User, ExchangeConnection, SubscriptionHistory
 import logic
 import config
 import os
@@ -73,15 +73,28 @@ def subscription_required(f):
         if current_user.email.lower() in [email.lower() for email in admin_emails]:
             return f(*args, **kwargs)
         
+        # FIXED: More robust subscription check
         now = datetime.utcnow()
-        if not current_user.is_subscribed or (current_user.subscription_end and now > current_user.subscription_end):
-            if current_user.is_subscribed:
+        
+        # Check if user has an active subscription
+        if not current_user.is_subscribed:
+            flash("Please subscribe to access the trading dashboard.", "warning")
+            return redirect(url_for('subscribe'))
+        
+        # Check if subscription has expired - only if subscription_end is set
+        if current_user.subscription_end:
+            if now > current_user.subscription_end:
+                # Subscription has expired
                 current_user.is_subscribed = False
                 current_user.subscription_status = 'expired'
                 db.session.commit()
-            
-            flash("Your subscription has expired. Please renew to access the dashboard.", "warning")
-            return redirect(url_for('subscribe'))
+                flash("Your subscription has expired. Please renew to access the dashboard.", "warning")
+                return redirect(url_for('subscribe'))
+        else:
+            # If subscription_end is not set but is_subscribed is True, 
+            # this is an edge case - treat as active for monthly subscribers
+            # For users without end date, assume they are valid
+            pass
             
         return f(*args, **kwargs)
     return decorated_function
@@ -170,15 +183,23 @@ def login():
 
         db.session.commit()
         
-        # Check subscription status
-        if not user.is_subscribed or (user.subscription_end and datetime.utcnow() > user.subscription_end):
-            if user.is_subscribed and user.subscription_end and datetime.utcnow() > user.subscription_end:
-                user.is_subscribed = False
-                user.subscription_status = 'expired'
-                db.session.commit()
+        # FIXED: More robust subscription check on login
+        # First check if user has subscription flag
+        if not user.is_subscribed:
             flash("Please subscribe to access the trading dashboard.", "warning")
             return redirect(url_for('subscribe'))
         
+        # Check if subscription has expired - only if subscription_end is set
+        if user.subscription_end:
+            if datetime.utcnow() > user.subscription_end:
+                # Subscription has expired
+                user.is_subscribed = False
+                user.subscription_status = 'expired'
+                db.session.commit()
+                flash("Your subscription has expired. Please renew to access the dashboard.", "warning")
+                return redirect(url_for('subscribe'))
+        
+        # Subscription is valid
         return redirect(url_for('index'))
 
     return render_template('login.html')
@@ -215,14 +236,23 @@ def google_authorize():
     
     db.session.commit()
     
-    if not user.is_subscribed or (user.subscription_end and datetime.utcnow() > user.subscription_end):
-        if user.is_subscribed and user.subscription_end and datetime.utcnow() > user.subscription_end:
-            user.is_subscribed = False
-            user.subscription_status = 'expired'
-            db.session.commit()
+    # FIXED: More robust subscription check on Google login
+    # First check if user has subscription flag
+    if not user.is_subscribed:
         flash("Please subscribe to access the trading dashboard.", "warning")
         return redirect(url_for('subscribe'))
     
+    # Check if subscription has expired - only if subscription_end is set
+    if user.subscription_end:
+        if datetime.utcnow() > user.subscription_end:
+            # Subscription has expired
+            user.is_subscribed = False
+            user.subscription_status = 'expired'
+            db.session.commit()
+            flash("Your subscription has expired. Please renew to access the dashboard.", "warning")
+            return redirect(url_for('subscribe'))
+    
+    # Subscription is valid
     return redirect(url_for('index'))
 
 @app.route('/logout')
@@ -339,6 +369,16 @@ def verify_subscription():
         current_user.subscription_start = datetime.utcnow()
         current_user.subscription_end = datetime.utcnow() + timedelta(days=duration_days)
 
+        # FIXED: Create permanent subscription history record
+        subscription_history = SubscriptionHistory(
+            user_id=current_user.id,
+            plan_type=plan_type,
+            start_date=current_user.subscription_start,
+            end_date=current_user.subscription_end,
+            status="active"
+        )
+        db.session.add(subscription_history)
+        
         db.session.commit()
 
         return jsonify({
