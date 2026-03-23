@@ -135,9 +135,10 @@
                 {% endif %}
             </button>
            <div style="margin-bottom: 15px;">
-    <a href="{{ url_for('home') }}" class="btn btn-secondary">
-        ⬅ Back to Home
-    </a>
+   <a href="{{ url_for('home') }}" 
+   style="display:inline-block; padding:10px 18px; background-color:#6c757d; color:#fff; text-decoration:none; border-radius:6px; font-size:14px;">
+   ⬅ Back to Home
+</a>
 </div>
             <div class="status-box">
                 {% if not sizing.error %}
