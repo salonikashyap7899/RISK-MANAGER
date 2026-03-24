@@ -1,18 +1,16 @@
-# App.py Fixes - ✅ COMPLETE
-Status: ✅ Fixed
+# Auto-Sync Entry Price with Live Price
+## Status: ✅ In Progress (BLACKBOXAI)
 
-1. [x] Previous TODOs (timestamp sync)
-2. [x] Create TODO.md
-3. [x] Fix /index indentation (SyntaxError)
-4. [x] Single balance fetch + safe unpacking
-5. [x] unutilized fixed
-6. [x] No more Pylance errors
-7. [ ] Test locally
+### Plan Summary
+Ensure entry price input always reflects live price on load + continuous 1s sync, with visual indicator.
 
-**✅ app.py fixed! Run: `python app.py`**
+### Steps (Completed: ~~strikethrough~~)
+- [x] **Step 1**: Create this TODO.md
+- [x] **Step 2**: Update logic.py - Reduce price cache to 1s ✅
+- [x] **Step 3**: app.py already fresh - no change needed ✅
+- [x] **Step 4**: Enhance templates/index.html - LIVE indicator + Reset + visuals ✅
+- [x] **Step 5**: Verified (1s auto-sync + LIVE badge pulses + 🔄 button works) ✅
+- [x] **Step 6**: Complete ✅
 
-Test: localhost:5000 → /create-admin → login test@test.com/Test@123 → dashboard.
-
-All syntax/logic issues resolved.
-
+**Completed**: ✅ All steps done
 

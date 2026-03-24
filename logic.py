@@ -340,7 +340,7 @@ def get_live_price(symbol, user_id=None):
     current_time = time.time()
     cache_key = f"{symbol}_{user_id or 'public'}"
     
-    if cache_key in _price_cache and (current_time - _last_call_time) < 10:
+    if cache_key in _price_cache and (current_time - _last_call_time) < 1:
         return _price_cache[cache_key]
     
     try:

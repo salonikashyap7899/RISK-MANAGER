@@ -3,6 +3,13 @@
 <head>
     <title>MindRiskControl</title>
     <link rel="stylesheet" href="../static/style.css">
+<style>
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .live-badge { animation: pulse 2s infinite; }
+    </style>
 </head>
 <body>
 <div class="container">
@@ -81,7 +88,12 @@
             <div class="row">
                 <div class="col">
                     <label>Entry Price</label>
-                    <input type="number" name="entry" id="entry_input" value="{{default_entry}}" step="any">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="number" name="entry" id="entry_input" value="{{default_entry}}" step="any" style="flex: 1;">
+                        <span id="live-indicator" class="live-badge" style="display: none; background: #00ff88; color: black; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; animation: pulse 2s infinite;">LIVE</span>
+                        <button type="button" id="reset-live-btn" onclick="updateLivePrice()" style="background: #0d6efd; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">🔄 Live</button>
+                    </div>
+
                 </div>
             </div>
 
@@ -136,7 +148,7 @@
                     ✅ EXECUTE EXCHANGE ORDER (SL: {{default_sl_value}})
                 {% endif %}
             </button>
-            <div style="margin-bottom: 15px;">
+            <div style="margin-bottom: 15px; margin-top: 10px;">
                 <a href="{{ url_for('home') }}" 
                    style="display:inline-block; padding:10px 18px; background-color:#6c757d; color:#fff; text-decoration:none; border-radius:6px; font-size:14px;">
                    ⬅ Back to Home
@@ -268,14 +280,36 @@
 
     function updateLivePrice() {
         const symbol = document.querySelector('select[name="symbol"]').value || 'BTCUSDT';
+        const entryInput = document.getElementById('entry_input');
+        const indicator = document.getElementById('live-indicator');
+        const resetBtn = document.getElementById('reset-live-btn');
+        
         fetch(`/get_live_price/${symbol}`)
         .then(r => r.json())
         .then(data => {
             if (data.price && data.price > 0) {
-                document.getElementById('entry_input').value = data.price;
+                const oldValue = parseFloat(entryInput.value) || 0;
+                entryInput.value = data.price;
+                
+                // Visual feedback
+                indicator.style.display = 'inline-block';
+                entryInput.style.background = '#1a1a2e';
+                entryInput.style.transition = 'background 0.3s';
+                
+                setTimeout(() => {
+                    indicator.style.display = 'none';
+                    entryInput.style.background = '';
+                }, 2000);
+                
+                console.log(`🔄 Live price updated: ${oldValue.toFixed(4)} → ${data.price.toFixed(4)}`);
             }
+        }).catch(err => {
+            console.error('Live price fetch failed:', err);
+            resetBtn.textContent = '❌';
+            setTimeout(() => resetBtn.textContent = '🔄 Live', 1000);
         });
     }
+
 
     function closePosition(symbol) {
         if(confirm(`Close ${symbol}?`)) {
@@ -308,10 +342,14 @@
     }
 
     // Auto refresh intervals
-    setInterval(updateLivePrice, 1000);     // Price 1s
+    setInterval(updateLivePrice, 1000);     // Price 1s (auto-sync entry)
     setInterval(updateLivePositions, 3000); // Positions 3s  
     setInterval(updateTradeHistory, 5000);  // History 5s
     setInterval(updateTradeLimits, 10000);  // Limits 10s
+    
+    // Initial live sync on page load
+    setTimeout(updateLivePrice, 100);
+
 
     // Initial load
     updateLivePrice();
