@@ -507,7 +507,7 @@ def add_exchange():
             #         'success': False, 
             #         'error': 'Invalid API key format. Binance keys start with vmPU... or uD... (64+ chars)'
             #     }), 400
-            print(f"🔑 API Key length: {len(api_key)}, starts with: {api_key[:10]}...")
+
             
             try:
                 client = Client(api_key, api_secret, {'timeout': 20})
@@ -657,6 +657,14 @@ def get_trade_history_api():
     trades = logic.get_trade_history(current_user.id)
     return jsonify({"trades": trades})
 
+@app.route("/api/wallet")
+@login_required
+@subscription_required
+def get_wallet_api():
+    """NEW: Dedicated wallet endpoint for 10s frontend refresh"""
+    wallet_data = logic.get_wallet_balances(current_user.id)
+    return jsonify(wallet_data)
+
 @app.route("/get_today_stats")
 @login_required
 @subscription_required
@@ -718,10 +726,21 @@ def download_trades():
 def index():
     logic.initialize_session()
     symbols = logic.get_all_exchange_symbols(current_user.id)
-    live_bal, live_margin = logic.get_live_balance(current_user.id)
 
-    balance = live_bal or 0.0
-    margin_used = live_margin or 0.0
+    # Single safe balance fetch - handles (tuple, dict) or None
+    balance_data = logic.get_live_balance(current_user.id)
+    if balance_data and isinstance(balance_data, tuple) and len(balance_data) >= 1:
+        inner_balance_tuple = balance_data[0]
+        if isinstance(inner_balance_tuple, tuple) and len(inner_balance_tuple) >= 2:
+            balance = float(inner_balance_tuple[0])
+            margin_used = float(inner_balance_tuple[1])
+        else:
+            balance = 0.0
+            margin_used = 0.0
+    else:
+        balance = 0.0
+        margin_used = 0.0
+
     unutilized = max(balance - margin_used, 0.0)
 
     selected_symbol = request.form.get("symbol", "BTCUSDT")

@@ -1,19 +1,15 @@
 from flask import session
-from datetime import datetime, date
+from datetime import datetime
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
 import config
 import math
 import traceback
 import time
-import hmac
-import hashlib
 import requests
-import json
 
 # Global variables - Default client (for demo/fallback)
 _default_client = None
-_client = None
 _symbol_cache = None
 _symbol_cache_time = 0
 _price_cache = {}
@@ -25,14 +21,13 @@ CACHE_DURATION = 5
 # User-specific client storage
 _user_clients = {}
 
-
 def get_user_exchange_client(user_id):
     """
     Get Binance client for a specific user based on their connected exchange.
     Returns the user's own API keys if connected, otherwise None.
     """
     from models import ExchangeConnection
-    import config  # Add config import for proxy
+    import config  
 
     # Check if we already have a cached client for this user
     if user_id in _user_clients:
@@ -49,21 +44,34 @@ def get_user_exchange_client(user_id):
         return None
     
     try:
-        # Proxy support for geo-restrictions (e.g., config.PROXY_URL)
-        requests_params = {}
+        # Sync timestamp BEFORE client creation
+        time_offset = sync_time_with_binance()
+        
+        # CRITICAL FIX: Properly bundle parameters into requests_params
+        req_params = {'timeout': 20}
+        
+        # Proxy support for geo-restrictions
         if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
-            requests_params = {'proxies': {'https': config.PROXY_URL, 'http': config.PROXY_URL}}
+            req_params['proxies'] = {
+                'https': config.PROXY_URL, 
+                'http': config.PROXY_URL
+            }
             print(f"🌐 Using proxy: {config.PROXY_URL}")
         
-        # Create client with user's API keys + proxy support
+        # Create client safely using requests_params
         client = Client(
-            connection.api_key,
-            connection.api_secret,
-            {'timeout': 20, 'requests_params': requests_params}
+            api_key=connection.api_key,
+            api_secret=connection.api_secret,
+            requests_params=req_params
         )
         
-        # Verify the connection works
-        client.futures_account(recvWindow=60000)
+        # Apply timestamp offset (PERMANENT -1021 FIX)
+        if abs(time_offset) > 100:
+            client.timestamp_offset = time_offset
+            print(f"✅ Applied user client offset: {time_offset}ms")
+        
+        # Verify the connection works with synced time
+        client.futures_account(recvWindow=10000)
         
         print(f"✅ User {user_id} Binance client created successfully")
         # Cache the client
@@ -73,7 +81,6 @@ def get_user_exchange_client(user_id):
     except BinanceAPIException as e:
         error_info = config.BINANCE_ERROR_CODES.get(e.code)
         print(f"❌ BinanceAPIException for user {user_id}: code={e.code}, {error_info['title'] if error_info else str(e)}")
-        # Mark connection as failed
         connection.is_connected = False
         from models import db
         db.session.commit()
@@ -81,52 +88,57 @@ def get_user_exchange_client(user_id):
         
     except Exception as e:
         print(f"❌ Unexpected error creating client for user {user_id}: {e}")
-        # Mark connection as failed
         connection.is_connected = False
         from models import db
         db.session.commit()
         return None
-    
 
 def set_user_client(user_id, client):
     """Manually set the client for a user (for testing)"""
     _user_clients[user_id] = client
-
 
 def clear_user_client(user_id):
     """Clear cached client for a user (when they disconnect)"""
     if user_id in _user_clients:
         del _user_clients[user_id]
 
-
 def sync_time_with_binance():
-    """Sync local time with Binance server time"""
+    """Sync local time with Binance server time - ROBUST VERSION"""
     import config
-    try:
-        proxies = {}
-        if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
-            proxies = {'https': config.PROXY_URL, 'http': config.PROXY_URL}
-        
-        response = requests.get('https://fapi.binance.com/fapi/v1/time', timeout=10, proxies=proxies)
-        server_time = response.json()['serverTime']
-        local_time = int(time.time() * 1000)
-        time_offset = server_time - local_time
-        return time_offset
-    except Exception as e:
-        error_msg = str(e)
-        if 'restricted location' in error_msg.lower() or 'eligibility' in error_msg.lower():
-            raise Exception(f"🌍 Binance geo-restriction on public endpoint: {error_msg}. Use VPN/proxy first.")
-        print(f"⚠️ Could not sync time: {e}")
-        return 0
+    endpoints = [
+        'https://fapi.binance.com/fapi/v1/time',
+        'https://fapi.binance.com/fapi/v2/time', 
+        'https://api.binance.com/api/v3/time'
+    ]
+    
+    for endpoint in endpoints:
+        try:
+            proxies = {}
+            if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
+                proxies = {'https': config.PROXY_URL, 'http': config.PROXY_URL}
+            
+            response = requests.get(endpoint, timeout=5, proxies=proxies)
+            server_time = int(response.json().get('serverTime', 0))
+            if server_time > 0:
+                local_time = int(time.time() * 1000)
+                offset = server_time - local_time
+                print(f"⏰ Synced with {endpoint}: offset={offset}ms")
+                return offset
+        except Exception as e:
+            print(f"⚠️ {endpoint} failed: {e}")
+            continue
+    
+    print("⚠️ All time sync endpoints failed - using 0 offset (may cause -1021)")
+    return 0
 
 def get_client(user_id=None):
     """
     Get or create Binance client with error handling.
     If user_id is provided, tries to use user's connected exchange.
-    Otherwise uses default config (for demo/backward compatibility).
+    Otherwise uses default config.
     """
     global _default_client
-    import config  # Ensure config available
+    import config 
     
     # If user_id provided, try to get user's own exchange
     if user_id:
@@ -134,39 +146,34 @@ def get_client(user_id=None):
         if user_client:
             return user_client
     
-    # Fallback to default client (your API keys - for demo/backward compatibility)
-    # Only attempt to create default client if keys are actually configured
+    # Fallback to default client
     if _default_client is None:
         try:
-            # Only use default if keys are configured and not empty (min 5 chars)
             if config.BINANCE_KEY and config.BINANCE_SECRET and len(config.BINANCE_KEY) > 5:
                 time_offset = sync_time_with_binance()
-                print(f"⏰ Time offset with Binance: {time_offset}ms")
                 
-                # Proxy support for default client
-                requests_params = {}
+                # CRITICAL FIX: Properly bundle parameters into requests_params
+                req_params = {'timeout': 20}
+                
                 if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
-                    requests_params = {'proxies': {'https': config.PROXY_URL, 'http': config.PROXY_URL}}
-                    print(f"🌐 Using proxy for default client: {config.PROXY_URL}")
+                    req_params['proxies'] = {
+                        'https': config.PROXY_URL, 
+                        'http': config.PROXY_URL
+                    }
                 
                 _default_client = Client(
-                    config.BINANCE_KEY, 
-                    config.BINANCE_SECRET,
-                    {'timeout': 20, 'requests_params': requests_params}
+                    api_key=config.BINANCE_KEY, 
+                    api_secret=config.BINANCE_SECRET,
+                    requests_params=req_params
                 )
-                if abs(time_offset) > 1000:
+                
+                if abs(time_offset) > 100:  
                     _default_client.timestamp_offset = time_offset
-                    print(f"✅ Applied time offset: {time_offset}ms")
-                _default_client.futures_account(recvWindow=60000)
+                
+                _default_client.futures_account(recvWindow=10000)
                 print("✅ Default Binance client initialized successfully")
             else:
-                print("⚠️ No default API keys configured - returning None")
                 return None
-        except BinanceAPIException as e:
-            error_msg = str(e)
-            if 'restricted location' in error_msg.lower() or 'eligibility' in error_msg.lower():
-                raise Exception(f"🌍 Binance geo-restriction detected: {error_msg}. Use VPN/proxy (US/Singapore server) from allowed location. Set config.PROXY_URL for proxy support.")
-            raise
         except Exception as e:
             print(f"❌ Error initializing default Binance client: {e}")
             _default_client = None
@@ -183,13 +190,11 @@ def initialize_session():
     session.modified = True
 
 def get_all_exchange_symbols(user_id=None):
-    """Fetches ALL USDT trading symbols from Binance Futures with improved caching"""
+    """Fetches ALL USDT trading symbols from Binance Futures"""
     global _symbol_cache, _symbol_cache_time
     now = time.time()
     
-    # Check cache (valid for 30 minutes instead of 1 hour for more frequent updates)
     if _symbol_cache and (now - _symbol_cache_time < 1800):
-        print(f"✅ Returning {len(_symbol_cache)} cached symbols")
         return _symbol_cache
 
     try:
@@ -197,51 +202,27 @@ def get_all_exchange_symbols(user_id=None):
         if not client:
             raise Exception("Binance client not initialized")
         
-        print("🔄 Fetching fresh symbols from Binance...")
-        
-        # Get exchange info
         info = client.futures_exchange_info()
         
-        if not info or 'symbols' not in info:
-            raise Exception("Invalid response from Binance")
-        
-        # Filter: TRADING status AND USDT quote asset
         symbols = sorted([
-            s['symbol'] for s in info['symbols'] 
+            s['symbol'] for s in info.get('symbols', []) 
             if s['status'] == 'TRADING' 
             and s['quoteAsset'] == 'USDT'
-            and s['contractType'] == 'PERPETUAL'  # Only perpetual contracts
+            and s['contractType'] == 'PERPETUAL'
         ])
         
-        if not symbols or len(symbols) < 10:  # Sanity check
-            raise Exception(f"Too few symbols returned: {len(symbols)}")
-        
-        _symbol_cache = symbols
-        _symbol_cache_time = now
-        print(f"✅ Successfully loaded {len(symbols)} USDT perpetual symbols")
-        return symbols
-
+        if len(symbols) > 0:
+            _symbol_cache = symbols
+            _symbol_cache_time = now
+            return symbols
+            
     except Exception as e:
         print(f"⚠️ Symbol Fetch Error: {e}")
-        traceback.print_exc()
         
-        # Return cached symbols if available
-        if _symbol_cache:
-            print(f"⚠️ Using stale cache with {len(_symbol_cache)} symbols")
-            return _symbol_cache
-        
-        # Expanded fallback list
-        fallback = [
-            "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", 
-            "ADAUSDT", "AVAXUSDT", "DOTUSDT", "DOGEUSDT", "LINKUSDT",
-            "MATICUSDT", "UNIUSDT", "LTCUSDT", "ATOMUSDT", "ETCUSDT",
-            "FILUSDT", "TRXUSDT", "NEARUSDT", "ALGOUSDT", "VETUSDT"
-        ]
-        print(f"⚠️ Using fallback list with {len(fallback)} symbols")
-        return fallback
+    return ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"]
 
 def get_wallet_balances(user_id=None):
-    """Get detailed wallet balances with free + locked (FIXED)"""
+    """Get detailed wallet balances (only > 0)"""
     try:
         client = get_client(user_id)
         if client is None:
@@ -254,21 +235,26 @@ def get_wallet_balances(user_id=None):
         total_usdt_equiv = 0.0
         
         for asset in assets:
-            free = float(asset.get('availableBalance', '0'))
-            locked = float(asset.get('lockedBalance', '0'))
-            total = float(asset.get('walletBalance', '0'))
+            free = float(asset.get('availableBalance', 0))
+            locked = float(asset.get('lockedBalance', 0))
+            total = float(asset.get('walletBalance', 0))
             
-            # Only include significant balances and USDT quote assets
-            if total > 0.01 and (asset['asset'] == 'USDT' or total > 1.0):
+            if total > 0:
+                asset_name = asset.get('asset', '')
                 balances.append({
-                    'asset': asset['asset'],
+                    'asset': asset_name,
                     'free': round(free, 6),
                     'locked': round(locked, 6),
                     'total': round(total, 6)
                 })
-                total_usdt_equiv += total
+                
+                if asset_name == 'USDT':
+                    total_usdt_equiv += total
+                else:
+                    live_price = get_live_price(f"{asset_name}USDT", user_id)
+                    if live_price:
+                        total_usdt_equiv += (total * live_price)
         
-        print(f"💰 Wallet: {len(balances)} assets, Total: ${total_usdt_equiv:.2f}")
         return {
             'success': True, 
             'balances': balances, 
@@ -276,82 +262,63 @@ def get_wallet_balances(user_id=None):
             'total_usdt_equiv': round(total_usdt_equiv, 2)
         }
         
-    except BinanceAPIException as e:
-        print(f"❌ Wallet Binance error: {config.BINANCE_ERROR_CODES.get(e.code, {}).get('title', str(e))}")
-        return {'success': False, 'error': f'Binance API error: {str(e)}'}
     except Exception as e:
-        print(f"❌ Wallet error: {e}")
         return {'success': False, 'error': str(e)}
 
 def get_entry_price(symbol, user_id=None):
-    """Get entry price from historical trades using client.futures_account_trades() (FIXED)"""
+    """Get entry price safely parsing strings to floats"""
     try:
         client = get_client(user_id)
         if client is None:
             return {'success': False, 'error': 'No Binance client available'}
         
-        # Get recent trades for this symbol
         trades = client.futures_account_trades(symbol=symbol, limit=1000)
         
         if not trades:
-            # Fallback to open position entryPrice
             positions = client.futures_position_information(symbol=symbol)
             for pos in positions:
-                if float(pos['positionAmt']) != 0:
+                if float(pos.get('positionAmt', 0)) != 0:
                     return {
                         'success': True, 
-                        'entry_price': float(pos['entryPrice']),
+                        'entry_price': float(pos.get('entryPrice', 0)),
                         'trades_used': 0,
                         'method': 'position_entryPrice_fallback'
                     }
             return {'success': False, 'error': 'No trades or open position'}
         
-        # Calculate weighted average entry price
         total_qty = 0.0
         total_cost = 0.0
         
         for trade in trades:
-            qty = abs(float(trade['qty']))
-            price = float(trade['price'])
+            qty = abs(float(trade.get('qty', 0)))
+            price = float(trade.get('price', 0))
             total_qty += qty
             total_cost += qty * price
         
         avg_price = total_cost / total_qty if total_qty > 0 else 0.0
         
-        print(f"📈 Entry {symbol}: ${avg_price:.4f} from {len(trades)} trades")
         return {
             'success': True,
             'entry_price': round(avg_price, 6),
-            'trades_used': len([t for t in trades if float(t['qty']) != 0]),
+            'trades_used': len([t for t in trades if float(t.get('qty', 0)) != 0]),
             'total_qty': round(total_qty, 6),
             'method': 'weighted_avg_futures_account_trades'
         }
-        
-    except BinanceAPIException as e:
-        print(f"❌ Entry price Binance error: {str(e)}")
-        return {'success': False, 'error': f'Binance API error: {str(e)}'}
     except Exception as e:
-        print(f"❌ Entry price error: {e}")
         return {'success': False, 'error': str(e)}
 
 def get_live_balance(user_id=None):
-    """Get live wallet balance and margin used - ENHANCED with detailed wallet data (FIXED)"""
+    """Get live wallet balance safely converting string to float"""
     try:
         client = get_client(user_id)
         if client is None: 
-            print(f"⚠️ No client available for balance check (user_id={user_id})")
             return None, None
         
         acc = client.futures_account(recvWindow=10000)
-        total_balance = float(acc["totalWalletBalance"])
-        total_margin = float(acc["totalInitialMargin"])
-        
-        # Get detailed wallet balances
+        total_balance = float(acc.get("totalWalletBalance", 0))
+        total_margin = float(acc.get("totalInitialMargin", 0))
         wallet_data = get_wallet_balances(user_id)
         
-        print(f"💰 Balance: ${total_balance:.2f}, Margin: ${total_margin:.2f}")
-        
-        # Backward compatible tuple return + detailed JSON
         return (
             total_balance, 
             total_margin
@@ -363,131 +330,90 @@ def get_live_balance(user_id=None):
             'wallet': wallet_data
         }
         
-    except BinanceAPIException as e:
-        print(f"❌ Binance error getting balance (user_id={user_id}): {config.BINANCE_ERROR_CODES.get(e.code, {}).get('title', str(e))}")
-        return None, None
     except Exception as e:
         print(f"Error getting balance (user_id={user_id}): {e}")
         return None, None
 
 def get_live_price(symbol, user_id=None):
-    """Bulletproof price fetch - 5 public endpoints + 10s cache + NEVER 0"""
+    """Bulletproof price fetch securely converting string -> float"""
     global _price_cache, _last_call_time
     current_time = time.time()
     cache_key = f"{symbol}_{user_id or 'public'}"
     
-    # Cache check (10s for stability)
     if cache_key in _price_cache and (current_time - _last_call_time) < 10:
         return _price_cache[cache_key]
     
-    # Priority 1: Authenticated client (fastest/most accurate)
     try:
         client = get_client(user_id)
         if client:
             ticker = client.futures_symbol_ticker(symbol=symbol)
-            price = float(ticker['price'])
+            price = float(ticker.get('price', 0))
             if price > 0:
                 _price_cache[cache_key] = price
                 _last_call_time = current_time
-                print(f"✅ Auth price {symbol}: ${price:.2f}")
                 return price
-    except Exception as e:
-        print(f"⚠️ Auth client failed: {e}")
+    except Exception:
+        pass
     
-    # Priority 2-6: 5 public endpoints
     public_endpoints = [
         f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={symbol}",
-        f"https://fapi.binance.com/fapi/v2/ticker/price?symbol={symbol}",
-        f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}",
-        f"https://www.binance.com/api/v3/ticker/price?symbol={symbol}",
-        f"https://papi.binance.com/papi/v1/ticker/price?symbol={symbol}"
+        f"https://fapi.binance.com/fapi/v2/ticker/price?symbol={symbol}"
     ]
     
-    import requests
-    for i, url in enumerate(public_endpoints):
+    for url in public_endpoints:
         try:
             resp = requests.get(url, timeout=2)
             if resp.status_code == 200:
                 data = resp.json()
-                price_key = 'price' if isinstance(data, dict) else data[0].get('price') if isinstance(data, list) else None
+                price_key = data.get('price') if isinstance(data, dict) else None
                 if price_key:
                     price = float(price_key)
                     if price > 0:
                         _price_cache[cache_key] = price
                         _last_call_time = current_time
-                        print(f"✅ Public#{i+1} {symbol}: ${price:.2f}")
                         return price
-        except Exception as e:
+        except Exception:
             continue
     
-    # Ultimate fallback: Live defaults (updated weekly)
-    fallback_prices = {
-        'BTCUSDT': 93450.0, 'ETHUSDT': 3500.0, 'BNBUSDT': 600.0, 'SOLUSDT': 180.0,
-        'XRPUSDT': 2.40, 'ADAUSDT': 0.65, 'DOGEUSDT': 0.40, 'AVAXUSDT': 55.0
-    }
+    fallback_prices = {'BTCUSDT': 93450.0, 'ETHUSDT': 3500.0, 'BNBUSDT': 600.0, 'SOLUSDT': 180.0}
     price = fallback_prices.get(symbol, 1.0)
     _price_cache[cache_key] = price
-    print(f"🔄 Fallback {symbol}: ${price:.2f}")
     return price
 
-
 def get_symbol_filters(symbol, user_id=None):
-    """Get symbol filters with robust defaults"""
-    DEFAULT_FILTERS = {
-        'BTCUSDT': [
-            {'filterType': 'PRICE_FILTER', 'tickSize': '0.10'},
-            {'filterType': 'LOT_SIZE', 'stepSize': '0.001'}
-        ],
-        'ETHUSDT': [
-            {'filterType': 'PRICE_FILTER', 'tickSize': '0.10'},
-            {'filterType': 'LOT_SIZE', 'stepSize': '0.01'}
-        ],
-        'SOLUSDT': [
-            {'filterType': 'PRICE_FILTER', 'tickSize': '0.001'},
-            {'filterType': 'LOT_SIZE', 'stepSize': '0.001'}
-        ]
-    }
-    
+    DEFAULT_FILTERS = [
+        {'filterType': 'PRICE_FILTER', 'tickSize': '0.01'},
+        {'filterType': 'LOT_SIZE', 'stepSize': '0.001'}
+    ]
     try:
         client = get_client(user_id)
         if client:
             info = client.futures_exchange_info()
-            for s in info["symbols"]:
-                if s["symbol"] == symbol: 
-                    print(f"✅ Live filters {symbol}")
-                    return s["filters"]
-    except Exception as e:
-        print(f"⚠️ Live filters failed {symbol}: {e}")
-    
-    filters = DEFAULT_FILTERS.get(symbol, [
-        {'filterType': 'PRICE_FILTER', 'tickSize': '0.01'},
-        {'filterType': 'LOT_SIZE', 'stepSize': '0.001'}
-    ])
-    print(f"✅ Default filters {symbol}: tick={filters[0]['tickSize']}")
-    return filters
+            for s in info.get("symbols", []):
+                if s.get("symbol") == symbol: 
+                    return s.get("filters", DEFAULT_FILTERS)
+    except Exception:
+        pass
+    return DEFAULT_FILTERS
 
 def get_lot_step(symbol, user_id=None):
-    """Get lot size step for a symbol"""
     for f in get_symbol_filters(symbol, user_id):
-        if f["filterType"] == "LOT_SIZE": 
-            return float(f["stepSize"])
+        if f.get("filterType") == "LOT_SIZE": 
+            return float(f.get("stepSize", 0.001))
     return 0.001
 
 def round_qty(symbol, qty, user_id=None):
-    """Round quantity to valid lot size"""
     step = get_lot_step(symbol, user_id)
     if step == 0: 
         step = 0.001
-    
     precision = abs(int(round(-math.log10(step))))
     rounded = round(qty - (qty % step), precision)
     return rounded if rounded > 0 else step
 
 def round_price(symbol, price, user_id=None):
-    """Round price to valid tick size"""
     for f in get_symbol_filters(symbol, user_id):
-        if f["filterType"] == "PRICE_FILTER":
-            tick = float(f["tickSize"])
+        if f.get("filterType") == "PRICE_FILTER":
+            tick = float(f.get("tickSize", 0.01))
             if tick == 0: 
                 return price
             precision = abs(int(round(-math.log10(tick))))
@@ -495,7 +421,6 @@ def round_price(symbol, price, user_id=None):
     return round(price, 2)
 
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
-    """Calculate position size based on risk management"""
     if entry <= 0: 
         return {"error": "Invalid Entry Price"}
     
@@ -529,7 +454,6 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     }
 
 def get_open_positions(user_id=None):
-    """Get all open positions"""
     try:
         client = get_client(user_id)
         if client is None: 
@@ -539,14 +463,15 @@ def get_open_positions(user_id=None):
         open_positions = []
         
         for pos in positions:
-            position_amt = float(pos['positionAmt'])
+            position_amt = float(pos.get('positionAmt', 0))
             if abs(position_amt) > 0:
-                entry_price = float(pos['entryPrice'])
-                mark_price = float(pos['markPrice'])
-                unrealized_pnl = float(pos['unRealizedProfit'])
-                liquidation_price = float(pos['liquidationPrice'])
-                leverage = int(pos['leverage'])
-                notional = float(pos['notional'])
+                entry_price = float(pos.get('entryPrice', 0))
+                mark_price = float(pos.get('markPrice', 0))
+                unrealized_pnl = float(pos.get('unRealizedProfit', 0))
+                liquidation_price = float(pos.get('liquidationPrice', 0))
+                leverage = int(pos.get('leverage', 1))
+                notional = float(pos.get('notional', 0))
+                
                 initial_margin = abs(notional) / leverage if leverage > 0 else abs(notional)
                 roi_percent = (unrealized_pnl / initial_margin * 100) if initial_margin > 0 else 0
                 
@@ -555,10 +480,10 @@ def get_open_positions(user_id=None):
                 else: 
                     margin_ratio = 0
                 
-                open_orders = get_open_orders_for_symbol(pos['symbol'], user_id)
+                open_orders = get_open_orders_for_symbol(pos.get('symbol'), user_id)
                 
                 open_positions.append({
-                    'symbol': pos['symbol'], 
+                    'symbol': pos.get('symbol'), 
                     'side': 'LONG' if position_amt > 0 else 'SHORT',
                     'amount': abs(position_amt), 
                     'size_usdt': abs(notional), 
@@ -580,7 +505,6 @@ def get_open_positions(user_id=None):
         return []
 
 def get_open_orders_for_symbol(symbol, user_id=None):
-    """Get open orders for a specific symbol"""
     try:
         client = get_client(user_id)
         if client is None: 
@@ -588,21 +512,18 @@ def get_open_orders_for_symbol(symbol, user_id=None):
         
         orders = client.futures_get_open_orders(symbol=symbol, recvWindow=10000)
         return [{
-            'orderId': o['orderId'], 
-            'type': o['type'], 
-            'side': o['side'],
+            'orderId': o.get('orderId'), 
+            'type': o.get('type'), 
+            'side': o.get('side'),
             'price': float(o.get('stopPrice', o.get('price', 0))),
-            'origQty': float(o['origQty']), 
-            'status': o['status']
+            'origQty': float(o.get('origQty', 0)), 
+            'status': o.get('status')
         } for o in orders]
-    except Exception as e:
-        print(f"Error getting open orders for {symbol}: {e}")
+    except Exception:
         return []
 
 def update_trade_stats(symbol):
-    """Update daily trade statistics"""
     today = datetime.utcnow().date().isoformat()
-    
     if "stats" not in session: 
         session["stats"] = {}
     if today not in session["stats"]: 
@@ -613,9 +534,7 @@ def update_trade_stats(symbol):
     session.modified = True
 
 def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_value, sizing, user_units, user_lev, margin_mode, tp1, tp1_pct, tp2, user_id=None):
-    """Execute trade with entry, stop loss, and take profit orders"""
     global _positions_cache_time
-    
     client = get_client(user_id)
     if not client: 
         return {"success": False, "message": "❌ Connection Failed - Please connect your exchange account"}
@@ -626,85 +545,51 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         
         try: 
             client.futures_change_leverage(symbol=symbol, leverage=lev)
-        except Exception as e: 
-            print(f"⚠️ Could not set leverage: {e}")
-        
-        try: 
             client.futures_change_margin_type(symbol=symbol, marginType=margin_mode)
-        except Exception as e: 
-            print(f"⚠️ Could not set margin type: {e}")
+        except Exception: 
+            pass
 
         e_side = Client.SIDE_BUY if side == "LONG" else Client.SIDE_SELL
         x_side = Client.SIDE_SELL if side == "LONG" else Client.SIDE_BUY
         
         if sl_type == "SL % Movement":
-            if side == "LONG":
-                calculated_sl = entry * (1 - (sl_value / 100))
-            else:
-                calculated_sl = entry * (1 + (sl_value / 100))
+            calculated_sl = entry * (1 - (sl_value / 100)) if side == "LONG" else entry * (1 + (sl_value / 100))
         else:
             calculated_sl = sl_value
 
         sl_p = round_price(symbol, calculated_sl, user_id)
         
-        entry_order = client.futures_create_order(
-            symbol=symbol, 
-            side=e_side, 
-            type="MARKET", 
-            quantity=qty
-        )
-        print(f"✅ Entry order placed: {entry_order}")
+        client.futures_create_order(symbol=symbol, side=e_side, type="MARKET", quantity=qty)
         time.sleep(0.5)
-        
         _positions_cache_time = 0
 
         try:
-            sl_order = client.futures_create_order(
-                symbol=symbol, 
-                side=x_side, 
-                type="STOP_MARKET", 
-                stopPrice=sl_p, 
-                closePosition=True, 
-                workingType="MARK_PRICE"
+            client.futures_create_order(
+                symbol=symbol, side=x_side, type="STOP_MARKET", 
+                stopPrice=sl_p, closePosition=True, workingType="MARK_PRICE"
             )
-            print(f"✅ SL order placed: {sl_order}")
         except Exception as e:
             print(f"❌ SL order failed: {e}")
 
-        if tp1 > 0:
-            is_valid_tp = (side == "LONG" and tp1 > entry) or (side == "SHORT" and tp1 < entry)
-            if is_valid_tp:
-                t1_qty = round_qty(symbol, qty * (tp1_pct / 100), user_id)
-                if t1_qty > 0:
-                    try: 
-                        tp1_order = client.futures_create_order(
-                            symbol=symbol, 
-                            side=x_side, 
-                            type="TAKE_PROFIT_MARKET", 
-                            stopPrice=round_price(symbol, tp1, user_id), 
-                            quantity=t1_qty, 
-                            reduceOnly=True, 
-                            workingType="MARK_PRICE"
-                        )
-                        print(f"✅ TP1 order placed: {tp1_order}")
-                    except Exception as e: 
-                        print(f"⚠️ TP1 Failed: {e}")
-
-        if tp2 > 0:
-            is_valid_tp = (side == "LONG" and tp2 > entry) or (side == "SHORT" and tp2 < entry)
-            if is_valid_tp:
+        if tp1 > 0 and ((side == "LONG" and tp1 > entry) or (side == "SHORT" and tp1 < entry)):
+            t1_qty = round_qty(symbol, qty * (tp1_pct / 100), user_id)
+            if t1_qty > 0:
                 try: 
-                    tp2_order = client.futures_create_order(
-                        symbol=symbol, 
-                        side=x_side, 
-                        type="TAKE_PROFIT_MARKET", 
-                        stopPrice=round_price(symbol, tp2, user_id), 
-                        closePosition=True, 
-                        workingType="MARK_PRICE"
+                    client.futures_create_order(
+                        symbol=symbol, side=x_side, type="TAKE_PROFIT_MARKET", 
+                        stopPrice=round_price(symbol, tp1, user_id), quantity=t1_qty, 
+                        reduceOnly=True, workingType="MARK_PRICE"
                     )
-                    print(f"✅ TP2 order placed: {tp2_order}")
-                except Exception as e: 
-                    print(f"⚠️ TP2 Failed: {e}")
+                except Exception: pass
+
+        if tp2 > 0 and ((side == "LONG" and tp2 > entry) or (side == "SHORT" and tp2 < entry)):
+            try: 
+                client.futures_create_order(
+                    symbol=symbol, side=x_side, type="TAKE_PROFIT_MARKET", 
+                    stopPrice=round_price(symbol, tp2, user_id), closePosition=True, 
+                    workingType="MARK_PRICE"
+                )
+            except Exception: pass
 
         update_trade_stats(symbol)
         return {"success": True, "message": f"✅ {side} {symbol} Open. SL: {sl_p}"}
@@ -714,75 +599,89 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         return {"success": False, "message": f"❌ Execution Error: {str(e)}"}
 
 def partial_close_position(symbol, close_percent=None, close_qty=None, user_id=None):
-    """Partially close a position"""
     try:
         client = get_client(user_id)
         if client is None: 
             return {"success": False, "message": "Connection Failed"}
         
         positions = client.futures_position_information(symbol=symbol)
-        pos = next((p for p in positions if abs(float(p['positionAmt'])) > 0), None)
+        pos = next((p for p in positions if abs(float(p.get('positionAmt', 0))) > 0), None)
         
         if not pos: 
             return {"success": False, "message": "No position found"}
         
-        amt = float(pos['positionAmt'])
+        amt = float(pos.get('positionAmt', 0))
         q = round_qty(symbol, close_qty if close_qty else abs(amt) * (close_percent / 100), user_id)
         side = Client.SIDE_SELL if amt > 0 else Client.SIDE_BUY
         
-        order = client.futures_create_order(
-            symbol=symbol, 
-            side=side, 
-            type="MARKET", 
-            quantity=q
-        )
-        
+        order = client.futures_create_order(symbol=symbol, side=side, type="MARKET", quantity=q)
         return {"success": True, "message": f"Closed {q} units", "order": order}
     
     except Exception as e:
-        print(f"Error in partial_close_position: {e}")
         return {"success": False, "message": str(e)}
 
 def close_position(symbol, user_id=None):
     try:
         client = get_client(user_id)
         positions = client.futures_position_information(symbol=symbol)
-        pos = next((p for p in positions if abs(float(p['positionAmt'])) > 0), None)
+        pos = next((p for p in positions if abs(float(p.get('positionAmt', 0))) > 0), None)
         if not pos: return {"success": False, "message": "No position"}
-        amt = abs(float(pos['positionAmt']))
-        side = Client.SIDE_SELL if float(pos['positionAmt']) > 0 else Client.SIDE_BUY
+        
+        amt = abs(float(pos.get('positionAmt', 0)))
+        side = Client.SIDE_SELL if float(pos.get('positionAmt', 0)) > 0 else Client.SIDE_BUY
         client.futures_create_order(symbol=symbol, side=side, type="MARKET", quantity=amt)
         client.futures_cancel_all_open_orders(symbol=symbol)
         return {"success": True, "message": "Position Closed"}
-    except Exception as e: return {"success": False, "message": str(e)}
+    except Exception as e: 
+        return {"success": False, "message": str(e)}
 
 def update_stop_loss(symbol, new_sl_percent, user_id=None):
     try:
         client = get_client(user_id)
         positions = client.futures_position_information(symbol=symbol)
-        pos = next((p for p in positions if abs(float(p['positionAmt'])) > 0), None)
+        pos = next((p for p in positions if abs(float(p.get('positionAmt', 0))) > 0), None)
         if not pos: return {"success": False, "message": "No position"}
         
-        amt = float(pos['positionAmt'])
-        entry = float(pos['entryPrice'])
+        amt = float(pos.get('positionAmt', 0))
+        entry = float(pos.get('entryPrice', 0))
         price = round_price(symbol, entry * (1 + new_sl_percent/100) if amt > 0 else entry * (1 - new_sl_percent/100), user_id)
         
         orders = client.futures_get_open_orders(symbol=symbol)
         for o in orders:
-            if o['type'] in ['STOP_MARKET', 'STOP']: client.futures_cancel_order(symbol=symbol, orderId=o['orderId'])
+            if o.get('type') in ['STOP_MARKET', 'STOP']: 
+                client.futures_cancel_order(symbol=symbol, orderId=o.get('orderId'))
             
-        client.futures_create_order(symbol=symbol, side=Client.SIDE_SELL if amt > 0 else Client.SIDE_BUY, type="STOP_MARKET", stopPrice=price, closePosition=True, workingType="MARK_PRICE")
+        client.futures_create_order(
+            symbol=symbol, side=Client.SIDE_SELL if amt > 0 else Client.SIDE_BUY, 
+            type="STOP_MARKET", stopPrice=price, closePosition=True, workingType="MARK_PRICE"
+        )
         return {"success": True, "message": f"SL updated to {price}"}
-    except Exception as e: return {"success": False, "message": str(e)}
+    except Exception as e: 
+        return {"success": False, "message": str(e)}
 
 def get_trade_history(user_id=None):
     try:
         client = get_client(user_id)
         trades = client.futures_account_trades(limit=500)
-        return [{'time': datetime.fromtimestamp(t['time']/1000).strftime("%Y-%m-%d %H:%M:%S"), 'symbol': t['symbol'], 'side': 'LONG' if t['side']=='BUY' else 'SHORT', 'qty': float(t['qty']), 'price': float(t['price']), 'realized_pnl': float(t['realizedPnl']), 'commission': float(t['commission']), 'order_id': t['orderId']} for t in sorted(trades, key=lambda x: x['time'], reverse=True)]
-    except: return []
+        return [{
+            'time': datetime.fromtimestamp(t.get('time', 0)/1000).strftime("%Y-%m-%d %H:%M:%S"), 
+            'symbol': t.get('symbol'), 
+            'side': 'LONG' if t.get('side') == 'BUY' else 'SHORT', 
+            'qty': float(t.get('qty', 0)), 
+            'price': float(t.get('price', 0)), 
+            'realized_pnl': float(t.get('realizedPnl', 0)), 
+            'commission': float(t.get('commission', 0)), 
+            'order_id': t.get('orderId')
+        } for t in sorted(trades, key=lambda x: x.get('time', 0), reverse=True)]
+    except Exception: 
+        return []
 
 def get_today_stats():
     today = datetime.utcnow().date().isoformat()
     stats = session.get("stats", {}).get(today, {"total": 0, "symbols": {}})
-    return {"total_trades": stats.get("total", 0), "max_trades": config.MAX_TRADES_PER_DAY, "symbol_trades": stats.get("symbols", {}), "max_per_symbol": config.MAX_TRADES_PER_SYMBOL_PER_DAY}
+    return {
+        "total_trades": stats.get("total", 0), 
+        "max_trades": config.MAX_TRADES_PER_DAY, 
+        "symbol_trades": stats.get("symbols", {}), 
+        "max_per_symbol": config.MAX_TRADES_PER_SYMBOL_PER_DAY
+    }

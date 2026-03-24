@@ -246,17 +246,22 @@ fetch('/add-exchange', {
                     connection_name: document.getElementById('connectionName').value
                 })
             }).then(function(response) { return response.json(); })
-            .then(function(data) {
+.then(function(data) {
+                console.log('Full API Response:', data); // DEBUG: Check console F12
                 if (data.success) {
-                    alert(data.message);
+                    alert('✅ ' + data.message);
                     location.reload();
                 } else {
-                    alert('Error: ' + data.error);
+                    // Better error display
+                    let errorMsg = data.error || data.title || data.message || 'Unknown error';
+                    if (data.error_code) errorMsg = `Code ${data.error_code}: ${errorMsg}`;
+                    alert('❌ ' + errorMsg);
                     submitBtn.disabled = false;
                     submitBtn.textContent = 'Connect Exchange';
                 }
             }).catch(function(err) {
-                alert('Error: ' + err.message);
+                console.error('Network error:', err);
+                alert('Network Error: ' + err.message);
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Connect Exchange';
             });

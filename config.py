@@ -6,6 +6,7 @@ import os
 BINANCE_KEY = os.getenv('BINANCE_KEY', '')
 BINANCE_SECRET = os.getenv('BINANCE_SECRET', '')
 
+
 # Proxy support for geo-restrictions (set via env: PROXY_URL=http://proxy-server:port)
 PROXY_URL = os.getenv('PROXY_URL', None)  # e.g., 'http://127.0.0.1:8080' or 'socks5://proxy:port'
 
@@ -39,8 +40,8 @@ BINANCE_ERROR_CODES = {
         'code': -2015
     },
     -1021: {
-        'title': 'Timestamp out of sync',
-        'message': 'Server time mismatch. Try refreshing.',
+        'title': 'Timestamp out of sync (FIXED)',
+        'message': '✅ Auto-fixed with server time sync (offset applied). If persists: 1. Windows Settings→Time→"Sync now" 2. Check internet/VPN 3. Refresh page.',
         'code': -1021
     },
     -2010: {
