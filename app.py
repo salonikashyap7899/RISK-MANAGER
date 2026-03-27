@@ -32,6 +32,19 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///users.db').replace("postgres://", "postgresql://", 1)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+import os
+
+# Fetch the keys from the environment
+api_key = os.environ.get('BINANCE_API_KEY')
+api_secret = os.environ.get('BINANCE_SECRET_KEY')
+
+# Example safety check (optional but recommended)
+if not api_key or not api_secret:
+    print("Warning: Binance API keys are not set in the environment!")
+
+# Pass these to your Binance client initialization
+# client = Client(api_key, api_secret)
+
 RAZORPAY_MONTHLY_PLAN_ID = config.RAZORPAY_MONTHLY_PLAN_ID
 RAZORPAY_YEARLY_PLAN_ID = config.RAZORPAY_YEARLY_PLAN_ID
 
