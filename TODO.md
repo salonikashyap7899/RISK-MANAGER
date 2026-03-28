@@ -2,7 +2,7 @@
 Status: ✅ Steps 1-2 Completed
 
 ## Completed Steps
-Step 1: Updated requirements.txt → psycopg 3.2.12 pure Python (fixes ImportError + pip resolver)
+- [x] Step 1: Updated requirements.txt → psycopg3 (fixes ImportError on Render/Python 3.14)
 - [x] Step 2: Suppressed Binance warning print in app.py (cleans logs)
 
 ## Remaining Steps (User Actions)
@@ -29,10 +29,7 @@ Step 1: Updated requirements.txt → psycopg 3.2.12 pure Python (fixes ImportErr
 
 ## Expected Results
 - ✅ Render deploys successfully
-No psycopg2 ImportError or pip failures
+- ✅ No psycopg2 ImportError
 - ✅ No Binance warning spam
 - ✅ Login/register works (DB connected)
 - ✅ /debug-status shows 'database': 'connected'
-
-Ping when Render logs are clean & login works!
-
