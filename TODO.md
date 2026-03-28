@@ -1,35 +1,37 @@
-# Deployment Fix Progress
-Status: ✅ Steps 1-2 Completed
+# Render Deployment Progress Tracker
 
-## Completed Steps
-- [x] Step 1: Updated requirements.txt → psycopg3 (fixes ImportError on Render/Python 3.14)
-- [x] Step 2: Suppressed Binance warning print in app.py (cleans logs)
+## Status: ✅ Fix Applied - Awaiting Deploy
 
-## Remaining Steps (User Actions)
-1. **Commit & Push**: 
-   ```
-   git add .
-   git commit -m "Fix Render deploy: psycopg3 + suppress Binance warning"
-   git push origin main
-   ```
-2. **Render Dashboard**:
-   - Confirm `DATABASE_URL` set (postgres://... from Render PostgreSQL)
-   - Optional: Add `BINANCE_API_KEY`, `BINANCE_SECRET_KEY`
-   - **Manual Redeploy** (Deployments tab → Redeploy)
-3. **Test**:
-   - Check Render logs: No ImportError, no Binance warning
-   - Visit /debug-status → `{"database": "connected", ...}`
-   - Test login: /login → test@test.com / Test@123 (create via /create-admin)
-4. **Local Test** (optional):
-   ```
-   set DATABASE_URL=postgresql://user:pass@localhost/db  # or your local DB
-   pip install -r requirements.txt
-   python app.py
-   ```
+### Completed Steps:
+- [x] **Psycopg3 Dialect Fix**: app.py now uses `postgresql+psycopg3://` (fixes ModuleNotFoundError: psycopg2)
+- [x] Previous: requirements.txt → psycopg[binary]==3.2.13
+- [x] Previous: Suppressed Binance warnings
 
-## Expected Results
-- ✅ Render deploys successfully
-- ✅ No psycopg2 ImportError
-- ✅ No Binance warning spam
-- ✅ Login/register works (DB connected)
-- ✅ /debug-status shows 'database': 'connected'
+### Next Steps (Run NOW):
+```
+1. git add app.py TODO.md
+2. git commit -m "Fix Render deploy: psycopg3 dialect postgresql+psycopg3"
+3. git push origin main
+4. Render auto-redeploys → Check logs (no psycopg2 error)
+5. Test: https://your-app.onrender.com/debug-status → {"database": "connected"}
+```
+
+### Expected Results:
+- ✅ No more `ModuleNotFoundError: No module named 'psycopg2'`
+- ✅ Gunicorn starts: "Running 'gunicorn app:app'"
+- ✅ DB connects: /debug-status shows success
+- ✅ Full app works: login → dashboard
+
+### Local Test (Optional):
+```
+set DATABASE_URL=your-render-db-url
+set SECRET_KEY=your-32-char-key
+python app.py
+```
+Visit localhost:5000/debug-status
+
+### If Still Issues:
+1. Share new Render logs
+2. Confirm env vars: DATABASE_URL, SECRET_KEY, PROXY_URL set
+3. Custom domain DNS (CNAME to render-url.onrender.com)
+

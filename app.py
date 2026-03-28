@@ -30,7 +30,7 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 
 db_url = os.getenv('DATABASE_URL', None)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db' if not db_url else db_url.replace("postgres://", "postgresql+psycopg://", 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db' if not db_url else db_url.replace("postgres://", "postgresql+psycopg3://", 1)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 import os
