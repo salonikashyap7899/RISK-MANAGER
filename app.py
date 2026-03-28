@@ -29,11 +29,9 @@ app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', 'False'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-raw_db_url = os.getenv('DATABASE_URL', None)
-if raw_db_url:
-    app.config['SQLALCHEMY_DATABASE_URI'] = raw_db_url.replace("postgres://", "postgresql://", 1)
-else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///instance/app.db'
+
+db_url = os.getenv('DATABASE_URL', None)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db' if not db_url else db_url.replace("postgres://", "postgresql://", 1)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 import os
