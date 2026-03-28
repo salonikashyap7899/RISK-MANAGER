@@ -48,12 +48,16 @@ api_secret = os.environ.get('BINANCE_SECRET_KEY')
 RAZORPAY_MONTHLY_PLAN_ID = config.RAZORPAY_MONTHLY_PLAN_ID
 RAZORPAY_YEARLY_PLAN_ID = config.RAZORPAY_YEARLY_PLAN_ID
 
-# Initialize DB after app config
-from models import db, User, ExchangeConnection, SubscriptionHistory
-db.init_app(app)
+# Initialize DB later after all imports (lazy init)
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
+
+# DB init moved after routes to avoid startup crash
+with app.app_context():
+    from models import db, User, ExchangeConnection, SubscriptionHistory
+    db.init_app(app)
+    db.create_all()
 
 @login_manager.user_loader
 def load_user(user_id):
