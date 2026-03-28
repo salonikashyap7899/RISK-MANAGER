@@ -24,16 +24,16 @@ _user_clients = {}
 def get_user_exchange_client(user_id):
     """
     Get Binance client for a specific user based on their connected exchange.
-    Returns the user's own API keys if connected, otherwise None.
+    Includes Proxy support to bypass Render geo-restrictions.
     """
     from models import ExchangeConnection
     import config  
 
-    # Check if we already have a cached client for this user
+    # 1. Check if we already have a cached client for this user
     if user_id in _user_clients:
         return _user_clients[user_id]
     
-    # Get user's exchange connection from database
+    # 2. Get user's exchange connection from database
     connection = ExchangeConnection.query.filter_by(
         user_id=user_id, 
         exchange_type='binance',
@@ -44,53 +44,31 @@ def get_user_exchange_client(user_id):
         return None
     
     try:
-        # Sync timestamp BEFORE client creation
-        time_offset = sync_time_with_binance()
-        
-        # CRITICAL FIX: Properly bundle parameters into requests_params
-        req_params = {'timeout': 20}
-        
-        # Proxy support for geo-restrictions
-        if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
-            req_params['proxies'] = {
-                'https': config.PROXY_URL, 
-                'http': config.PROXY_URL
-            }
-            print(f"🌐 Using proxy: {config.PROXY_URL}")
-        
-        # Create client safely using requests_params
+        # 3. Setup Proxy from config.py (Render Environment Variable)
+        # Format must be: http://user:pass@ip:port
+        proxies = {
+            'http': config.PROXY_URL,
+            'https': config.PROXY_URL
+        } if config.PROXY_URL else None
+
+        # 4. Initialize Binance Client with Proxy settings
         client = Client(
-            api_key=connection.api_key,
-            api_secret=connection.api_secret,
-            requests_params=req_params
+            connection.api_key, 
+            connection.api_secret,
+            requests_params={'proxies': proxies} if proxies else None
         )
         
-        # Apply timestamp offset (PERMANENT -1021 FIX)
-        if abs(time_offset) > 100:
-            client.timestamp_offset = time_offset
-            print(f"✅ Applied user client offset: {time_offset}ms")
+        # 5. Sync timestamp to prevent -1021 errors
+        server_time = client.get_server_time()
+        client.timestamp_offset = server_time['serverTime'] - int(time.time() * 1000)
         
-        # Verify the connection works with synced time
-        client.futures_account(recvWindow=10000)
-        
-        print(f"✅ User {user_id} Binance client created successfully")
-        # Cache the client
+        # Cache and return
         _user_clients[user_id] = client
         return client
-        
-    except BinanceAPIException as e:
-        error_info = config.BINANCE_ERROR_CODES.get(e.code)
-        print(f"❌ BinanceAPIException for user {user_id}: code={e.code}, {error_info['title'] if error_info else str(e)}")
-        connection.is_connected = False
-        from models import db
-        db.session.commit()
-        return None
-        
+
     except Exception as e:
-        print(f"❌ Unexpected error creating client for user {user_id}: {e}")
-        connection.is_connected = False
-        from models import db
-        db.session.commit()
+        print(f"❌ Binance Connection Error for user {user_id}: {e}")
+        traceback.print_exc()
         return None
 
 def set_user_client(user_id, client):
