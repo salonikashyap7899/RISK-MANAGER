@@ -725,24 +725,21 @@ def download_trades():
 def index():
     logic.initialize_session()
     symbols = logic.get_all_exchange_symbols(current_user.id)
-    live_bal, live_margin = logic.get_live_balance(current_user.id)
-
- # Updated to handle (tuple, dict) return from logic.py
+    
+    # --- FIXED BALANCE UNPACKING LOGIC ---
     balance_data = logic.get_live_balance(current_user.id)
+    balance = 0.0
+    margin_used = 0.0
 
-    # Check if we got a valid response (not None)
-    if balance_data and isinstance(balance_data, tuple) and len(balance_data) >= 1:
-        # balance_data[0] is the (total_balance, total_margin) tuple
-        inner_balance_tuple = balance_data[0]
-        if isinstance(inner_balance_tuple, tuple):
-            balance = float(inner_balance_tuple[0])
-            margin_used = float(inner_balance_tuple[1])
-        else:
-            balance, margin_used = 0.0, 0.0
-    else:
-        balance, margin_used = 0.0, 0.0
-
+    if balance_data and isinstance(balance_data, tuple):
+        # logic.py returns ((bal, margin), details_dict)
+        inner_tuple = balance_data[0]
+        if isinstance(inner_tuple, tuple) and len(inner_tuple) >= 2:
+            balance = float(inner_tuple[0] or 0.0)
+            margin_used = float(inner_tuple[1] or 0.0)
+    
     unutilized = max(balance - margin_used, 0.0)
+    # -------------------------------------
 
     selected_symbol = request.form.get("symbol", "BTCUSDT")
     side = request.form.get("side", "LONG")
@@ -767,7 +764,6 @@ def index():
             margin_mode, tp1, tp1_pct, tp2, current_user.id
         )
         session["trade_status"] = result
-        session.modified = True
         return redirect(url_for("index"))
     
     today_stats = logic.get_today_stats()
