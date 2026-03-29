@@ -826,7 +826,8 @@ def index():
         today_stats=today_stats
     )
 
-db.create_all()
+with app.app_context():
+    db.create_all()
 
 # ============================================
 # ERROR HANDLERS - Add these after app creation
