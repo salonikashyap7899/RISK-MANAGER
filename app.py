@@ -29,7 +29,7 @@ app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', 'False'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///users.db').replace("postgres://", "postgresql://", 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///instance/users.db').replace("postgres://", "postgresql://", 1)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 RAZORPAY_MONTHLY_PLAN_ID = config.RAZORPAY_MONTHLY_PLAN_ID
@@ -68,33 +68,23 @@ def subscription_required(f):
             return redirect(url_for('login'))
         
         # Admin bypass - allow access without subscription for admin users
-        # Add admin emails to the list below for testing
-        admin_emails = ['admin@mindriskcontrol.com', 'test@test.com']  # Add your admin emails here
+        admin_emails = ['admin@mindriskcontrol.com', 'test@test.com']
         if current_user.email.lower() in [email.lower() for email in admin_emails]:
             return f(*args, **kwargs)
         
-        # FIXED: More robust subscription check
         now = datetime.utcnow()
         
-        # Check if user has an active subscription
         if not current_user.is_subscribed:
             flash("Please subscribe to access the trading dashboard.", "warning")
             return redirect(url_for('subscribe'))
         
-        # Check if subscription has expired - only if subscription_end is set
         if current_user.subscription_end:
             if now > current_user.subscription_end:
-                # Subscription has expired
                 current_user.is_subscribed = False
                 current_user.subscription_status = 'expired'
                 db.session.commit()
                 flash("Your subscription has expired. Please renew to access the dashboard.", "warning")
                 return redirect(url_for('subscribe'))
-        else:
-            # If subscription_end is not set but is_subscribed is True, 
-            # this is an edge case - treat as active for monthly subscribers
-            # For users without end date, assume they are valid
-            pass
             
         return f(*args, **kwargs)
     return decorated_function
@@ -144,6 +134,16 @@ def register():
             email=email,
             password=hashed_pw
         )
+        try:
+            db.session.add(new_user)
+            db.session.commit()
+            flash('Registration successful. Please log in.', 'success')
+            return redirect(url_for('login'))
+        except Exception:
+            db.session.rollback()
+            flash('An error occurred during registration. Please try again.', 'error')
+            password=hashed_pw
+        
         try:
             db.session.add(new_user)
             db.session.commit()
@@ -496,44 +496,58 @@ def add_exchange():
         db.session.commit()
         
         if exchange_type == 'binance':
-            from binance.client import Client
-            from binance.exceptions import BinanceAPIException
-            
-            # Basic key validation (now optional - comment shows expected format)
-            # if not (api_key.startswith(('vmPU', 'uD')) and len(api_key) > 20):
-            #     db.session.delete(connection)
-            #     db.session.commit()
-            #     return jsonify({
-            #         'success': False, 
-            #         'error': 'Invalid API key format. Binance keys start with vmPU... or uD... (64+ chars)'
-            #     }), 400
-
             try:
-                client = Client(api_key, api_secret, {'timeout': 20})
-                client.futures_account(recvWindow=60000)
+                from binance.client import Client
+                import logic
+                
+                # 1. Properly bundle parameters just like logic.py
+                req_params = {'timeout': 20}
+                if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
+                    req_params['proxies'] = {
+                        'https': config.PROXY_URL, 
+                        'http': config.PROXY_URL
+                    }
+                
+                # 2. Safely initialize client
+                client = Client(
+                    api_key=api_key, 
+                    api_secret=api_secret, 
+                    requests_params=req_params
+                )
+                
+                # 3. Apply timestamp offset to prevent -1021 errors
+                time_offset = logic.sync_time_with_binance()
+                if abs(time_offset) > 100:
+                    client.timestamp_offset = time_offset
+                
+                # 4. Verify connection
+                client.futures_account(recvWindow=10000)
+                
                 connection.is_connected = True
                 connection.last_verified = datetime.utcnow()
                 db.session.commit()
                 
-                logic.clear_user_client(current_user.id)
+                # Force dashboard to pick up new keys
+                logic.invalidate_user_cache(current_user.id)
                 
                 return jsonify({'success': True, 'message': f'{exchange_type} connected successfully!'})
-            except BinanceAPIException as e:
-                error_info = config.BINANCE_ERROR_CODES.get(e.code)
-                db.session.delete(connection)
-                db.session.commit()
-                return jsonify({
-                    'success': False,
-                    'error_code': getattr(e, 'code', None),
-                    'title': error_info['title'] if error_info else f'Binance Error {e.code}',
-                    'message': error_info['message'] if error_info else str(e),
-                    'raw_error': str(e)
-                }), 400
+                
             except Exception as e:
+                # If connection fails, remove the database entry safely
                 db.session.delete(connection)
                 db.session.commit()
-                return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 400
+                
+                error_msg = str(e)
+                # Safely parse Binance specific errors
+                if hasattr(e, 'code'):
+                    error_codes = getattr(config, 'BINANCE_ERROR_CODES', {})
+                    info = error_codes.get(e.code)
+                    if info:
+                        error_msg = f"{info['title']}: {info['message']}"
+                        
+                return jsonify({'success': False, 'error': error_msg}), 400
         
+        # For non-binance exchanges
         connection.is_connected = True
         connection.last_verified = datetime.utcnow()
         db.session.commit()
@@ -542,7 +556,7 @@ def add_exchange():
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': f"Server error: {str(e)}"}), 400
 
 
 @app.route('/verify-exchange/<int:connection_id>', methods=['POST'])
@@ -557,40 +571,50 @@ def verify_exchange(connection_id):
     try:
         if connection.exchange_type == 'binance':
             from binance.client import Client
-            from binance.exceptions import BinanceAPIException
+            import logic
             
             try:
-                client = Client(connection.api_key, connection.api_secret, {'timeout': 20})
-                client.futures_account(recvWindow=60000)
+                req_params = {'timeout': 20}
+                if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
+                    req_params['proxies'] = {'https': config.PROXY_URL, 'http': config.PROXY_URL}
+                    
+                client = Client(
+                    api_key=connection.api_key, 
+                    api_secret=connection.api_secret, 
+                    requests_params=req_params
+                )
+                
+                time_offset = logic.sync_time_with_binance()
+                if abs(time_offset) > 100:
+                    client.timestamp_offset = time_offset
+                    
+                client.futures_account(recvWindow=10000)
                 
                 connection.is_connected = True
                 connection.last_verified = datetime.utcnow()
                 db.session.commit()
                 
-                logic.clear_user_client(current_user.id)
+                logic.invalidate_user_cache(current_user.id)
                 
                 return jsonify({'success': True, 'message': 'Connection verified successfully!'})
-            except BinanceAPIException as e:
-                error_info = config.BINANCE_ERROR_CODES.get(e.code)
-                connection.is_connected = False
-                db.session.commit()
-                return jsonify({
-                    'success': False,
-                    'error_code': getattr(e, 'code', None),
-                    'title': error_info['title'] if error_info else f'Binance Error {e.code}',
-                    'message': error_info['message'] if error_info else str(e),
-                    'raw_error': str(e)
-                }), 400
+                
             except Exception as e:
                 connection.is_connected = False
                 db.session.commit()
-                return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 400
+                
+                error_msg = str(e)
+                if hasattr(e, 'code'):
+                    error_codes = getattr(config, 'BINANCE_ERROR_CODES', {})
+                    info = error_codes.get(e.code)
+                    if info:
+                        error_msg = f"{info['title']}: {info['message']}"
+                
+                return jsonify({'success': False, 'error': error_msg}), 400
         
         return jsonify({'success': True, 'message': 'Connection is active'})
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
-
 
 @app.route('/disconnect-exchange/<int:connection_id>', methods=['POST'])
 @login_required
