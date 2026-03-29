@@ -660,9 +660,13 @@ def get_trade_history_api():
 @login_required
 @subscription_required
 def get_wallet_api():
-    """NEW: Dedicated wallet endpoint for 10s frontend refresh"""
-    wallet_data = logic.get_wallet_balances(current_user.id)
-    return jsonify(wallet_data)
+    """Production wallet endpoint - simplified with timestamp"""
+    wallet_data = logic.get_wallet_balances(current_user.id, estimate_usdt=True)
+    return jsonify({
+        'wallet': wallet_data,
+        'timestamp': datetime.utcnow().isoformat(),
+        'user_id': current_user.id
+    })
 
 @app.route("/get_today_stats")
 @login_required
@@ -727,21 +731,17 @@ def index():
     symbols = logic.get_all_exchange_symbols(current_user.id)
     
     # --- FIXED BALANCE UNPACKING LOGIC ---
-   # --- RE-FIXED BALANCE UNPACKING ---
-    # The logic.py returns a tuple (numbers) and a dict (details)
+    # SIMPLIFIED: Use wallet_data directly for balance
+    wallet_data = logic.get_wallet_balances(current_user.id, estimate_usdt=True)
+    balance = wallet_data.get('total_usdt_equiv', 0.0) if wallet_data.get('success') else 0.0
     balance_result = logic.get_live_balance(current_user.id)
-
-# Unpack carefully to avoid the 'tuple and dict' error
-    if balance_result and balance_result[0] is not None:
-       balance_tuple = balance_result[0] # This is (total_balance, total_margin)
-       balance = float(balance_tuple[0])
-       margin_used = float(balance_tuple[1])
-    else:
-       balance = 0.0
-       margin_used = 0.0
-
+    
+    margin_used = 0.0
+    if balance_result and balance_result[0]:
+        _, margin_used = balance_result[0]
+    
     unutilized = max(balance - margin_used, 0.0)
-# -----------------------------------
+    # Compatible with frontend
     # -------------------------------------
 
     selected_symbol = request.form.get("symbol", "BTCUSDT")
