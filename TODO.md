@@ -1,22 +1,8 @@
-# Render Deployment Fix - Psycopg Error
-Status: ✅ In Progress
+# app.py Indentation Fix Plan
+## Steps:
+- [x] Step 1: Create this TODO.md
+- [x] Step 2: Fix indentation in app.py using edit_file (standardize to 4 spaces)
+- [x] Step 3: Verify with python -m py_compile app.py
+- [ ] Step 4: Mark complete and attempt_completion
 
-## Approved Plan Steps:
-1. [x] Create this TODO.md tracking file
-2. [x] Edit app.py: Change database URI dialect from `postgresql+psycopg://` to `postgresql+psycopg2://` ✅ Complete
-3. [ ] User: Commit changes (`git add . && git commit -m "Fix Render psycopg error: use psycopg2 dialect" && git push`)
-4. [ ] User: Trigger Render redeploy and check logs
-5. [ ] Verify: Deploy succeeds; test /debug-status endpoint
-## All Code Changes Complete ✅
-
-**Next:** Run these commands to deploy:
-```
-git add .
-git commit -m "Fix Render psycopg error: use psycopg2 dialect"
-git push
-```
-Render will auto-redeploy. Check logs for success (no more psycopg import error).
-
-**Test:** Visit your Render URL + `/debug-status` (should show `database: 'connected'`).
-
-Task complete - Render deployment fixed.
+Progress: Step 3 complete ✓ (no syntax errors)

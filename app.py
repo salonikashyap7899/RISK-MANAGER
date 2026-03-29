@@ -508,7 +508,6 @@ def add_exchange():
             #         'error': 'Invalid API key format. Binance keys start with vmPU... or uD... (64+ chars)'
             #     }), 400
 
-            
             try:
                 client = Client(api_key, api_secret, {'timeout': 20})
                 client.futures_account(recvWindow=60000)
@@ -729,19 +728,19 @@ def index():
     live_bal, live_margin = logic.get_live_balance(current_user.id)
 
  # Updated to handle (tuple, dict) return from logic.py
-balance_data = logic.get_live_balance(current_user.id)
+    balance_data = logic.get_live_balance(current_user.id)
 
-# Check if we got a valid response (not None)
-if balance_data and isinstance(balance_data, tuple) and len(balance_data) >= 1:
-    # balance_data[0] is the (total_balance, total_margin) tuple
+    # Check if we got a valid response (not None)
+    if balance_data and isinstance(balance_data, tuple) and len(balance_data) >= 1:
+        # balance_data[0] is the (total_balance, total_margin) tuple
         inner_balance_tuple = balance_data[0]
-    if isinstance(inner_balance_tuple, tuple):
-         balance = float(inner_balance_tuple[0])
-         margin_used = float(inner_balance_tuple[1])
+        if isinstance(inner_balance_tuple, tuple):
+            balance = float(inner_balance_tuple[0])
+            margin_used = float(inner_balance_tuple[1])
+        else:
+            balance, margin_used = 0.0, 0.0
     else:
-         balance, margin_used = 0.0, 0.0
-    else:  
-         balance, margin_used = 0.0, 0.0
+        balance, margin_used = 0.0, 0.0
 
     unutilized = max(balance - margin_used, 0.0)
 
