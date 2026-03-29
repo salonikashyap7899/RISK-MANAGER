@@ -1,14 +1,16 @@
 # For Development/Testing - Remove these in production!
 import os
 
-# Binance Credentials - Can be customized per user via Exchange Connection
-# Default demo keys (should be removed in production)
-BINANCE_KEY = os.getenv('BINANCE_KEY', '')
-BINANCE_SECRET = os.getenv('BINANCE_SECRET', '')
+# This pulls the keys you typed into the Render Dashboard
+BINANCE_KEY = os.getenv('BINANCE_KEY')
+BINANCE_SECRET = os.getenv('BINANCE_SECRET')
+PROXY_URL = os.getenv('PROXY_URL')
 
-
-# Proxy support for geo-restrictions (set via env: PROXY_URL=http://proxy-server:port)
-PROXY_URL = os.getenv('PROXY_URL', None)  # e.g., 'http://127.0.0.1:8080' or 'socks5://proxy:port'
+# Troubleshooting print (Check your Render logs to see this)
+if not BINANCE_KEY or not BINANCE_SECRET:
+    print("⚠️ WARNING: Binance Keys missing from Environment!")
+else:
+    print(f"✅ Config loaded. Proxy status: {'Enabled' if PROXY_URL else 'Disabled'}")
 
 # Razorpay Configuration
 RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID') 
