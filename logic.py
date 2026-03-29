@@ -21,6 +21,20 @@ CACHE_DURATION = 5
 # User-specific client storage
 _user_clients = {}
 
+
+def safe_float(val, default=0.0):
+    """
+    Safely convert string/None values from Binance API to float.
+    Prevents TypeError and ValueError application crashes.
+    """
+    if val is None or val == '':
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
 def get_user_exchange_client(user_id):
     """
     Get Binance client for a specific user based on their connected exchange.
@@ -93,14 +107,17 @@ def get_user_exchange_client(user_id):
         db.session.commit()
         return None
 
+
 def set_user_client(user_id, client):
     """Manually set the client for a user (for testing)"""
     _user_clients[user_id] = client
+
 
 def clear_user_client(user_id):
     """Clear cached client for a user (when they disconnect)"""
     if user_id in _user_clients:
         del _user_clients[user_id]
+
 
 def sync_time_with_binance():
     """Sync local time with Binance server time - ROBUST VERSION"""
@@ -131,6 +148,7 @@ def sync_time_with_binance():
     print("⚠️ All time sync endpoints failed - using 0 offset (may cause -1021)")
     return 0
 
+
 def get_client(user_id=None):
     """
     Get or create Binance client with error handling.
@@ -140,19 +158,15 @@ def get_client(user_id=None):
     global _default_client
     import config 
     
-    # If user_id provided, try to get user's own exchange
     if user_id:
         user_client = get_user_exchange_client(user_id)
         if user_client:
             return user_client
     
-    # Fallback to default client
     if _default_client is None:
         try:
             if config.BINANCE_KEY and config.BINANCE_SECRET and len(config.BINANCE_KEY) > 5:
                 time_offset = sync_time_with_binance()
-                
-                # CRITICAL FIX: Properly bundle parameters into requests_params
                 req_params = {'timeout': 20}
                 
                 if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
@@ -181,6 +195,7 @@ def get_client(user_id=None):
     
     return _default_client
 
+
 def initialize_session():
     """Initialize session variables"""
     if "trades" not in session:
@@ -188,6 +203,7 @@ def initialize_session():
     if "stats" not in session:
         session["stats"] = {}
     session.modified = True
+
 
 def get_all_exchange_symbols(user_id=None):
     """Fetches ALL USDT trading symbols from Binance Futures"""
@@ -221,8 +237,9 @@ def get_all_exchange_symbols(user_id=None):
         
     return ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"]
 
+
 def get_wallet_balances(user_id=None):
-    """Get detailed wallet balances (only > 0)"""
+    """Get detailed wallet balances (only > 0). Fully string-to-float proofed."""
     try:
         client = get_client(user_id)
         if client is None:
@@ -235,9 +252,10 @@ def get_wallet_balances(user_id=None):
         total_usdt_equiv = 0.0
         
         for asset in assets:
-            free = float(asset.get('availableBalance', 0))
-            locked = float(asset.get('lockedBalance', 0))
-            total = float(asset.get('walletBalance', 0))
+            # futures_account often uses maxWithdrawAmount for available instead of availableBalance
+            free = safe_float(asset.get('availableBalance', asset.get('maxWithdrawAmount', 0)))
+            locked = safe_float(asset.get('lockedBalance', 0))
+            total = safe_float(asset.get('walletBalance', 0))
             
             if total > 0:
                 asset_name = asset.get('asset', '')
@@ -265,6 +283,7 @@ def get_wallet_balances(user_id=None):
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
+
 def get_entry_price(symbol, user_id=None):
     """Get entry price safely parsing strings to floats"""
     try:
@@ -277,10 +296,10 @@ def get_entry_price(symbol, user_id=None):
         if not trades:
             positions = client.futures_position_information(symbol=symbol)
             for pos in positions:
-                if float(pos.get('positionAmt', 0)) != 0:
+                if safe_float(pos.get('positionAmt')) != 0:
                     return {
                         'success': True, 
-                        'entry_price': float(pos.get('entryPrice', 0)),
+                        'entry_price': safe_float(pos.get('entryPrice')),
                         'trades_used': 0,
                         'method': 'position_entryPrice_fallback'
                     }
@@ -290,8 +309,8 @@ def get_entry_price(symbol, user_id=None):
         total_cost = 0.0
         
         for trade in trades:
-            qty = abs(float(trade.get('qty', 0)))
-            price = float(trade.get('price', 0))
+            qty = abs(safe_float(trade.get('qty')))
+            price = safe_float(trade.get('price'))
             total_qty += qty
             total_cost += qty * price
         
@@ -300,12 +319,13 @@ def get_entry_price(symbol, user_id=None):
         return {
             'success': True,
             'entry_price': round(avg_price, 6),
-            'trades_used': len([t for t in trades if float(t.get('qty', 0)) != 0]),
+            'trades_used': len([t for t in trades if safe_float(t.get('qty')) != 0]),
             'total_qty': round(total_qty, 6),
             'method': 'weighted_avg_futures_account_trades'
         }
     except Exception as e:
         return {'success': False, 'error': str(e)}
+
 
 def get_live_balance(user_id=None):
     """Get live wallet balance safely converting string to float"""
@@ -315,8 +335,8 @@ def get_live_balance(user_id=None):
             return None, None
         
         acc = client.futures_account(recvWindow=10000)
-        total_balance = float(acc.get("totalWalletBalance", 0))
-        total_margin = float(acc.get("totalInitialMargin", 0))
+        total_balance = safe_float(acc.get("totalWalletBalance"))
+        total_margin = safe_float(acc.get("totalInitialMargin"))
         wallet_data = get_wallet_balances(user_id)
         
         return (
@@ -334,6 +354,7 @@ def get_live_balance(user_id=None):
         print(f"Error getting balance (user_id={user_id}): {e}")
         return None, None
 
+
 def get_live_price(symbol, user_id=None):
     """Bulletproof price fetch securely converting string -> float"""
     global _price_cache, _last_call_time
@@ -347,7 +368,7 @@ def get_live_price(symbol, user_id=None):
         client = get_client(user_id)
         if client:
             ticker = client.futures_symbol_ticker(symbol=symbol)
-            price = float(ticker.get('price', 0))
+            price = safe_float(ticker.get('price'))
             if price > 0:
                 _price_cache[cache_key] = price
                 _last_call_time = current_time
@@ -367,7 +388,7 @@ def get_live_price(symbol, user_id=None):
                 data = resp.json()
                 price_key = data.get('price') if isinstance(data, dict) else None
                 if price_key:
-                    price = float(price_key)
+                    price = safe_float(price_key)
                     if price > 0:
                         _price_cache[cache_key] = price
                         _last_call_time = current_time
@@ -379,6 +400,7 @@ def get_live_price(symbol, user_id=None):
     price = fallback_prices.get(symbol, 1.0)
     _price_cache[cache_key] = price
     return price
+
 
 def get_symbol_filters(symbol, user_id=None):
     DEFAULT_FILTERS = [
@@ -396,29 +418,34 @@ def get_symbol_filters(symbol, user_id=None):
         pass
     return DEFAULT_FILTERS
 
+
 def get_lot_step(symbol, user_id=None):
     for f in get_symbol_filters(symbol, user_id):
         if f.get("filterType") == "LOT_SIZE": 
-            return float(f.get("stepSize", 0.001))
+            return safe_float(f.get("stepSize", 0.001))
     return 0.001
+
 
 def round_qty(symbol, qty, user_id=None):
     step = get_lot_step(symbol, user_id)
-    if step == 0: 
+    if step <= 0: 
         step = 0.001
     precision = abs(int(round(-math.log10(step))))
-    rounded = round(qty - (qty % step), precision)
+    # Use standard rounding compatible with Binance rules
+    rounded = round(math.floor(qty / step) * step, precision)
     return rounded if rounded > 0 else step
+
 
 def round_price(symbol, price, user_id=None):
     for f in get_symbol_filters(symbol, user_id):
         if f.get("filterType") == "PRICE_FILTER":
-            tick = float(f.get("tickSize", 0.01))
-            if tick == 0: 
+            tick = safe_float(f.get("tickSize", 0.01))
+            if tick <= 0: 
                 return price
             precision = abs(int(round(-math.log10(tick))))
-            return round(price - (price % tick), precision)
+            return round(math.floor(price / tick) * tick, precision)
     return round(price, 2)
+
 
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
     if entry <= 0: 
@@ -453,6 +480,7 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value):
         "error": None
     }
 
+
 def get_open_positions(user_id=None):
     try:
         client = get_client(user_id)
@@ -463,14 +491,14 @@ def get_open_positions(user_id=None):
         open_positions = []
         
         for pos in positions:
-            position_amt = float(pos.get('positionAmt', 0))
+            position_amt = safe_float(pos.get('positionAmt'))
             if abs(position_amt) > 0:
-                entry_price = float(pos.get('entryPrice', 0))
-                mark_price = float(pos.get('markPrice', 0))
-                unrealized_pnl = float(pos.get('unRealizedProfit', 0))
-                liquidation_price = float(pos.get('liquidationPrice', 0))
-                leverage = int(pos.get('leverage', 1))
-                notional = float(pos.get('notional', 0))
+                entry_price = safe_float(pos.get('entryPrice'))
+                mark_price = safe_float(pos.get('markPrice'))
+                unrealized_pnl = safe_float(pos.get('unRealizedProfit'))
+                liquidation_price = safe_float(pos.get('liquidationPrice'))
+                leverage = int(safe_float(pos.get('leverage', 1)))
+                notional = safe_float(pos.get('notional'))
                 
                 initial_margin = abs(notional) / leverage if leverage > 0 else abs(notional)
                 roi_percent = (unrealized_pnl / initial_margin * 100) if initial_margin > 0 else 0
@@ -504,6 +532,7 @@ def get_open_positions(user_id=None):
         print(f"Error getting open positions: {e}")
         return []
 
+
 def get_open_orders_for_symbol(symbol, user_id=None):
     try:
         client = get_client(user_id)
@@ -515,12 +544,13 @@ def get_open_orders_for_symbol(symbol, user_id=None):
             'orderId': o.get('orderId'), 
             'type': o.get('type'), 
             'side': o.get('side'),
-            'price': float(o.get('stopPrice', o.get('price', 0))),
-            'origQty': float(o.get('origQty', 0)), 
+            'price': safe_float(o.get('stopPrice', o.get('price'))),
+            'origQty': safe_float(o.get('origQty')), 
             'status': o.get('status')
         } for o in orders]
     except Exception:
         return []
+
 
 def update_trade_stats(symbol):
     today = datetime.utcnow().date().isoformat()
@@ -532,6 +562,7 @@ def update_trade_stats(symbol):
     session["stats"][today]["total"] += 1
     session["stats"][today]["symbols"][symbol] = session["stats"][today]["symbols"].get(symbol, 0) + 1
     session.modified = True
+
 
 def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_value, sizing, user_units, user_lev, margin_mode, tp1, tp1_pct, tp2, user_id=None):
     global _positions_cache_time
@@ -598,6 +629,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         traceback.print_exc()
         return {"success": False, "message": f"❌ Execution Error: {str(e)}"}
 
+
 def partial_close_position(symbol, close_percent=None, close_qty=None, user_id=None):
     try:
         client = get_client(user_id)
@@ -605,12 +637,12 @@ def partial_close_position(symbol, close_percent=None, close_qty=None, user_id=N
             return {"success": False, "message": "Connection Failed"}
         
         positions = client.futures_position_information(symbol=symbol)
-        pos = next((p for p in positions if abs(float(p.get('positionAmt', 0))) > 0), None)
+        pos = next((p for p in positions if abs(safe_float(p.get('positionAmt'))) > 0), None)
         
         if not pos: 
             return {"success": False, "message": "No position found"}
         
-        amt = float(pos.get('positionAmt', 0))
+        amt = safe_float(pos.get('positionAmt'))
         q = round_qty(symbol, close_qty if close_qty else abs(amt) * (close_percent / 100), user_id)
         side = Client.SIDE_SELL if amt > 0 else Client.SIDE_BUY
         
@@ -620,31 +652,42 @@ def partial_close_position(symbol, close_percent=None, close_qty=None, user_id=N
     except Exception as e:
         return {"success": False, "message": str(e)}
 
+
 def close_position(symbol, user_id=None):
     try:
         client = get_client(user_id)
         positions = client.futures_position_information(symbol=symbol)
-        pos = next((p for p in positions if abs(float(p.get('positionAmt', 0))) > 0), None)
+        pos = next((p for p in positions if abs(safe_float(p.get('positionAmt'))) > 0), None)
         if not pos: return {"success": False, "message": "No position"}
         
-        amt = abs(float(pos.get('positionAmt', 0)))
-        side = Client.SIDE_SELL if float(pos.get('positionAmt', 0)) > 0 else Client.SIDE_BUY
+        amt = abs(safe_float(pos.get('positionAmt')))
+        side = Client.SIDE_SELL if safe_float(pos.get('positionAmt')) > 0 else Client.SIDE_BUY
         client.futures_create_order(symbol=symbol, side=side, type="MARKET", quantity=amt)
         client.futures_cancel_all_open_orders(symbol=symbol)
         return {"success": True, "message": "Position Closed"}
     except Exception as e: 
         return {"success": False, "message": str(e)}
 
+
 def update_stop_loss(symbol, new_sl_percent, user_id=None):
     try:
         client = get_client(user_id)
         positions = client.futures_position_information(symbol=symbol)
-        pos = next((p for p in positions if abs(float(p.get('positionAmt', 0))) > 0), None)
+        pos = next((p for p in positions if abs(safe_float(p.get('positionAmt'))) > 0), None)
         if not pos: return {"success": False, "message": "No position"}
         
-        amt = float(pos.get('positionAmt', 0))
-        entry = float(pos.get('entryPrice', 0))
-        price = round_price(symbol, entry * (1 + new_sl_percent/100) if amt > 0 else entry * (1 - new_sl_percent/100), user_id)
+        amt = safe_float(pos.get('positionAmt'))
+        entry = safe_float(pos.get('entryPrice'))
+        
+        # FIXED CRITICAL LOGIC: 
+        # Long positions (amt > 0) require Stop Loss to be BELOW entry price. 
+        # Short positions (amt < 0) require Stop Loss to be ABOVE entry price.
+        if amt > 0:
+            calculated_sl = entry * (1 - new_sl_percent / 100)
+        else:
+            calculated_sl = entry * (1 + new_sl_percent / 100)
+            
+        price = round_price(symbol, calculated_sl, user_id)
         
         orders = client.futures_get_open_orders(symbol=symbol)
         for o in orders:
@@ -659,22 +702,24 @@ def update_stop_loss(symbol, new_sl_percent, user_id=None):
     except Exception as e: 
         return {"success": False, "message": str(e)}
 
+
 def get_trade_history(user_id=None):
     try:
         client = get_client(user_id)
         trades = client.futures_account_trades(limit=500)
         return [{
-            'time': datetime.fromtimestamp(t.get('time', 0)/1000).strftime("%Y-%m-%d %H:%M:%S"), 
+            'time': datetime.fromtimestamp(safe_float(t.get('time')) / 1000).strftime("%Y-%m-%d %H:%M:%S"), 
             'symbol': t.get('symbol'), 
             'side': 'LONG' if t.get('side') == 'BUY' else 'SHORT', 
-            'qty': float(t.get('qty', 0)), 
-            'price': float(t.get('price', 0)), 
-            'realized_pnl': float(t.get('realizedPnl', 0)), 
-            'commission': float(t.get('commission', 0)), 
+            'qty': safe_float(t.get('qty')), 
+            'price': safe_float(t.get('price')), 
+            'realized_pnl': safe_float(t.get('realizedPnl')), 
+            'commission': safe_float(t.get('commission')), 
             'order_id': t.get('orderId')
         } for t in sorted(trades, key=lambda x: x.get('time', 0), reverse=True)]
     except Exception: 
         return []
+
 
 def get_today_stats():
     today = datetime.utcnow().date().isoformat()
