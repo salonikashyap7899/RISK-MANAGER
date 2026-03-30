@@ -149,7 +149,7 @@
                     <span class="status-badge {{ 'status-connected' if conn.is_connected else 'status-disconnected' }}">
                         {{ 'Connected' if conn.is_connected else 'Disconnected' }}
                     </span>
-                    <button class="btn btn-sm btn-outline-danger" onclick="disconnectExchange({{ conn.id }})">
+                    <button class="btn btn-sm btn-outline-danger" onclick="disconnectExchange('{{ conn.id }}')">
                         Disconnect
                     </button>
                 </div>
