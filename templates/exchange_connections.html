@@ -206,9 +206,9 @@
                     </form>
                     
                     <div id="test-balance-section" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #374151;">
-                        <h6 style="color: #10b981;">✅ Connected! Test Balance:</h6>
-                        <button class="btn btn-success w-100 mb-2" onclick="testWalletBalance()">💰 Check Wallet</button>
-                        <div id="balance-result"></div>
+                        <h6 style="color: #10b981;">✅ Connected!</h6>
+                        <p class="text-muted small mb-0">Balance shows on dashboard</p>
+                        <a href="/index" class="btn btn-success w-100">🚀 Go to Dashboard</a>
                     </div>
                 </div>
             </div>
@@ -276,35 +276,7 @@
             }
         });
 
-        async function testWalletBalance() {
-            const btn = event.target;
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Testing...';
-            
-            try {
-                const response = await fetch('/api/wallet');
-                const data = await response.json();
-                
-                const result = document.getElementById('balance-result');
-                if (data.success && data.total_assets > 0) {
-                    result.innerHTML = `<div style="background: #10b98120; padding: 15px; border-radius: 10px; color: #10b981;">
-                        ✅ SUCCESS! Found ${data.total_assets} assets<br>
-                        USDT Equivalent: $${data.total_usdt_equiv.toFixed(2)}<br>
-                        <small>Connection: ${data.connection_status.connected ? '✅ OK' : '❌ Issue'}</small>
-                    </div>`;
-                } else {
-                    result.innerHTML = `<div style="background: #ef444420; padding: 15px; border-radius: 10px; color: #ef4444;">
-                        ⚠️ Balance fetch failed:<br>${data.error || 'Unknown error'}<br>
-                        <small>Status: ${data.connection_status.connected ? 'Connected but empty' : 'Not connected'}</small>
-                    </div>`;
-                }
-            } catch (err) {
-                document.getElementById('balance-result').innerHTML = `<div style="background: #ef444420; padding: 15px; border-radius: 10px; color: #ef4444;">Network Error</div>`;
-            }
-            
-            btn.disabled = false;
-            btn.innerHTML = '💰 Test Again';
-        }
+
 
         function disconnectExchange(connectionId) {
             if (!confirm('Disconnect exchange?')) return;
