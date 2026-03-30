@@ -36,7 +36,7 @@
                 <div class="col">
                     <label>Unutilized Capital (1% Risk Pool)</label>
                     <div id="wallet-display" style="position: relative;">
-                        <input value="${{wallet_debug.unutilized | round(2)}}" disabled style="color: #7aff00; width: 100%;">
+<input value="{{ wallet_debug.unutilized | default(0) | round(2) }}" disabled style="color: #7aff00; width: 100%;">
                         <div id="wallet-status" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; padding: 2px 8px; border-radius: 12px;">
                             {% if wallet_debug.needs_connection %}
                                 <span style="background: #ff4444; color: white;">⚠️ Connect</span>
@@ -387,4 +387,3 @@
 </script>
 </body>
 </html>
-

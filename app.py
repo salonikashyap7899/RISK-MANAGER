@@ -29,7 +29,10 @@ app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', 'False'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+instance_path = os.path.join(app.root_path, 'instance')
+os.makedirs(instance_path, exist_ok=True)
+db_file_path = os.path.join(instance_path, 'users.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.abspath(db_file_path).replace('\\', '/')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 RAZORPAY_MONTHLY_PLAN_ID = config.RAZORPAY_MONTHLY_PLAN_ID
@@ -73,13 +76,18 @@ def subscription_required(f):
         except Exception:
             return redirect(url_for('login'))
         
-        # Admin bypass - allow access without subscription for admin users
-        # Add admin emails to the list below for testing
-        admin_emails = ['admin@mindriskcontrol.com', 'test@test.com']  # Add your admin emails here
-        if current_user.email.lower() in [email.lower() for email in admin_emails]:
+        # ✅ PRIORITY 1: Admin bypass (uses is_admin field from models.py)
+        if getattr(current_user, 'is_admin', False):
+            print(f"✅ Admin {current_user.username} ({current_user.id}) bypassing subscription check")
             return f(*args, **kwargs)
         
-        # FIXED: More robust subscription check
+        # ✅ PRIORITY 2: Hardcoded admin emails (fallback)
+        ADMIN_EMAILS = ['admin@mindriskcontrol.com', 'test@test.com']
+        if current_user.email.lower() in [email.lower() for email in ADMIN_EMAILS]:
+            print(f"✅ Admin email {current_user.email} bypassing subscription check")
+            return f(*args, **kwargs)
+        
+        # FIXED: More robust subscription check for regular users
         now = datetime.utcnow()
         
         # Check if user has an active subscription
@@ -98,8 +106,7 @@ def subscription_required(f):
                 return redirect(url_for('subscribe'))
         else:
             # If subscription_end is not set but is_subscribed is True, 
-            # this is an edge case - treat as active for monthly subscribers
-            # For users without end date, assume they are valid
+            # treat as active for monthly subscribers
             pass
             
         return f(*args, **kwargs)
@@ -189,16 +196,20 @@ def login():
 
         db.session.commit()
         
+        
         # FIXED: More robust subscription check on login
         # First check if user has subscription flag
-        if not user.is_subscribed:
+        is_admin = getattr(user, 'is_admin', False) or user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
+    
+        if not is_admin:
+        # First check if user has subscription flag
+         if not user.is_subscribed:
             flash("Please subscribe to access the trading dashboard.", "warning")
             return redirect(url_for('subscribe'))
         
-        # Check if subscription has expired - only if subscription_end is set
+        # Check if subscription has expired
         if user.subscription_end:
             if datetime.utcnow() > user.subscription_end:
-                # Subscription has expired
                 user.is_subscribed = False
                 user.subscription_status = 'expired'
                 db.session.commit()
@@ -821,7 +832,8 @@ def index():
         tp1=tp1,
         tp1_pct=tp1_pct,
         tp2=tp2,
-        today_stats=today_stats
+        today_stats=today_stats,
+        wallet_debug=wallet_debug
     )
 
 with app.app_context():

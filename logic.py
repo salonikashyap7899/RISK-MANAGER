@@ -222,86 +222,91 @@ def get_all_exchange_symbols(user_id=None):
     return ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"]
 
 def get_wallet_balances(user_id=None):
-    """Get detailed wallet balances (only > 0) - FIXED WITH DIAGNOSTICS"""
+    """
+    Get wallet balances (FUTURES WALLET ONLY)
+    Returns ONLY assets with total > 0
+    All numeric values safely converted from string → float
+    """
     try:
-        from models import ExchangeConnection, db
-        print(f"🔍 WALLET DEBUG user_id={user_id}")
-        
-        # Check connection
+        from models import ExchangeConnection
+
         connection = ExchangeConnection.query.filter_by(
-            user_id=user_id, exchange_type='binance', is_connected=True
+            user_id=user_id,
+            exchange_type='binance',
+            is_connected=True
         ).first()
-        print(f"🔍 Connection found: {bool(connection)} | keys_present: {bool(connection.api_key and connection.api_secret) if connection else False}")
-        
-        client = get_client(user_id)
-        print(f"🔍 Client created: {client is not None}")
-        
-        if client is None:
-            debug_info = {
-                'connection_exists': bool(connection),
-                'connection_connected': connection.is_connected if connection else False,
-                'keys_present': bool(connection and connection.api_key and connection.api_secret),
-                'error': 'No Binance client available - Connect exchange at /exchange-connections'
+
+        if not connection:
+            return {
+                'success': False,
+                'error': 'No Binance connection found',
+                'balances': [],
+                'total_assets': 0
             }
-            print(f"❌ NO CLIENT - Debug: {debug_info}")
-            return {'success': False, 'error': 'No Binance client', 'debug_info': debug_info}
-        
-        print("✅ Client OK - fetching futures_account...")
-        acc = client.futures_account(recvWindow=10000)
-        assets = acc.get('assets', [])
-        print(f"📊 Account assets count: {len(assets)}")
-        
-        # Log first few assets for debug
-        for i, asset in enumerate(assets[:3]):
-            total = float(asset.get('walletBalance', 0))
-            print(f"📊 Asset {i}: {asset.get('asset')} = {total} USDT")
-        
+
+        client = get_client(user_id)
+
+        if client is None:
+            return {
+                'success': False,
+                'error': 'Client not initialized',
+                'balances': [],
+                'total_assets': 0
+            }
+
+        # ✅ CORRECT ENDPOINT (FUTURES)
+        account = client.futures_account(recvWindow=10000)
+
+        assets = account.get('assets', [])
         balances = []
         total_usdt_equiv = 0.0
-        
+
         for asset in assets:
-            free = float(asset.get('availableBalance', 0))
-            locked = float(asset.get('lockedBalance', 0))
-            total = float(asset.get('walletBalance', 0))
-            
-            if total > 0:
+            try:
                 asset_name = asset.get('asset', '')
+
+                # ✅ SAFE FLOAT CONVERSION
+                wallet_balance = float(asset.get('walletBalance', '0'))
+                available_balance = float(asset.get('availableBalance', '0'))
+
+                if wallet_balance <= 0:
+                    continue  # ✅ ONLY RETURN NON-ZERO
+
                 balances.append({
                     'asset': asset_name,
-                    'free': round(free, 6),
-                    'locked': round(locked, 6),
-                    'total': round(total, 6)
+                    'free': round(available_balance, 6),
+                    'locked': round(wallet_balance - available_balance, 6),
+                    'total': round(wallet_balance, 6)
                 })
-                
+
+                # ✅ USDT VALUE CALCULATION
                 if asset_name == 'USDT':
-                    total_usdt_equiv += total
+                    total_usdt_equiv += wallet_balance
                 else:
-                    live_price = get_live_price(f"{asset_name}USDT", user_id)
-                    if live_price:
-                        total_usdt_equiv += (total * live_price)
-        
-        debug_info = {
-            'connection_exists': bool(connection),
-            'client_ok': True,
-            'assets_count': len(assets),
-            'has_balances': len(balances) > 0,
-            'usdt_equiv': total_usdt_equiv
-        }
-        
-        print(f"✅ SUCCESS - balances: {len(balances)}, USDT equiv: {total_usdt_equiv}")
+                    price = get_live_price(f"{asset_name}USDT", user_id)
+                    if price:
+                        total_usdt_equiv += wallet_balance * float(price)
+
+            except Exception as inner_err:
+                print(f"⚠️ Asset parse error: {inner_err}")
+                continue
+
         return {
-            'success': True, 
-            'balances': balances, 
+            'success': True,
+            'balances': balances,
             'total_assets': len(balances),
-            'total_usdt_equiv': round(total_usdt_equiv, 2),
-            'debug_info': debug_info
+            'total_usdt_equiv': round(total_usdt_equiv, 2)
         }
-        
+
     except Exception as e:
-        print(f"❌ WALLET EXCEPTION: {e}")
-        import traceback
+        print(f"❌ WALLET ERROR: {e}")
         traceback.print_exc()
-        return {'success': False, 'error': str(e), 'debug_info': {'error': str(e)}}
+        return {
+            'success': False,
+            'error': str(e),
+            'balances': [],
+            'total_assets': 0
+        }
 
 def get_entry_price(symbol, user_id=None):
     """Get entry price safely parsing strings to floats"""
@@ -346,19 +351,15 @@ def get_entry_price(symbol, user_id=None):
         return {'success': False, 'error': str(e)}
 
 def get_live_balance(user_id=None):
-    """Get live wallet balance safely converting string to float - FIXED DIAGNOSTICS"""
+    """Get live wallet balance safely converting string to float"""
     try:
-        print(f"🔍 LIVE BALANCE DEBUG user_id={user_id}")
         client = get_client(user_id)
-        if client is None:
-            print("❌ LIVE BALANCE: No client")
+        if client is None: 
             return None, None
         
         acc = client.futures_account(recvWindow=10000)
         total_balance = float(acc.get("totalWalletBalance", 0))
         total_margin = float(acc.get("totalInitialMargin", 0))
-        print(f"📊 LIVE BALANCE: total={total_balance}, margin={total_margin}")
-        
         wallet_data = get_wallet_balances(user_id)
         
         return (
@@ -373,9 +374,7 @@ def get_live_balance(user_id=None):
         }
         
     except Exception as e:
-        print(f"❌ LIVE BALANCE EXCEPTION user_id={user_id}: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Error getting balance (user_id={user_id}): {e}")
         return None, None
 
 def get_live_price(symbol, user_id=None):
