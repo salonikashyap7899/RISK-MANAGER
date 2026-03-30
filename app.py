@@ -446,7 +446,6 @@ def check_subscription():
 
 @app.route('/exchange-connections')
 @login_required
-@subscription_required
 def exchange_connections():
     connections = ExchangeConnection.query.filter_by(user_id=current_user.id).all()
     return render_template(
