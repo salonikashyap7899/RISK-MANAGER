@@ -1,23 +1,28 @@
-# Wallet Balance Fix - Production Ready logic.py
-Status: ✅ Complete
+# Wallet Balance Fix - Diagnostic Implementation Plan
+Current Working Directory: c:/Users/isalo/Downloads/mindriskcontrol/Trade-flask-fixed (1)
 
-## Approved Plan Steps:
+## Completed (0/9)
 
-### 1. ✅ Create this TODO.md (tracking progress)
-### 2. ✅ **Update logic.py** - Full corrected production-ready version
-   - Added invalidate_user_cache() + call in get_client/get_wallet_balances
-   - Enhanced USDT equiv (STABLECOINS=['USDT','USDC','BUSD','FDUSD','TUSD'] =1.0x, skip nil price)
-   - Rich errors {'error_type', 'details', 'user_id'}
-   - Full assets validation + empty handling
-   - estimate_usdt=True (default, fast dashboard)
+## In Progress (0/9)
 
-### 3. 🔄 Update app.py (minor)
-   - Simplify /api/wallet 
-   - Fix index() balance unpacking
+## Completed Steps:
+1. ✅ Create TODO.md
+2. ✅ Add debug logs to logic.py `get_wallet_balances()` + `debug_info`
+3. ✅ Update app.py `/api/wallet` to show connection status
+4. ✅ Update app.py `/index` to render `wallet_status`
+5. ✅ Add frontend diagnostics to templates/index.html (status box + live wallet fetch)
+6. ✅ Enhance templates/exchange_connections.html (add balance test button)
+7. ✅ Create templates/debug.html (admin diagnostic page)
+8. ✅ Add `/debug-wallet` route in app.py
 
-### 4. 🧪 Test locally
-### 5. 🚀 Deploy & Verify
-### 6. ✅ Complete
+## Final Test:
+9. **Ready to test** 🚀
 
-**Next Step: 4/6 - Test locally: Login → Connect Binance → Check wallet**
+**NEXT**: 
+- Login → Visit `/index` → See exact error (likely "NO BINANCE CONNECTION")
+- Click "Connect Exchange" → Add Futures-enabled API keys  
+- Dashboard shows live balance ✅
 
+**Check server logs** (VSCode terminal) for 🔍 DEBUG output.
+
+**Instructions**: After each step completes successfully (tool confirms), I'll auto-update this TODO.md

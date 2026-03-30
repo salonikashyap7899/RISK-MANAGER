@@ -660,8 +660,25 @@ def get_trade_history_api():
 @login_required
 @subscription_required
 def get_wallet_api():
-    """NEW: Dedicated wallet endpoint for 10s frontend refresh"""
+    """FIXED: Dedicated wallet endpoint with diagnostics"""
     wallet_data = logic.get_wallet_balances(current_user.id)
+    
+    # Add connection status summary
+    from models import ExchangeConnection
+    connection = ExchangeConnection.query.filter_by(
+        user_id=current_user.id, 
+        exchange_type='binance', 
+        is_connected=True
+    ).first()
+    
+    wallet_data['connection_status'] = {
+        'exists': bool(connection),
+        'connected': connection.is_connected if connection else False,
+        'name': connection.connection_name if connection else None,
+        'last_verified': connection.last_verified.isoformat() if connection and connection.last_verified else None
+    }
+    
+    print(f"🌐 /api/wallet response: success={wallet_data.get('success')}, assets={wallet_data.get('total_assets',0)}")
     return jsonify(wallet_data)
 
 @app.route("/get_today_stats")
@@ -726,19 +743,32 @@ def index():
     logic.initialize_session()
     symbols = logic.get_all_exchange_symbols(current_user.id)
     
-    # --- FIXED BALANCE UNPACKING LOGIC ---
+    # FIXED: Enhanced diagnostics + wallet status
     balance_data = logic.get_live_balance(current_user.id)
     balance = 0.0
     margin_used = 0.0
+    wallet_debug = {}
 
     if balance_data and isinstance(balance_data, tuple):
-        # logic.py returns ((bal, margin), details_dict)
         inner_tuple = balance_data[0]
         if isinstance(inner_tuple, tuple) and len(inner_tuple) >= 2:
             balance = float(inner_tuple[0] or 0.0)
             margin_used = float(inner_tuple[1] or 0.0)
     
     unutilized = max(balance - margin_used, 0.0)
+    
+    # Get wallet details for debug
+    wallet_response = logic.get_wallet_balances(current_user.id)
+    wallet_debug = {
+        'success': wallet_response.get('success', False),
+        'error': wallet_response.get('error', ''),
+        'debug_info': wallet_response.get('debug_info', {}),
+        'total_assets': wallet_response.get('total_assets', 0),
+        'unutilized': unutilized,
+        'needs_connection': not wallet_response.get('success') and 'client' in str(wallet_response.get('error', '')).lower()
+    }
+    
+    print(f"📊 /index wallet_debug: {wallet_debug}")
     # -------------------------------------
 
     selected_symbol = request.form.get("symbol", "BTCUSDT")
@@ -819,30 +849,33 @@ def handle_exception(error):
     return render_template('home.html'), 500
 
 # Debug route to check server status
-@app.route('/debug-status')
-def debug_status():
-    """Debug route to check server status and configuration"""
-    from models import User, ExchangeConnection
+@app.route('/debug-wallet')
+@login_required
+def debug_wallet():
+    """DEBUG: Test wallet for specific user_id"""
+    user_id = request.args.get('user_id')
+    if not user_id or not user_id.isdigit():
+        return "❌ Provide ?user_id=1 (your user ID)", 400
     
-    try:
-        user_count = User.query.count()
-        connection_count = ExchangeConnection.query.count()
-        
-        return jsonify({
-            'status': 'ok',
-            'database': 'connected',
-            'users': user_count,
-            'connections': connection_count,
-            'binance_key_configured': bool(config.BINANCE_KEY),
-            'razorpay_key_configured': bool(config.RAZORPAY_KEY_ID),
-            'secret_key_set': bool(app.secret_key),
-            'proxy_configured': bool(getattr(config, 'PROXY_URL', False))
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
+    user_id = int(user_id)
+    
+    # Test live balance
+    live_balance_data = logic.get_live_balance(user_id)
+    
+    # Test full wallet
+    wallet_data = logic.get_wallet_balances(user_id)
+    
+    # Check connection
+    from models import ExchangeConnection
+    connection = ExchangeConnection.query.filter_by(
+        user_id=user_id, exchange_type='binance'
+    ).first()
+    
+    return render_template('debug.html', 
+                         user_id=user_id,
+                         live_balance=live_balance_data,
+                         wallet_data=wallet_data,
+                         connection=connection)
 
 
 @app.route('/test-binance')

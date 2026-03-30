@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Wallet Debug - MindRiskControl</title>
+    <style>
+        body { font-family: monospace; background: #0a0a0a; color: #00ff88; padding: 20px; }
+        .error { color: #ff4444; }
+        .success { color: #00ff88; }
+        .warn { color: #ffaa00; }
+        pre { background: #1a1a1a; padding: 15px; border-radius: 8px; overflow: auto; }
+        .btn { background: #0d6efd; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Wallet Diagnostics</h1>
+    
+    <form method="GET">
+        <label>User ID: <input name="user_id" id="user_id_input" style="background: #1a1a1a; color: white; padding: 8px; border: 1px solid #333;"></label>
+        <button type="submit" class="btn">Test Wallet</button>
+    </form>
+    
+    {% if user_id %}
+    <h2>Results for user_id={{ user_id }}</h2>
+    
+    <h3>Live Balance</h3>
+    <pre>{{ live_balance | tojson(indent=2) }}</pre>
+    
+    <h3>Wallet Details</h3>
+    <pre>{{ wallet_data | tojson(indent=2) }}</pre>
+    
+    <h3>Connection Status</h3>
+    {% if connection %}
+    <div class="success">✅ Connected: {{ connection.connection_name }} ({{ connection.last_verified }})</div>
+    {% else %}
+    <div class="error">❌ No Binance Connection Found</div>
+    {% endif %}
+    
+    {% endif %}
+    
+    <hr>
+    <p><a href="/index">&larr; Back to Dashboard</a> | <a href="/exchange-connections">Connect Exchange</a></p>
+    
+    <script>
+        // Auto-fill current user ID from URL or localStorage
+        const urlParams = new URLSearchParams(window.location.search);
+        if (!urlParams.get('user_id')) {
+            fetch('/debug-status').then(r=>r.json()).then(data=> {
+                console.log('Debug info:', data);
+            });
+        }
+    </script>
+</body>
+</html>

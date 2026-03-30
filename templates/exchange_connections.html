@@ -204,13 +204,19 @@
                         </div>
                         <button type="submit" class="btn btn-primary-custom w-100" id="submitBtn">Connect Exchange</button>
                     </form>
+                    
+                    <div id="test-balance-section" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #374151;">
+                        <h6 style="color: #10b981;">✅ Connected! Test Balance:</h6>
+                        <button class="btn btn-success w-100 mb-2" onclick="testWalletBalance()">💰 Check Wallet</button>
+                        <div id="balance-result"></div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
+<script>
         var selectedExchange = null;
         var modal = null;
 
@@ -230,57 +236,88 @@
             modal.show();
         }
 
-        document.getElementById('addExchangeForm').addEventListener('submit', function(e) {
+        document.getElementById('addExchangeForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             var submitBtn = document.getElementById('submitBtn');
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Connecting...';
             
-fetch('/add-exchange', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    exchange_type: selectedExchange,
-                    api_key: document.getElementById('apiKey').value,
-                    api_secret: document.getElementById('apiSecret').value,
-                    connection_name: document.getElementById('connectionName').value
-                })
-            }).then(function(response) { return response.json(); })
-.then(function(data) {
-                console.log('Full API Response:', data); // DEBUG: Check console F12
+            try {
+                const response = await fetch('/add-exchange', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        exchange_type: selectedExchange,
+                        api_key: document.getElementById('apiKey').value,
+                        api_secret: document.getElementById('apiSecret').value,
+                        connection_name: document.getElementById('connectionName').value
+                    })
+                });
+                const data = await response.json();
+                
+                console.log('Connection Response:', data);
+                
                 if (data.success) {
-                    alert('✅ ' + data.message);
-                    location.reload();
+                    document.getElementById('test-balance-section').style.display = 'block';
+                    document.getElementById('submitBtn').innerHTML = '✅ Saved';
+                    alert('✅ ' + data.message + '\n\n💰 Test your balance below!');
                 } else {
-                    // Better error display
                     let errorMsg = data.error || data.title || data.message || 'Unknown error';
                     if (data.error_code) errorMsg = `Code ${data.error_code}: ${errorMsg}`;
-                    alert('❌ ' + errorMsg);
+                    alert('❌ Connection failed:\n' + errorMsg);
                     submitBtn.disabled = false;
-                    submitBtn.textContent = 'Connect Exchange';
+                    submitBtn.textContent = 'Retry Connect';
                 }
-            }).catch(function(err) {
+            } catch (err) {
                 console.error('Network error:', err);
                 alert('Network Error: ' + err.message);
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Connect Exchange';
-            });
+            }
         });
 
+        async function testWalletBalance() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Testing...';
+            
+            try {
+                const response = await fetch('/api/wallet');
+                const data = await response.json();
+                
+                const result = document.getElementById('balance-result');
+                if (data.success && data.total_assets > 0) {
+                    result.innerHTML = `<div style="background: #10b98120; padding: 15px; border-radius: 10px; color: #10b981;">
+                        ✅ SUCCESS! Found ${data.total_assets} assets<br>
+                        USDT Equivalent: $${data.total_usdt_equiv.toFixed(2)}<br>
+                        <small>Connection: ${data.connection_status.connected ? '✅ OK' : '❌ Issue'}</small>
+                    </div>`;
+                } else {
+                    result.innerHTML = `<div style="background: #ef444420; padding: 15px; border-radius: 10px; color: #ef4444;">
+                        ⚠️ Balance fetch failed:<br>${data.error || 'Unknown error'}<br>
+                        <small>Status: ${data.connection_status.connected ? 'Connected but empty' : 'Not connected'}</small>
+                    </div>`;
+                }
+            } catch (err) {
+                document.getElementById('balance-result').innerHTML = `<div style="background: #ef444420; padding: 15px; border-radius: 10px; color: #ef4444;">Network Error</div>`;
+            }
+            
+            btn.disabled = false;
+            btn.innerHTML = '💰 Test Again';
+        }
+
         function disconnectExchange(connectionId) {
-            if (!confirm('Are you sure you want to disconnect this exchange?')) return;
+            if (!confirm('Disconnect exchange?')) return;
             fetch('/disconnect-exchange/' + connectionId, { method: 'POST' })
-            .then(function(response) { return response.json(); })
-            .then(function(data) {
+            .then(r => r.json())
+            .then(data => {
                 if (data.success) {
-                    alert(data.message);
+                    alert('Disconnected');
                     location.reload();
                 } else {
                     alert('Error: ' + data.error);
                 }
-            }).catch(function(err) {
-                alert('Error: ' + err.message);
-            });
+            }).catch(err => alert('Error: ' + err));
         }
     </script>
 </body>

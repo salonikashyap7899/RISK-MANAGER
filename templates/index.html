@@ -32,12 +32,36 @@
             <input type="hidden" name="side" id="side_hidden" value="{{default_side}}">
             <input type="hidden" name="prev_symbol" value="{{selected_symbol}}">
 
-            <div class="row">
+<div class="row">
                 <div class="col">
                     <label>Unutilized Capital (1% Risk Pool)</label>
-                    <input value="${{unutilized | round(2)}}" disabled style="color: #7aff00;">
+                    <div id="wallet-display" style="position: relative;">
+                        <input value="${{wallet_debug.unutilized | round(2)}}" disabled style="color: #7aff00; width: 100%;">
+                        <div id="wallet-status" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; padding: 2px 8px; border-radius: 12px;">
+                            {% if wallet_debug.needs_connection %}
+                                <span style="background: #ff4444; color: white;">⚠️ Connect</span>
+                            {% elif not wallet_debug.success %}
+                                <span style="background: #ffaa00; color: white;">?</span>
+                            {% else %}
+                                <span style="background: #00ff88; color: black;">✅ OK</span>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
             </div>
+
+            <!-- Wallet Debug Box -->
+            {% if wallet_debug.needs_connection %}
+            <div style="background: #4d1a1a; border: 1px solid #ff4444; color: #ffaa88; padding: 10px; margin-bottom: 15px; border-radius: 6px; font-size: 13px;">
+                <strong>🚨 NO BINANCE CONNECTION</strong><br>
+                <a href="/exchange-connections" style="color: #ffddaa; text-decoration: underline;">Click here to connect → Add API Key + Secret (Futures Enabled)</a>
+            </div>
+            {% elif not wallet_debug.success %}
+            <div style="background: #1a1a2e; border: 1px solid #ffaa00; color: #ffdd88; padding: 10px; margin-bottom: 15px; border-radius: 6px;">
+                <strong>⚠️ Wallet Error:</strong> {{ wallet_debug.error }}
+                <br><small>Details: {{ wallet_debug.debug_info }}</small>
+            </div>
+            {% endif %}
 
             <!-- Display trade limits -->
             <div class="status" style="background: #1a1a2e; border-color: #16213e; margin-bottom: 10px;">
@@ -150,8 +174,12 @@
             </button>
             <div style="margin-bottom: 15px; margin-top: 10px;">
                 <a href="{{ url_for('home') }}" 
-                   style="display:inline-block; padding:10px 18px; background-color:#6c757d; color:#fff; text-decoration:none; border-radius:6px; font-size:14px;">
+                   style="display:inline-block; padding:10px 18px; background-color:#6c757d; color:#fff; text-decoration:none; border-radius:6px; font-size:14px; margin-right: 10px;">
                    ⬅ Back to Home
+                </a>
+                <a href="/debug-wallet?user_id={{ current_user.id }}" 
+                   style="display:inline-block; padding:10px 18px; background-color:#0d6efd; color:#fff; text-decoration:none; border-radius:6px; font-size:14px;">
+                   🐛 Debug Wallet
                 </a>
             </div>
             <div class="status-box">
