@@ -13,8 +13,8 @@ else:
     print(f"✅ Config loaded. Proxy status: {'Enabled' if PROXY_URL else 'Disabled'}")
 
 # Razorpay Configuration
-RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID') 
-RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET')
+RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID', 'rzp_live_SK0QFnXQv9Ed4b') 
+RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET',  'y5QeUePyOVDeqN0fGOeH6FSo')
 
 # Correct Plan IDs
 RAZORPAY_MONTHLY_PLAN_ID = os.getenv('RAZORPAY_MONTHLY_PLAN_ID', "plan_SK10d2Fpo8noaR")
