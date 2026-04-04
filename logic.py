@@ -429,7 +429,8 @@ def get_live_price(symbol, user_id=None):
 def get_symbol_filters(symbol, user_id=None):
     DEFAULT_FILTERS = [
         {'filterType': 'PRICE_FILTER', 'tickSize': '0.01'},
-        {'filterType': 'LOT_SIZE', 'stepSize': '0.001'}
+        {'filterType': 'LOT_SIZE', 'stepSize': '0.001', 'minQty': '0.001'},
+        {'filterType': 'MIN_NOTIONAL', 'minNotional': '5'}
     ]
     try:
         client = get_client(user_id)
@@ -442,6 +443,29 @@ def get_symbol_filters(symbol, user_id=None):
         pass
     return DEFAULT_FILTERS
 
+def get_min_qty(symbol, user_id=None):
+    for f in get_symbol_filters(symbol, user_id):
+        if f.get("filterType") == "LOT_SIZE":
+            return float(f.get("minQty", f.get("stepSize", 0.001)))
+    return 0.001
+
+def get_min_notional(symbol, user_id=None):
+    for f in get_symbol_filters(symbol, user_id):
+        if f.get("filterType") in ["MIN_NOTIONAL", "NOTIONAL"]:
+            return float(f.get("minNotional", f.get("notional", 5)))
+    return 5.0
+
+def get_required_order_qty(symbol, price, user_id=None):
+    step = get_lot_step(symbol, user_id)
+    if step <= 0:
+        step = 0.001
+    min_qty = get_min_qty(symbol, user_id)
+    min_notional = get_min_notional(symbol, user_id)
+    if price <= 0:
+        return min_qty
+    min_notional_qty = math.ceil((min_notional / price) / step) * step
+    return max(min_qty, min_notional_qty)
+
 def get_lot_step(symbol, user_id=None):
     for f in get_symbol_filters(symbol, user_id):
         if f.get("filterType") == "LOT_SIZE": 
@@ -449,12 +473,14 @@ def get_lot_step(symbol, user_id=None):
     return 0.001
 
 def round_qty(symbol, qty, user_id=None):
+    if qty <= 0:
+        return 0
     step = get_lot_step(symbol, user_id)
     if step == 0: 
         step = 0.001
     precision = abs(int(round(-math.log10(step))))
-    rounded = round(qty - (qty % step), precision)
-    return rounded if rounded > 0 else step
+    rounded = math.floor(qty / step) * step
+    return round(rounded, precision) if rounded > 0 else 0
 
 def round_price(symbol, price, user_id=None):
     for f in get_symbol_filters(symbol, user_id):
@@ -613,6 +639,15 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         return {"success": False, "message": "❌ Connection Failed - Please connect your exchange account"}
     
     try:
+        if entry <= 0:
+            return {"success": False, "message": "❌ Invalid entry price"}
+
+        if order_type not in ["MARKET", "LIMIT"]:
+            return {"success": False, "message": "❌ Only MARKET and LIMIT orders are supported"}
+
+        if order_type == "LIMIT" and entry <= 0:
+            return {"success": False, "message": "❌ LIMIT orders require a valid entry price"}
+
         suggested_units = sizing.get("suggested_units", 0)
         suggested_leverage = sizing.get("max_leverage", 1)
 
@@ -622,6 +657,17 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
             return {"success": False, "message": f"Leverage override exceeds allowed max ({suggested_leverage}x)"}
 
         qty = round_qty(symbol, user_units if user_units > 0 else suggested_units, user_id)
+        if qty <= 0:
+            return {"success": False, "message": "❌ Calculated order quantity is too small. Increase your risk pool or SL distance."}
+
+        required_qty = get_required_order_qty(symbol, entry, user_id)
+        if qty < required_qty:
+            min_notional = get_min_notional(symbol, user_id)
+            return {
+                "success": False,
+                "message": f"❌ Order quantity too small for Binance minimum requirements. Minimum for {symbol} is {required_qty} units (notional ≥ {min_notional} USDT)."
+            }
+
         lev = int(user_lev) if user_lev > 0 else suggested_leverage
         
         try:
@@ -640,7 +686,19 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
 
         sl_p = round_price(symbol, calculated_sl, user_id)
         
-        client.futures_create_order(symbol=symbol, side=e_side, type="MARKET", quantity=qty)
+        # Create main order (MARKET or LIMIT)
+        order_params = {
+            "symbol": symbol,
+            "side": e_side,
+            "type": order_type,
+            "quantity": qty
+        }
+        
+        if order_type == "LIMIT":
+            order_params["price"] = round_price(symbol, entry, user_id)
+            order_params["timeInForce"] = "GTC"
+        
+        client.futures_create_order(**order_params)
         time.sleep(0.5)
         # Invalidate caches after trade execution
         cache_key_positions = f"positions_{user_id or 'public'}"
@@ -700,6 +758,8 @@ def partial_close_position(symbol, close_percent=None, close_qty=None, user_id=N
         
         amt = float(pos.get('positionAmt', 0))
         q = round_qty(symbol, close_qty if close_qty else abs(amt) * (close_percent / 100), user_id)
+        if q <= 0:
+            return {"success": False, "message": "❌ Partial close amount is too small for Binance minimum size."}
         side = Client.SIDE_SELL if amt > 0 else Client.SIDE_BUY
         
         order = client.futures_create_order(symbol=symbol, side=side, type="MARKET", quantity=q)

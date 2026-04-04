@@ -31,8 +31,11 @@
         <form method="POST">
             <input type="hidden" name="side" id="side_hidden" value="{{default_side}}">
             <input type="hidden" name="prev_symbol" value="{{selected_symbol}}">
+            <!-- Server-rendered data for JavaScript -->
+            <input type="hidden" id="sizing_suggested_units" value="{{sizing.suggested_units | default(0)}}">
+            <input type="hidden" id="sizing_suggested_leverage" value="{{sizing.suggested_leverage | default(1)}}">
 
-<div class="row">
+            <div class="row">
                 <div class="col">
                     <label>Unutilized Capital (1% Risk Pool)</label>
                     <div id="wallet-display" style="position: relative;">
@@ -212,6 +215,12 @@
                     <div class="error">{{ sizing.error }}</div>
                 {% endif %}
             </div>
+            
+            <!-- Validation Warnings -->
+            <div id="validation-warnings" style="display: none; background: #2a1a1a; border: 1px solid #ff6b35; color: #ffaa88; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 13px;">
+                <strong>⚠️ Validation Issues:</strong>
+                <div id="warning-list"></div>
+            </div>
         </form>
     </div>
 
@@ -369,6 +378,75 @@
         });
     }
 
+    function validateFormInputs() {
+        const warnings = [];
+        const symbol = document.querySelector('select[name="symbol"]').value;
+        const side = document.getElementById('side_hidden').value;
+        const orderType = document.getElementById('order_type_select').value;
+        const entry = parseFloat(document.getElementById('entry_input').value) || 0;
+        const slValue = parseFloat(document.querySelector('input[name="sl_value"]').value) || 0;
+        const tp1 = parseFloat(document.querySelector('input[name="tp1"]').value) || 0;
+        const tp2 = parseFloat(document.querySelector('input[name="tp2"]').value) || 0;
+        
+        // Validate SL
+        if (slValue <= 0) {
+            warnings.push('🛡️ Stop Loss is mandatory and must be greater than 0');
+        } else if (side === 'LONG' && slValue >= entry) {
+            warnings.push('🛡️ For LONG trades, SL must be below entry price');
+        } else if (side === 'SHORT' && slValue <= entry) {
+            warnings.push('🛡️ For SHORT trades, SL must be above entry price');
+        }
+        
+        // Validate entry for LIMIT orders
+        if (orderType === 'LIMIT' && entry <= 0) {
+            warnings.push('💰 LIMIT orders require a valid entry price');
+        }
+        
+        // Validate TP levels
+        if (tp1 > 0) {
+            if (side === 'LONG' && tp1 <= entry) {
+                warnings.push('🎯 TP1 must be above entry price for LONG trades');
+            } else if (side === 'SHORT' && tp1 >= entry) {
+                warnings.push('🎯 TP1 must be below entry price for SHORT trades');
+            }
+        }
+        
+        if (tp2 > 0) {
+            if (side === 'LONG' && tp2 <= entry) {
+                warnings.push('🎯 TP2 must be above entry price for LONG trades');
+            } else if (side === 'SHORT' && tp2 >= entry) {
+                warnings.push('🎯 TP2 must be below entry price for SHORT trades');
+            }
+        }
+        
+        // Check minimum order size
+        if (entry > 0) {
+            const minNotional = 5; // Binance minimum USDT
+            const minQty = Math.ceil((minNotional / Math.max(entry, 0.01)) * 10000) / 10000;
+            
+            // Get suggested quantity from hidden input (server-rendered)
+            const suggestedUnitsInput = document.getElementById('sizing_suggested_units');
+            const suggestedQty = suggestedUnitsInput ? parseFloat(suggestedUnitsInput.value) : 0;
+            
+            if (suggestedQty > 0 && suggestedQty < minQty) {
+                warnings.push(`📦 Order size (${suggestedQty.toFixed(6)}) below Binance minimum (${minQty.toFixed(6)} units or $${minNotional} USDT). Increase risk allocation or widen SL.`);
+            }
+        }
+        
+        // Show/hide warnings
+        const warningDiv = document.getElementById('validation-warnings');
+        const warningList = document.getElementById('warning-list');
+        
+        if (warnings.length > 0) {
+            warningList.innerHTML = warnings.map(w => `<div>• ${w}</div>`).join('');
+            warningDiv.style.display = 'block';
+        } else {
+            warningDiv.style.display = 'none';
+        }
+        
+        return warnings.length === 0;
+    }
+
     function confirmTradeExecution() {
         const symbol = document.querySelector('select[name="symbol"]').value;
         const side = document.getElementById('side_hidden').value;
@@ -523,6 +601,30 @@
     updateTradeHistory();
     updateTradeLimits();
     updateLiveTradeLog();
+    
+    // Form validation
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add validation listeners to key inputs
+        const inputs = [
+            'entry_input',
+            'input[name="sl_value"]',
+            'input[name="tp1"]',
+            'input[name="tp2"]',
+            'select[name="symbol"]',
+            '#order_type_select'
+        ];
+        
+        inputs.forEach(selector => {
+            const element = document.querySelector(selector);
+            if (element) {
+                element.addEventListener('input', validateFormInputs);
+                element.addEventListener('change', validateFormInputs);
+            }
+        });
+        
+        // Initial validation
+        setTimeout(validateFormInputs, 500);
+    });
 </script>
 </body>
 </html>
