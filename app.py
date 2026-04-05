@@ -743,6 +743,146 @@ def get_max_leverage_api(symbol):
             'error': str(e),
             'max_leverage': 125
         }), 400
+    # ADD THESE ROUTES TO app.py (before the final if __name__ == "__main__" block)
+
+@app.route("/api/trading_metrics")
+@login_required
+@subscription_required
+def trading_metrics_api():
+    """Comprehensive trading performance metrics"""
+    from datetime import datetime, timedelta
+    from models import TradePosition, TradeLog
+    
+    try:
+        user_id = current_user.id
+        
+        # Get last 7 days of trades
+        seven_days_ago = datetime.utcnow() - timedelta(days=7)
+        trades = logic.get_trade_history(user_id)
+        
+        # Calculate metrics
+        total_trades = len(trades)
+        winning_trades = sum(1 for t in trades if t.get('realized_pnl', 0) > 0)
+        losing_trades = sum(1 for t in trades if t.get('realized_pnl', 0) < 0)
+        total_pnl = sum(t.get('realized_pnl', 0) for t in trades)
+        total_commission = sum(t.get('commission', 0) for t in trades)
+        
+        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+        avg_win = sum(t.get('realized_pnl', 0) for t in trades if t.get('realized_pnl', 0) > 0) / winning_trades if winning_trades > 0 else 0
+        avg_loss = abs(sum(t.get('realized_pnl', 0) for t in trades if t.get('realized_pnl', 0) < 0)) / losing_trades if losing_trades > 0 else 0
+        
+        # Get open positions
+        open_positions = logic.get_positions(user_id)
+        open_pnl = sum(p.get('pnl', 0) for p in open_positions)
+        
+        return jsonify({
+            'success': True,
+            'metrics': {
+                'total_trades': total_trades,
+                'winning_trades': winning_trades,
+                'losing_trades': losing_trades,
+                'win_rate_pct': round(win_rate, 2),
+                'total_pnl': round(total_pnl, 2),
+                'total_commission': round(total_commission, 2),
+                'net_pnl': round(total_pnl - total_commission, 2),
+                'avg_win': round(avg_win, 2),
+                'avg_loss': round(avg_loss, 2),
+                'open_pnl': round(open_pnl, 2),
+                'open_positions_count': len(open_positions),
+                'profit_factor': round(avg_win / avg_loss, 2) if avg_loss > 0 else 0
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+
+@app.route("/api/risk_exposure")
+@login_required
+@subscription_required
+def risk_exposure_api():
+    """Calculate current risk exposure"""
+    try:
+        user_id = current_user.id
+        
+        # Get open positions
+        positions = logic.get_positions(user_id)
+        open_pnl = sum(p.get('pnl', 0) for p in positions)
+        
+        # Get today stats
+        today_stats = logic.get_today_stats(user_id)
+        
+        # Get wallet
+        wallet = logic.get_wallet_balances(user_id)
+        balance = wallet.get('total_balance', 0)
+        
+        # Calculate risk
+        risk_pct = (abs(open_pnl) / balance * 100) if balance > 0 else 0
+        
+        return jsonify({
+            'success': True,
+            'exposure': {
+                'open_pnl': round(open_pnl, 2),
+                'balance': round(balance, 2),
+                'risk_pct': round(risk_pct, 2),
+                'trades_today': today_stats['total_trades'],
+                'max_trades': today_stats['max_trades'],
+                'can_trade': today_stats['total_trades'] < today_stats['max_trades'],
+                'open_positions': len(positions)
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+
+@app.route("/api/symbol_performance/<symbol>")
+@login_required
+@subscription_required
+def symbol_performance_api(symbol):
+    """Get performance stats for a specific symbol"""
+    try:
+        trades = logic.get_trade_history(current_user.id)
+        symbol_trades = [t for t in trades if t.get('symbol') == symbol]
+        
+        if not symbol_trades:
+            return jsonify({
+                'success': False,
+                'error': f'No trades for {symbol}'
+            }), 404
+        
+        wins = sum(1 for t in symbol_trades if t.get('realized_pnl', 0) > 0)
+        pnl = sum(t.get('realized_pnl', 0) for t in symbol_trades)
+        
+        return jsonify({
+            'success': True,
+            'symbol': symbol,
+            'stats': {
+                'total_trades': len(symbol_trades),
+                'wins': wins,
+                'losses': len(symbol_trades) - wins,
+                'win_rate': round(wins / len(symbol_trades) * 100, 2),
+                'total_pnl': round(pnl, 2),
+                'avg_trade_pnl': round(pnl / len(symbol_trades), 2) if symbol_trades else 0
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+
+@app.route("/metrics-dashboard")
+@login_required
+@subscription_required
+def metrics_dashboard():
+    """Trading metrics dashboard page"""
+    return render_template('metrics.html', user=current_user)
 
 @app.route("/api/calculate_sizing", methods=["POST"])
 @login_required
