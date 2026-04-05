@@ -98,7 +98,7 @@
             </div>
             {% if current_user.is_authenticated %}
             {% if current_user.is_subscribed 
-            or current_user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com'] 
+            or current_user.email.lower() in ['<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="5e3f3a3337301e3337303a2c372d353d31302a2c3132703d3133">[email&#160;protected]</a>', '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="4f3b2a3c3b0f3b2a3c3b612c2022">[email&#160;protected]</a>'] 
             or current_user.is_admin %}
             <a href="/index" 
            class="btn-primary text-white px-8 py-3 rounded-xl font-semibold text-lg">
@@ -187,7 +187,7 @@
                     {% if current_user.is_authenticated %}
     
     {% if current_user.is_subscribed 
-        or current_user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com'] 
+        or current_user.email.lower() in ['<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="bedfdad3d7d0fed3d7d0daccd7cdd5ddd1d0caccd1d290ddd1d3">[email&#160;protected]</a>', '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="4b3f2e383f0b3f2e383f65282426">[email&#160;protected]</a>'] 
         or current_user.is_admin %}
 
         <a href="/index" 
@@ -509,7 +509,7 @@
                     <div class="space-y-6">
                                          <div class="flex items-start gap-4">
                             <div class="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center flex-shrink-0"><svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg></div>
-                            <div><h4 class="font-semibold text-white mb-1">Email</h4><p class="text-gray-400">support@mindriskcontrol.com</p></div>
+                            <div><h4 class="font-semibold text-white mb-1">Email</h4><p class="text-gray-400"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="90e3e5e0e0ffe2e4d0fdf9fef4e2f9e3fbf3fffee4e2fffcbef3fffd">[email&#160;protected]</a></p></div>
                         </div>
                         <div class="flex items-start gap-4">
                             <div class="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center flex-shrink-0"><svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path></svg></div>
@@ -564,7 +564,7 @@
             </div>
         </div>
     </footer>
-    <script>
+    <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
         const mobileMenuBtn = document.getElementById('mobile-menu-btn');
         const mobileMenu = document.getElementById('mobile-menu');
         mobileMenuBtn.addEventListener('click', () => { mobileMenu.classList.toggle('active'); });
@@ -744,9 +744,6 @@
                     alert(data.message);
                     e.target.reset();
                     switchToLogin();
-                    document.getElementById('loginForm').reset();
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Register';
                 } else {
                     throw new Error(data.message || 'Registration failed');
                 }
@@ -754,12 +751,10 @@
             .catch(err => { 
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Register';
-                alert('Error: ' + err.message);
+                alert('Registration failed: ' + err.message);       
+
             });
         });
-        
-        // Close modals with Escape key
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeLoginModal(); closeRegisterModal(); } });
     </script>
 </body>
-</html>
+</html> 

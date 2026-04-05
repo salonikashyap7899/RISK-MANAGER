@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trading Metrics Dashboard - MindRiskControl</title>
+    <link rel="stylesheet" href="../static/style.css">
+    <style>
+        body {
+            background: #0b0f12;
+            color: #e6e6e6;
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        .dashboard-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .header {
+            background: #0b5d7a;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            margin-bottom: 20px;
+            border: 1px solid #0ca7d4;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .back-btn {
+            background: #6c757d;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+            cursor: pointer;
+            border: none;
+            font-size: 14px;
+        }
+        .back-btn:hover {
+            background: #5a6268;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .metric-card {
+            background: #0e1419;
+            border: 2px solid #064d64;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .metric-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #00ff88;
+            margin-bottom: 4px;
+        }
+        .metric-subtext {
+            font-size: 12px;
+            color: #666;
+        }
+        .metric-positive {
+            color: #00ff88;
+        }
+        .metric-negative {
+            color: #ff4444;
+        }
+        .section-title {
+            background: #0b5d7a;
+            padding: 12px 20px;
+            border-radius: 6px;
+            color: white;
+            font-weight: bold;
+            margin-top: 20px;
+            margin-bottom: 15px;
+            border: 1px solid #0ca7d4;
+        }
+        .chart-container {
+            background: #0e1419;
+            border: 1px solid #064d64;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+        .symbol-list {
+            background: #0e1419;
+            border: 1px solid #064d64;
+            border-radius: 8px;
+            padding: 15px;
+        }
+        .symbol-row {
+            display: grid;
+            grid-template-columns: 100px 80px 80px 100px 100px 80px;
+            gap: 10px;
+            padding: 10px;
+            border-bottom: 1px solid #333;
+            align-items: center;
+        }
+        .symbol-row:last-child {
+            border-bottom: none;
+        }
+        .symbol-header {
+            background: #0a3a4a;
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+            color: #00b7ff;
+        }
+        .symbol-cell {
+            font-size: 13px;
+            color: #c9d6de;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        table th {
+            background: #0a3a4a;
+            color: #00b7ff;
+            padding: 10px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: bold;
+            border: 1px solid #064d64;
+        }
+        table td {
+            padding: 10px;
+            border: 1px solid #333;
+            font-size: 12px;
+        }
+        table tr:nth-child(even) {
+            background: #0a1520;
+        }
+        .loading {
+            text-align: center;
+            color: #888;
+            padding: 40px;
+        }
+        .error {
+            background: #4d1a1a;
+            color: #ff4d4d;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border: 1px solid #ff4d4d;
+        }
+        .success {
+            background: #1a4d2e;
+            color: #00ff88;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border: 1px solid #00ff88;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="header">
+            <span>📊 TRADING METRICS & PERFORMANCE DASHBOARD</span>
+            <a href="/index" class="back-btn">⬅ Back to Trading</a>
+        </div>
+
+        <!-- MAIN METRICS -->
+        <div class="section-title">📈 Trading Performance (Last 30 Days)</div>
+        <div class="metrics-grid" id="metrics-container">
+            <div class="loading">Loading metrics...</div>
+        </div>
+
+        <!-- RISK EXPOSURE -->
+        <div class="section-title">⚠️ Current Risk Exposure</div>
+        <div class="metrics-grid" id="risk-container">
+            <div class="loading">Loading exposure...</div>
+        </div>
+
+        <!-- DETAILED STATS TABLE -->
+        <div class="section-title">📋 Detailed Statistics</div>
+        <div class="chart-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Metric</th>
+                        <th>Value</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody id="stats-table">
+                    <tr>
+                        <td colspan="3" style="text-align: center; color: #888;">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- SYMBOL PERFORMANCE -->
+        <div class="section-title">🎯 Performance by Symbol (Top 5)</div>
+        <div class="chart-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Trades</th>
+                        <th>Wins</th>
+                        <th>Win Rate</th>
+                        <th>Total PnL</th>
+                        <th>Avg PnL</th>
+                    </tr>
+                </thead>
+                <tbody id="symbol-table">
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: #888;">Loading symbol data...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Load trading metrics
+        function loadMetrics() {
+            fetch('/api/trading_metrics')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        renderMetrics(data.metrics);
+                    } else {
+                        document.getElementById('metrics-container').innerHTML = 
+                            `<div class="error">Error: ${data.error}</div>`;
+                    }
+                })
+                .catch(e => {
+                    document.getElementById('metrics-container').innerHTML = 
+                        `<div class="error">Failed to load metrics: ${e.message}</div>`;
+                });
+        }
+
+        // Load risk exposure
+        function loadRiskExposure() {
+            fetch('/api/risk_exposure')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        renderRisk(data.exposure);
+                    } else {
+                        document.getElementById('risk-container').innerHTML = 
+                            `<div class="error">Error: ${data.error}</div>`;
+                    }
+                })
+                .catch(e => {
+                    document.getElementById('risk-container').innerHTML = 
+                        `<div class="error">Failed to load exposure: ${e.message}</div>`;
+                });
+        }
+
+        // Render metrics cards
+        function renderMetrics(metrics) {
+            const html = `
+                <div class="metric-card">
+                    <div class="metric-label">Total Trades</div>
+                    <div class="metric-value">${metrics.total_trades}</div>
+                    <div class="metric-subtext">${metrics.winning_trades} wins, ${metrics.losing_trades} losses</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Win Rate</div>
+                    <div class="metric-value">${metrics.win_rate_pct}%</div>
+                    <div class="metric-subtext">Success probability</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Total PnL</div>
+                    <div class="metric-value ${metrics.total_pnl >= 0 ? 'metric-positive' : 'metric-negative'}">
+                        $${metrics.total_pnl.toFixed(2)}
+                    </div>
+                    <div class="metric-subtext">Realized gains/losses</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Net PnL</div>
+                    <div class="metric-value ${metrics.net_pnl >= 0 ? 'metric-positive' : 'metric-negative'}">
+                        $${metrics.net_pnl.toFixed(2)}
+                    </div>
+                    <div class="metric-subtext">After commissions</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Avg Win / Loss</div>
+                    <div class="metric-value">$${metrics.avg_win.toFixed(2)} / $${metrics.avg_loss.toFixed(2)}</div>
+                    <div class="metric-subtext">Per trade average</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Profit Factor</div>
+                    <div class="metric-value">${metrics.profit_factor.toFixed(2)}</div>
+                    <div class="metric-subtext">${metrics.profit_factor > 1 ? '✅ Profitable' : '❌ Unprofitable'}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Open PnL</div>
+                    <div class="metric-value ${metrics.open_pnl >= 0 ? 'metric-positive' : 'metric-negative'}">
+                        $${metrics.open_pnl.toFixed(2)}
+                    </div>
+                    <div class="metric-subtext">From ${metrics.open_positions_count} positions</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Commissions Paid</div>
+                    <div class="metric-value metric-negative">$${metrics.total_commission.toFixed(2)}</div>
+                    <div class="metric-subtext">Trading fees</div>
+                </div>
+            `;
+            document.getElementById('metrics-container').innerHTML = html;
+
+            // Populate stats table
+            const statsHtml = `
+                <tr>
+                    <td><b>Total Trades</b></td>
+                    <td>${metrics.total_trades}</td>
+                    <td>Includes wins, losses, and breakeven</td>
+                </tr>
+                <tr>
+                    <td><b>Winning Trades</b></td>
+                    <td><span class="metric-positive">${metrics.winning_trades}</span></td>
+                    <td>${(metrics.winning_trades / metrics.total_trades * 100).toFixed(1)}% of all trades</td>
+                </tr>
+                <tr>
+                    <td><b>Losing Trades</b></td>
+                    <td><span class="metric-negative">${metrics.losing_trades}</span></td>
+                    <td>${(metrics.losing_trades / metrics.total_trades * 100).toFixed(1)}% of all trades</td>
+                </tr>
+                <tr>
+                    <td><b>Win Rate</b></td>
+                    <td><b>${metrics.win_rate_pct}%</b></td>
+                    <td>Probability of winning trade</td>
+                </tr>
+                <tr>
+                    <td><b>Average Win</b></td>
+                    <td><span class="metric-positive">$${metrics.avg_win.toFixed(2)}</span></td>
+                    <td>Mean profit per winning trade</td>
+                </tr>
+                <tr>
+                    <td><b>Average Loss</b></td>
+                    <td><span class="metric-negative">$${metrics.avg_loss.toFixed(2)}</span></td>
+                    <td>Mean loss per losing trade</td>
+                </tr>
+                <tr>
+                    <td><b>Profit Factor</b></td>
+                    <td><b>${metrics.profit_factor.toFixed(2)}</b></td>
+                    <td>${metrics.profit_factor > 1.5 ? '✅ Excellent' : metrics.profit_factor > 1 ? '✅ Good' : '❌ Negative'}</td>
+                </tr>
+                <tr>
+                    <td><b>Total Realized PnL</b></td>
+                    <td><span class="metric-${metrics.total_pnl >= 0 ? 'positive' : 'negative'}">$${metrics.total_pnl.toFixed(2)}</span></td>
+                    <td>Closed trade gains/losses</td>
+                </tr>
+                <tr>
+                    <td><b>Commissions</b></td>
+                    <td><span class="metric-negative">$${metrics.total_commission.toFixed(2)}</span></td>
+                    <td>Total trading fees paid</td>
+                </tr>
+                <tr>
+                    <td><b>Net PnL</b></td>
+                    <td><b class="metric-${metrics.net_pnl >= 0 ? 'positive' : 'negative'}">$${metrics.net_pnl.toFixed(2)}</b></td>
+                    <td>After all commissions</td>
+                </tr>
+            `;
+            document.getElementById('stats-table').innerHTML = statsHtml;
+        }
+
+        // Render risk exposure
+        function renderRisk(exposure) {
+            const canTradeClass = exposure.can_trade ? 'metric-positive' : 'metric-negative';
+            const html = `
+                <div class="metric-card">
+                    <div class="metric-label">Open PnL</div>
+                    <div class="metric-value ${exposure.open_pnl >= 0 ? 'metric-positive' : 'metric-negative'}">
+                        $${exposure.open_pnl.toFixed(2)}
+                    </div>
+                    <div class="metric-subtext">Unrealized gains/losses</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Account Balance</div>
+                    <div class="metric-value metric-positive">$${exposure.balance.toFixed(2)}</div>
+                    <div class="metric-subtext">Total wallet</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Risk Exposure</div>
+                    <div class="metric-value ${exposure.risk_pct > 5 ? 'metric-negative' : 'metric-positive'}">
+                        ${exposure.risk_pct.toFixed(2)}%
+                    </div>
+                    <div class="metric-subtext">${exposure.risk_pct > 10 ? '⚠️ High Risk' : exposure.risk_pct > 5 ? '⚡ Medium Risk' : '✅ Low Risk'}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Trades Today</div>
+                    <div class="metric-value">${exposure.trades_today}/${exposure.max_trades}</div>
+                    <div class="metric-subtext">${exposure.can_trade ? '✅ Can trade' : '❌ Limit reached'}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Open Positions</div>
+                    <div class="metric-value">${exposure.open_positions}</div>
+                    <div class="metric-subtext">Active trades</div>
+                </div>
+            `;
+            document.getElementById('risk-container').innerHTML = html;
+        }
+
+        // Initialize on page load
+        loadMetrics();
+        loadRiskExposure();
+        
+        // Refresh every 10 seconds
+        setInterval(() => {
+            loadMetrics();
+            loadRiskExposure();
+        }, 10000);
+    </script>
+</body>
+</html>

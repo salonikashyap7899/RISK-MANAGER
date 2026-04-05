@@ -13,6 +13,7 @@ import csv
 import io
 import uuid
 import razorpay
+from binance.exceptions import BinanceAPIException
 
 # Load environment variables
 load_dotenv()
@@ -76,27 +77,38 @@ def subscription_required(f):
         except Exception:
             return redirect(url_for('login'))
         
-        # Admin bypass
+        # ✅ PRIORITY 1: Admin bypass (uses is_admin field from models.py)
         if getattr(current_user, 'is_admin', False):
+            print(f"✅ Admin {current_user.username} ({current_user.id}) bypassing subscription check")
             return f(*args, **kwargs)
         
+        # ✅ PRIORITY 2: Hardcoded admin emails (fallback)
         ADMIN_EMAILS = ['admin@mindriskcontrol.com', 'test@test.com']
         if current_user.email.lower() in [email.lower() for email in ADMIN_EMAILS]:
+            print(f"✅ Admin email {current_user.email} bypassing subscription check")
             return f(*args, **kwargs)
         
+        # FIXED: More robust subscription check for regular users
         now = datetime.utcnow()
         
+        # Check if user has an active subscription
         if not current_user.is_subscribed:
             flash("Please subscribe to access the trading dashboard.", "warning")
             return redirect(url_for('subscribe'))
         
+        # Check if subscription has expired - only if subscription_end is set
         if current_user.subscription_end:
             if now > current_user.subscription_end:
+                # Subscription has expired
                 current_user.is_subscribed = False
                 current_user.subscription_status = 'expired'
                 db.session.commit()
                 flash("Your subscription has expired. Please renew to access the dashboard.", "warning")
                 return redirect(url_for('subscribe'))
+        else:
+            # If subscription_end is not set but is_subscribed is True, 
+            # treat as active for monthly subscribers
+            pass
             
         return f(*args, **kwargs)
     return decorated_function
@@ -133,6 +145,7 @@ def register():
         password = request.form.get('password') or ''
         confirm_password = request.form.get('confirm_password') or ''
 
+        # Check if passwords match
         if password != confirm_password:
             msg = 'Passwords do not match.'
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -192,6 +205,7 @@ def login():
             flash("Invalid email or password", "error")
             return render_template('login.html'), 401
 
+        # Allow multiple device login
         login_user(user, remember=True)
         session_id = str(uuid.uuid4())
         session['session_id'] = session_id
@@ -199,6 +213,7 @@ def login():
         user.active_session = session_id
         db.session.commit()
 
+        # Check if admin
         is_admin = getattr(user, 'is_admin', False) or user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
 
         if not is_admin:
@@ -208,6 +223,7 @@ def login():
                 flash("Please subscribe to access the trading dashboard.", "warning")
                 return redirect(url_for('subscribe'))
 
+            # Check if subscription has expired
             if user.subscription_end:
                 if datetime.utcnow() > user.subscription_end:
                     user.is_subscribed = False
@@ -218,6 +234,7 @@ def login():
                     flash("Your subscription has expired. Please renew to access the dashboard.", "warning")
                     return redirect(url_for('subscribe'))
 
+        # Login successful
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'success': True, 'redirect': url_for('index')}), 200
         return redirect(url_for('index'))
@@ -233,6 +250,7 @@ def google_authorize():
     token = google.authorize_access_token()
     user_info = token.get('userinfo')
     
+    # Convert email to lowercase to match registration format
     email_lower = user_info['email'].lower()
     user = User.query.filter_by(email=email_lower).first()
     
@@ -245,6 +263,7 @@ def google_authorize():
         db.session.add(user)
         db.session.commit()
     
+    # FIXED: Allow multiple device login - removed restrictive active_session check
     login_user(user, remember=True)
     
     session_id = str(uuid.uuid4())
@@ -254,18 +273,23 @@ def google_authorize():
     
     db.session.commit()
     
+    # FIXED: More robust subscription check on Google login
+    # First check if user has subscription flag
     if not user.is_subscribed:
         flash("Please subscribe to access the trading dashboard.", "warning")
         return redirect(url_for('subscribe'))
     
+    # Check if subscription has expired - only if subscription_end is set
     if user.subscription_end:
         if datetime.utcnow() > user.subscription_end:
+            # Subscription has expired
             user.is_subscribed = False
             user.subscription_status = 'expired'
             db.session.commit()
             flash("Your subscription has expired. Please renew to access the dashboard.", "warning")
             return redirect(url_for('subscribe'))
     
+    # Subscription is valid
     return redirect(url_for('index'))
 
 @app.route('/logout')
@@ -277,8 +301,10 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+# Debug route to clear stuck sessions - use in browser: /clear-session
 @app.route('/clear-session')
 def clear_session_debug():
+    """Debug route to clear all user sessions - for stuck users"""
     from models import User
     users = User.query.all()
     for user in users:
@@ -286,15 +312,19 @@ def clear_session_debug():
     db.session.commit()
     return "All user sessions cleared! <a href='/login'>Go to Login</a>"
 
+# Debug route to create test admin user - use in browser: /create-admin
 @app.route('/create-admin')
 def create_admin_debug():
+    """Debug route to create a test admin user"""
     from models import User
     from werkzeug.security import generate_password_hash
     
+    # Check if admin already exists
     admin = User.query.filter_by(email='test@test.com').first()
     if admin:
         return "Admin user already exists! <br>Email: test@test.com <br>Password: Test@123 <br><a href='/login'>Go to Login</a>"
     
+    # Create admin user
     hashed_pw = generate_password_hash('Test@123')
     admin = User(
         username='Admin',
@@ -376,6 +406,7 @@ def verify_subscription():
         current_user.subscription_start = datetime.utcnow()
         current_user.subscription_end = datetime.utcnow() + timedelta(days=duration_days)
 
+        # FIXED: Create permanent subscription history record
         subscription_history = SubscriptionHistory(
             user_id=current_user.id,
             plan_type=plan_type,
@@ -384,6 +415,7 @@ def verify_subscription():
             status="active"
         )
         db.session.add(subscription_history)
+        
         db.session.commit()
 
         return jsonify({
@@ -409,12 +441,14 @@ def cancel_subscription():
         current_user.is_subscribed = False
         current_user.subscription_status = "cancelled"
         current_user.subscription_end = datetime.utcnow()
+        
         db.session.commit()
         
         return jsonify({
             "success": True,
             "message": "Subscription cancelled successfully"
         })
+    
     except Exception as e:
         db.session.rollback()
         return jsonify({
@@ -444,6 +478,9 @@ def check_subscription():
     
     return jsonify({'subscribed': False, 'status': 'inactive'})
 
+
+# EXCHANGE CONNECTION ROUTES
+
 @app.route('/exchange-connections')
 @login_required
 def exchange_connections():
@@ -454,6 +491,7 @@ def exchange_connections():
         supported_exchanges=config.SUPPORTED_EXCHANGES
     )
 
+
 @app.route('/add-exchange', methods=['POST'])
 @login_required
 @subscription_required
@@ -463,98 +501,38 @@ def add_exchange():
         exchange_type = data.get('exchange_type')
         api_key = data.get('api_key', '').strip()
         api_secret = data.get('api_secret', '').strip()
-        connection_name = data.get('connection_name', '').strip()
+        connection_name = data.get('connection_name', f'{exchange_type.capitalize()} Account').strip()
         
-        if exchange_type not in config.SUPPORTED_EXCHANGES:
-            return jsonify({'success': False, 'error': 'Invalid exchange type'}), 400
+        if not exchange_type or not api_key or not api_secret:
+            return jsonify({'success': False, 'error': 'Missing required fields'}), 400
         
-        required_fields = config.SUPPORTED_EXCHANGES[exchange_type]['api_required']
-        if not api_key or not api_secret:
-            return jsonify({'success': False, 'error': f'Missing required fields: {", ".join(required_fields)}'}), 400
-        
-        existing = ExchangeConnection.query.filter_by(
-            user_id=current_user.id,
-            exchange_type=exchange_type,
-            is_connected=True
-        ).first()
-        
-        if existing:
-            return jsonify({'success': False, 'error': f'You already have a {exchange_type} connection. Please disconnect it first.'}), 400
-        
+        # Create connection record
         connection = ExchangeConnection(
             user_id=current_user.id,
             exchange_type=exchange_type,
             api_key=api_key,
             api_secret=api_secret,
-            connection_name=connection_name or f"My {exchange_type} Account",
-            is_connected=False
+            connection_name=connection_name or f'{exchange_type.capitalize()} Account'
         )
         
         db.session.add(connection)
         db.session.commit()
         
+        # Verify connection if Binance
         if exchange_type == 'binance':
-            from binance.client import Client
-            from binance.exceptions import BinanceAPIException
-            
             try:
-                client = Client(api_key, api_secret, {'timeout': 20})
-                client.futures_account(recvWindow=60000)
+                from binance.client import Client
+                
+                client = Client(api_key=api_key, api_secret=api_secret)
+                # Test connection
+                account = client.futures_account(recvWindow=5000)
+                
                 connection.is_connected = True
                 connection.last_verified = datetime.utcnow()
                 db.session.commit()
                 
                 logic.clear_user_client(current_user.id)
                 
-                return jsonify({'success': True, 'message': f'{exchange_type} connected successfully!'})
-            except BinanceAPIException as e:
-                error_info = config.BINANCE_ERROR_CODES.get(e.code)
-                db.session.delete(connection)
-                db.session.commit()
-                return jsonify({
-                    'success': False,
-                    'error_code': getattr(e, 'code', None),
-                    'title': error_info['title'] if error_info else f'Binance Error {e.code}',
-                    'message': error_info['message'] if error_info else str(e),
-                    'raw_error': str(e)
-                }), 400
-            except Exception as e:
-                db.session.delete(connection)
-                db.session.commit()
-                return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 400
-        
-        connection.is_connected = True
-        connection.last_verified = datetime.utcnow()
-        db.session.commit()
-        
-        return jsonify({'success': True, 'message': f'{exchange_type} added successfully!'})
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
-
-@app.route('/verify-exchange/<int:connection_id>', methods=['POST'])
-@login_required
-@subscription_required
-def verify_exchange(connection_id):
-    connection = ExchangeConnection.query.get_or_404(connection_id)
-    if connection.user_id != current_user.id:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    
-    try:
-        if connection.exchange_type == 'binance':
-            from binance.client import Client
-            from binance.exceptions import BinanceAPIException
-            
-            try:
-                client = Client(connection.api_key, connection.api_secret, {'timeout': 20})
-                client.futures_account(recvWindow=60000)
-                
-                connection.is_connected = True
-                connection.last_verified = datetime.utcnow()
-                db.session.commit()
-                
-                logic.clear_user_client(current_user.id)
                 return jsonify({'success': True, 'message': 'Connection verified successfully!'})
             except BinanceAPIException as e:
                 error_info = config.BINANCE_ERROR_CODES.get(e.code)
@@ -573,8 +551,10 @@ def verify_exchange(connection_id):
                 return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 400
         
         return jsonify({'success': True, 'message': 'Connection is active'})
+        
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
+
 
 @app.route('/disconnect-exchange/<int:connection_id>', methods=['POST'])
 @login_required
@@ -597,6 +577,7 @@ def disconnect_exchange(connection_id):
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 400
 
+
 @app.route('/get-exchange-status')
 @login_required
 @subscription_required
@@ -616,6 +597,9 @@ def get_exchange_status():
         } for c in connections]
     })
 
+
+# TRADING ROUTES - All use user's connected exchange via user_id
+
 @app.route("/get_live_price/<symbol>")
 @login_required
 def live_price_api(symbol):
@@ -626,7 +610,7 @@ def live_price_api(symbol):
 @login_required
 @subscription_required
 def get_open_positions_api():
-    positions = logic.get_open_positions(current_user.id)
+    positions = logic.get_positions(current_user.id)
     return jsonify({"positions": positions})
 
 @app.route("/get_trade_history")
@@ -640,8 +624,10 @@ def get_trade_history_api():
 @login_required
 @subscription_required
 def get_wallet_api():
+    """FIXED: Dedicated wallet endpoint with diagnostics"""
     wallet_data = logic.get_wallet_balances(current_user.id)
     
+    # Add connection status summary
     from models import ExchangeConnection
     connection = ExchangeConnection.query.filter_by(
         user_id=current_user.id, 
@@ -656,6 +642,7 @@ def get_wallet_api():
         'last_verified': connection.last_verified.isoformat() if connection and connection.last_verified else None
     }
     
+    print(f"🌐 /api/wallet response: success={wallet_data.get('success')}, assets={wallet_data.get('total_assets',0)}")
     return jsonify(wallet_data)
 
 @app.route("/clear_trade_events", methods=["POST"])
@@ -681,16 +668,16 @@ def partial_close_api():
     data = request.get_json()
     symbol = data.get('symbol')
     close_percent = data.get('close_percent')
-    close_qty = data.get('close_qty')
     if not symbol:
         return jsonify({"success": False, "message": "Symbol required"})
-    result = logic.partial_close_position(symbol, close_percent, close_qty, current_user.id)
+    result = logic.close_partial_position(symbol, close_percent, current_user.id)
     return jsonify(result)
 
 @app.route("/api/trail_sl", methods=["POST"])
 @login_required
 @subscription_required
 def trail_sl_api():
+    """Dynamic trailing SL"""
     data = request.get_json()
     symbol = data.get('symbol')
     if not symbol:
@@ -702,6 +689,7 @@ def trail_sl_api():
 @login_required
 @subscription_required
 def live_pnl_api(symbol):
+    """Live PnL for symbol"""
     result = logic.get_live_pnl(symbol, current_user.id)
     return jsonify(result)
 
@@ -709,10 +697,11 @@ def live_pnl_api(symbol):
 @login_required
 @subscription_required
 def today_stats_api():
+    """Daily limits"""
     stats = logic.get_today_stats(current_user.id)
     return jsonify(stats)
 
-@app.route("/update_sl", methods=["POST"])
+@app.route("/update_sl", methods=["POST"])  # Legacy
 @login_required
 @subscription_required
 def update_sl_api():
@@ -734,16 +723,163 @@ def download_trades():
     return Response(output.getvalue(), mimetype='text/csv', 
                    headers={'Content-Disposition': f'attachment; filename=trade_history_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'})
 
+# NEW TRADING ROUTES
+
+@app.route("/api/max_leverage/<symbol>")
+@login_required
+@subscription_required
+def get_max_leverage_api(symbol):
+    """Fetch max available leverage for a symbol from Binance"""
+    try:
+        max_lev = logic.get_max_leverage(symbol, current_user.id)
+        return jsonify({
+            'success': True,
+            'symbol': symbol,
+            'max_leverage': max_lev
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'max_leverage': 125
+        }), 400
+
+@app.route("/api/calculate_sizing", methods=["POST"])
+@login_required
+@subscription_required
+def calculate_sizing_api():
+    """Calculate position sizing based on 1% risk rule"""
+    try:
+        data = request.get_json()
+        
+        balance = float(data.get('balance', 0))
+        entry_price = float(data.get('entry_price', 0))
+        sl_type = data.get('sl_type', 'SL % Movement')
+        sl_value = float(data.get('sl_value', 0))
+        side = data.get('side', 'LONG')
+        symbol = data.get('symbol', 'BTCUSDT')
+        
+        # Calculate position sizing
+        sizing = logic.calculate_position_sizing(balance, entry_price, sl_type, sl_value, side)
+        
+        # Get max available leverage
+        max_lev = logic.get_max_leverage(symbol, current_user.id)
+        
+        # Validate leverage
+        valid_lev, lev_msg, effective_lev = logic.validate_leverage(sizing['calculated_lev'], max_lev)
+        
+        sizing['max_available_leverage'] = max_lev
+        sizing['effective_leverage'] = effective_lev
+        sizing['leverage_valid'] = valid_lev
+        sizing['leverage_message'] = lev_msg
+        
+        return jsonify({
+            'success': True,
+            'sizing': sizing,
+            'symbol': symbol
+        })
+        
+    except Exception as e:
+        print(f"Error calculating sizing: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+@app.route("/api/place_trade", methods=["POST"])
+@login_required
+@subscription_required
+def place_trade_api():
+    """Place a trade with SL and TP"""
+    try:
+        data = request.get_json()
+        
+        symbol = data.get('symbol', 'BTCUSDT')
+        side = data.get('side', 'LONG')  # BUY or SELL
+        qty = float(data.get('quantity', 0))
+        entry_price = float(data.get('entry_price', 0))
+        sl_price = float(data.get('sl_price', 0))
+        tp1_price = float(data.get('tp1_price', 0))
+        tp1_qty_pct = float(data.get('tp1_qty_pct', 50))
+        tp2_price = float(data.get('tp2_price', 0))
+        leverage = float(data.get('leverage', 1))
+        order_type = data.get('order_type', 'MARKET')
+        
+        # Validate inputs
+        if qty <= 0:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid quantity'
+            }), 400
+        
+        if sl_price <= 0:
+            return jsonify({
+                'success': False,
+                'message': 'SL price is required'
+            }), 400
+        
+        if leverage < 1 or leverage > 125:
+            return jsonify({
+                'success': False,
+                'message': f'Leverage must be between 1x and 125x'
+            }), 400
+        
+        # Validate daily limits
+        can_trade, limit_msg, remaining_total, remaining_symbol = logic.validate_daily_limits(current_user.id, symbol)
+        if not can_trade:
+            return jsonify({
+                'success': False,
+                'message': limit_msg
+            }), 400
+        
+        # Validate leverage against max available
+        max_lev = logic.get_max_leverage(symbol, current_user.id)
+        if leverage > max_lev:
+            return jsonify({
+                'success': False,
+                'message': f'Leverage {leverage}x exceeds max {max_lev}x for {symbol}'
+            }), 400
+        
+        # Place the trade
+        result = logic.place_order(
+            symbol=symbol,
+            side=side,
+            qty=qty,
+            entry_price=entry_price,
+            sl_price=sl_price,
+            tp1_price=tp1_price,
+            tp1_qty_pct=tp1_qty_pct,
+            tp2_price=tp2_price,
+            leverage=leverage,
+            order_type=order_type,
+            user_id=current_user.id
+        )
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"Error placing trade: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': f'Error: {str(e)}'
+        }), 400
+
 @app.route("/index", methods=["GET", "POST"])
 @login_required
 @subscription_required
 def index():
     logic.initialize_session()
     symbols = logic.get_all_exchange_symbols(current_user.id)
+    print(f"🌟 DEBUG /index: Loaded {len(symbols)} symbols for user {current_user.id}")
     
+    symbols_len = len(symbols)
+    # FIXED: Enhanced diagnostics + wallet status
     balance_data = logic.get_live_balance(current_user.id)
     balance = 0.0
     margin_used = 0.0
+    wallet_debug = {}
 
     if balance_data and isinstance(balance_data, tuple):
         inner_tuple = balance_data[0]
@@ -753,6 +889,7 @@ def index():
     
     unutilized = max(balance - margin_used, 0.0)
     
+    # Get wallet details for debug
     wallet_response = logic.get_wallet_balances(current_user.id)
     wallet_debug = {
         'success': wallet_response.get('success', False),
@@ -763,7 +900,12 @@ def index():
         'needs_connection': not wallet_response.get('success') and 'client' in str(wallet_response.get('error', '')).lower()
     }
     
+    print(f"📊 /index wallet_debug: {wallet_debug}")
+    
+    # FIXED: Add missing today_stats computation
     today_stats = logic.get_today_stats(current_user.id)
+    
+    # -------------------------------------
 
     selected_symbol = request.form.get("symbol", "BTCUSDT")
     side = request.form.get("side", "LONG")
@@ -784,10 +926,10 @@ def index():
     else:
         tp1 = raw_tp1
 
-    # PASS SELECTED SYMBOL HERE to fetch accurate max leverage
-    sizing = logic.calculate_position_sizing(unutilized, entry, sl_type, sl_val, side, user_id=current_user.id, symbol=selected_symbol)
+    sizing = logic.calculate_position_sizing(unutilized, entry, sl_type, sl_val, side)
     trade_status = session.pop("trade_status", None)
 
+    
     return render_template(
         "index.html",
         user=current_user,
@@ -815,34 +957,50 @@ def index():
 with app.app_context():
     db.create_all()
 
+# ============================================
+# ERROR HANDLERS - Add these after app creation
+# ============================================
+
 @app.errorhandler(404)
 def not_found_error(error):
     return render_template('home.html'), 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    db.session.rollback()  
+    db.session.rollback()  # Rollback any failed database transactions
+    print(f"❌ Internal Server Error: {error}")
     return render_template('home.html'), 500
 
 @app.errorhandler(Exception)
 def handle_exception(error):
+    # Pass through HTTP errors
     if hasattr(error, 'code') and 400 <= error.code < 600:
         return error
+    
+    # Handle all other exceptions
+    print(f"❌ Unhandled Exception: {error}")
     import traceback
     traceback.print_exc()
     return render_template('home.html'), 500
 
+# Debug route to check server status
 @app.route('/debug-wallet')
 @login_required
 def debug_wallet():
+    """DEBUG: Test wallet for specific user_id"""
     user_id = request.args.get('user_id')
     if not user_id or not user_id.isdigit():
         return "❌ Provide ?user_id=1 (your user ID)", 400
     
     user_id = int(user_id)
+    
+    # Test live balance
     live_balance_data = logic.get_live_balance(user_id)
+    
+    # Test full wallet
     wallet_data = logic.get_wallet_balances(user_id)
     
+    # Check connection
     from models import ExchangeConnection
     connection = ExchangeConnection.query.filter_by(
         user_id=user_id, exchange_type='binance'
@@ -854,16 +1012,18 @@ def debug_wallet():
                          wallet_data=wallet_data,
                          connection=connection)
 
+
 @app.route('/test-binance')
 @login_required
 @subscription_required
 def test_binance():
+    """Test Binance connectivity for logged-in user"""
     try:
         import logic
         client = logic.get_client(current_user.id)
         balance, margin = logic.get_live_balance(current_user.id)
         btc_price = logic.get_live_price('BTCUSDT', current_user.id)
-        symbols = logic.get_all_exchange_symbols(current_user.id)[:5]  
+        symbols = logic.get_all_exchange_symbols(current_user.id)[:5]  # First 5
         
         proxy_status = 'Configured' if getattr(config, 'PROXY_URL', None) else 'Not set'
         
@@ -885,6 +1045,7 @@ def test_binance():
             'error': str(e),
             'message': '❌ Test failed - check VPN/proxy if geo-restricted'
         }), 500
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)
