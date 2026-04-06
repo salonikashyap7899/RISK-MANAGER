@@ -1,32 +1,17 @@
-# Binance Keys Fix - Step-by-Step Plan (Approved)
-Status: Planning → Implementation
+# Debug Dashboard Redirect Issue
 
-## 1. [✅] Create .env file (Done)
-- `.env` created with safe testnet keys
-- `load_dotenv()` will pick it up
-- Ready: Run `python app.py` → Expect "✅ Config loaded. Proxy status: Disabled"
+## Status: Analyzing
 
-## 2. [✅] Test Startup (Done!)
-```
-✅ Config loaded. Proxy status: Disabled  ← KEYS WORKING!
- * Running on http://127.0.0.1:5000
-127.0.0.1 - - [05/Apr/2026 15:45:40] "POST /login HTTP/1.1" 200 -
-```
-- Server running successfully (no warning!)
-- Home: http://127.0.0.1:5000 ✓
-- Admin: http://127.0.0.1:5000/create-admin ✓
-- Dashboard: Login → /index (symbols/prices load via testnet) ✓
-- Test: http://127.0.0.1:5000/test-binance → Expect {'status': 'success' ...}
+1. ✅ /debug-status + /debug-session created
 
-## 3. Optional: Update config.py Warning
-Minor tweak for better local/prod distinction.
+2. [ ] Add logging to subscription_required decorator  
+3. [ ] Fix admin user DB flag (is_admin=True)
+4. [ ] Make API routes return JSON errors instead of HTML redirects
+5. [ ] Test: Login as admin → dashboard → TP/SL action → check logs/console
+6. [ ] Fix root cause based on logs
 
-## 4. Deploy to Render
-- Add real keys to Render Dashboard: BINANCE_KEY, BINANCE_SECRET
-- Deploy → Check logs
-
-## 5. Admin Setup (Bonus)
-- Visit /create-admin → test@test.com / Test@123 (bypasses subscription)
-
-**Next: Approve → Create .env → Test → Mark [x] done.**
+## Immediate Test
+- Login admin
+- Visit: http://localhost:5000/debug-status  
+- Try TP/SL, check F12 Network tab (expect /api/place_trade → 200 JSON or error)
 
