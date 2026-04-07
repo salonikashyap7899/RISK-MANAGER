@@ -562,9 +562,10 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value, side=
 
     calculated_leverage = 100.0 / (sl_percent + 0.2)
     
-    # NEW: Get actual Binance max leverage for symbol (defaults to BTCUSDT)
-    symbol_for_lev = side.replace('LONG', 'BTCUSDT').replace('SHORT', 'BTCUSDT')
-    exchange_max_lev = get_max_leverage(symbol_for_lev, user_id=None)  # No user_id needed for public info
+    # NEW: Get actual Binance max leverage for the specific symbol
+    # If symbol not provided, use BTCUSDT as default
+    symbol_for_lev = symbol if symbol else 'BTCUSDT'
+    exchange_max_lev = get_max_leverage(symbol_for_lev, user_id=user_id)
     
     # FINAL: Cap by risk-calc, exchange limit, and absolute max
     final_max_leverage = min(int(calculated_leverage), exchange_max_lev, 125)
@@ -576,8 +577,9 @@ def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value, side=
         "suggested_units": round_qty(symbol_for_lev, position_size),  # Use proper symbol
         "suggested_leverage": final_max_leverage,
         "max_leverage": final_max_leverage,
-        "exchange_max_leverage": exchange_max_lev,  # NEW: For UI display
-        "leverage_breakdown": {  # NEW: Debug info
+        "exchange_max_leverage": exchange_max_lev,  # Show max available on Binance
+        "symbol": symbol_for_lev,  # NEW: Include the symbol in response
+        "leverage_breakdown": {  # Debug info showing leverage calculation
             "risk_based": int(calculated_leverage),
             "exchange_max": exchange_max_lev,
             "final": final_max_leverage

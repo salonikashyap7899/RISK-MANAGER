@@ -855,7 +855,7 @@ def index():
     else:
         tp1 = raw_tp1
 
-    sizing = logic.calculate_position_sizing(unutilized, entry, sl_type, sl_val, side)
+    sizing = logic.calculate_position_sizing(unutilized, entry, sl_type, sl_val, side, user_id=current_user.id, symbol=selected_symbol)
     trade_status = session.pop("trade_status", None)
 
     
