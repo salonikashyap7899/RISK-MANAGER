@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MindRiskControl - Pro Trading</title>
+    <title>MindRiskControl</title>
     <link rel="stylesheet" href="../static/style.css">
 <style>
         @keyframes pulse {
@@ -9,10 +9,6 @@
             50% { opacity: 0.5; }
         }
         .live-badge { animation: pulse 2s infinite; }
-        .leverage-indicator { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
-        .leverage-ok { background: #00ff88; color: black; }
-        .leverage-warning { background: #ffaa00; color: black; }
-        .leverage-error { background: #ff4444; color: white; }
     </style>
 </head>
 <body>
@@ -25,25 +21,25 @@
     {% endif %}
     
     <div class="panel left">
-        <div class="header">🎯 SMART TRADING CONTROLS (1% RISK)</div>
+        <div class="header">TRADING CONTROLS</div>
         {% if trade_status %}
         <div class="message {{ 'success' if trade_status.success else 'error' }}">
             {{ trade_status.message }}
         </div>
         {% endif %}
      
-        <form method="POST" id="trading_form">
+        <form method="POST">
             <input type="hidden" name="side" id="side_hidden" value="{{default_side}}">
             <input type="hidden" name="prev_symbol" value="{{selected_symbol}}">
+            <!-- Server-rendered data for JavaScript -->
             <input type="hidden" id="sizing_suggested_units" value="{{sizing.suggested_units | default(0)}}">
             <input type="hidden" id="sizing_suggested_leverage" value="{{sizing.suggested_leverage | default(1)}}">
 
-            <!-- WALLET & CAPITAL -->
             <div class="row">
                 <div class="col">
-                    <label>💰 Available Capital (1% Risk Pool)</label>
+                    <label>Unutilized Capital (1% Risk Pool)</label>
                     <div id="wallet-display" style="position: relative;">
-                        <input value="${{ wallet_debug.unutilized | default(0) | round(2) }}" disabled style="color: #7aff00; width: 100%;">
+<input value="{{ wallet_debug.unutilized | default(0) | round(2) }}" disabled style="color: #7aff00; width: 100%;">
                         <div id="wallet-status" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; padding: 2px 8px; border-radius: 12px;">
                             {% if wallet_debug.needs_connection %}
                                 <span style="background: #ff4444; color: white;">⚠️ Connect</span>
@@ -57,6 +53,7 @@
                 </div>
             </div>
 
+            <!-- Wallet Debug Box -->
             {% if wallet_debug.needs_connection %}
             <div style="background: #4d1a1a; border: 1px solid #ff4444; color: #ffaa88; padding: 10px; margin-bottom: 15px; border-radius: 6px; font-size: 13px;">
                 <strong>🚨 NO BINANCE CONNECTION</strong><br>
@@ -65,10 +62,25 @@
             {% elif not wallet_debug.success %}
             <div style="background: #1a1a2e; border: 1px solid #ffaa00; color: #ffdd88; padding: 10px; margin-bottom: 15px; border-radius: 6px;">
                 <strong>⚠️ Wallet Error:</strong> {{ wallet_debug.error }}
+                <br><small>Details: {{ wallet_debug.debug_info }}</small>
             </div>
             {% endif %}
 
-            <!-- DAILY LIMITS -->
+            <!-- Enhanced Risk Control + Limits -->
+            <div class="risk-control">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <label>🔒 Risk % (1% Default)</label>
+                    <input type="range" id="risk_slider" min="0.5" max="2" step="0.1" value="1" onchange="updateRiskSizing()" style="width: 120px;">
+                    <span id="risk_pct_display">1.0%</span>
+                </div>
+                <div id="risk-preview" class="risk-preview" style="display: none;">
+                    <strong>✅ Suggested Trade (1% Risk)</strong><br>
+                    <span>Risk: $<span id="risk_amount">0</span> | Pos: <span id="risk_qty">0</span> units</span><br>
+                    <span>Leverage: <span id="risk_lev">0</span>x (Max Safe)</span>
+                </div>
+            </div>
+
+            <!-- Persistent Daily Limits -->
             <div class="status">
                 <strong>📊 Daily Limits (Persistent):</strong><br>
                 Total: <span id="total_trades_display">{{today_stats.total_trades}}/{{today_stats.max_trades}}</span> trades 
@@ -76,31 +88,28 @@
                 <br>{{selected_symbol}}: <span id="symbol_trades_display">{{ today_stats.symbol_trades.get(selected_symbol, 0) if today_stats.symbol_trades else 0 }}/{{today_stats.max_per_symbol}}</span>
             </div>
 
-            <!-- SYMBOL SELECTION -->
             <div class="row">
                 <div class="col">
-                    <label>🎲 Trading Pair (All 500+ USDT Futures)</label>
-                    <select name="symbol" id="symbol_select" onchange="onSymbolChange()">
-                        {% for sym in symbols %}
-                        <option value="{{sym}}" {{ 'selected' if sym == selected_symbol }}>{{sym}}</option>
-                        {% endfor %}
-                    </select>
+                    <label>Symbol</label>
+                    <select name="symbol" onchange="this.form.submit()">
+        {% for sym in symbols %}
+        <option value="{{sym}}" {{ 'selected' if sym == selected_symbol }}>{{sym}}</option>
+        {% endfor %}
+    </select>
                 </div>
             </div>
 
-            <!-- SIDE SELECTION -->
             <div class="button-row">
                 <button type="button" class="tab {{ 'active' if default_side == 'LONG' }}" 
-                        onclick="setSide('LONG')" data-testid="long-button">
-                    📈 LONG
+                        onclick="document.getElementById('side_hidden').value='LONG'; this.form.submit();" data-testid="long-button">
+                    LONG
                 </button>
                 <button type="button" class="tab {{ 'active' if default_side == 'SHORT' }}" 
-                        onclick="setSide('SHORT')" data-testid="short-button">
-                    📉 SHORT
+                        onclick="document.getElementById('side_hidden').value='SHORT'; this.form.submit();" data-testid="short-button">
+                    SHORT
                 </button>
             </div>
 
-            <!-- ORDER CONFIGURATION -->
             <div class="row">
                 <div class="col">
                     <label>Order Type</label>
@@ -118,119 +127,80 @@
                 </div>
             </div>
 
-            <!-- ENTRY PRICE -->
             <div class="row">
                 <div class="col">
-                    <label>Entry Price (Live from Binance)</label>
+                    <label>Entry Price</label>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <input type="number" name="entry" id="entry_input" value="{{default_entry}}" step="any" style="flex: 1;">
+                        <span id="live-indicator" class="live-badge" style="display: none; background: #00ff88; color: black; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; animation: pulse 2s infinite;">LIVE</span>
                         <button type="button" id="reset-live-btn" onclick="updateLivePrice()" style="background: #0d6efd; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">🔄 Live</button>
                     </div>
+
                 </div>
             </div>
 
-            <!-- STOP LOSS (MANDATORY) -->
-            <div style="background: #1a1a2e; border: 2px solid #ff4444; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
-                <div style="color: #ffaa88; font-weight: bold; margin-bottom: 8px;">🔒 STOP LOSS (MANDATORY - Cannot Trade Without SL)</div>
-                <div class="row">
-                    <div class="col">
-                        <label>SL Type</label>
-                        <select name="sl_type" id="sl_type_select" onchange="calculatePositionSizing()">
-                            <option value="SL Price" {{ 'selected' if default_sl_type == 'SL Price' }}>SL Price</option>
-                            <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>SL % Movement</option>
-                        </select>
-                    </div>
-                    <div class="col">
-                        <label>SL Value (Required)</label>
-                        <input type="number" name="sl_value" id="sl_value_input" value="{{default_sl_value}}" step="any" 
-                               onchange="calculatePositionSizing();" required style="border: 2px solid #ff4444;">
-                    </div>
+            <div class="row">
+                <div class="col">
+                    <label>TP 1 Type</label>
+                    <select name="tp1_mode" onchange="this.form.submit();">
+                        <option value="TP1 Price" {{ 'selected' if default_tp1_mode == 'TP1 Price' }}>TP1 Price</option>
+                        <option value="TP1 % Movement" {{ 'selected' if default_tp1_mode == 'TP1 % Movement' }}>TP1 % Movement</option>
+                    </select>
+                </div>
+                <div class="col">
+                    <label>TP 1 Value</label>
+                    <input type="number" name="tp1" value="{{default_tp1_value}}" step="any">
+                </div>
+                <div class="col">
+                    <label>TP 1 Qty %</label>
+                    <input type="number" name="tp1_pct" value="{{tp1_pct}}">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col">
+                    <label>TP 2 Price</label>
+                    <input type="number" name="tp2" value="{{tp2}}" step="any">
                 </div>
             </div>
 
-            <!-- TAKE PROFIT LEVELS -->
-            <div style="background: #1a2e1a; border: 2px solid #00ff88; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
-                <div style="color: #00ffaa; font-weight: bold; margin-bottom: 8px;">📈 PROFIT TARGETS (TP1 & TP2)</div>
-                
-                <div style="margin-bottom: 8px; font-size: 12px; color: #aaccff;">TP1 - First Target</div>
-                <div class="row">
-                    <div class="col">
-                        <label>TP1 Type</label>
-                        <select name="tp1_mode" id="tp1_mode_select" onchange="calculatePositionSizing();">
-                            <option value="TP1 Price" {{ 'selected' if default_tp1_mode == 'TP1 Price' }}>TP1 Price</option>
-                            <option value="TP1 % Movement" {{ 'selected' if default_tp1_mode == 'TP1 % Movement' }}>TP1 % Move</option>
-                        </select>
-                    </div>
-                    <div class="col">
-                        <label>TP1 Value</label>
-                        <input type="number" name="tp1" id="tp1_input" value="{{default_tp1_value}}" step="any" onchange="calculatePositionSizing();">
-                    </div>
-                    <div class="col">
-                        <label>TP1 Qty %</label>
-                        <input type="number" name="tp1_pct" id="tp1_pct_input" value="{{tp1_pct | default(50)}}" min="0" max="100" onchange="calculatePositionSizing();">
-                    </div>
+            <div class="row">
+                <div class="col">
+                    <label>SL Method</label>
+                    <select name="sl_type" onchange="this.form.submit();">
+                        <option value="SL Points" {{ 'selected' if default_sl_type == 'SL Points' }}>SL Points</option>
+                        <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>SL % Movement</option>
+                    </select>
                 </div>
-
-                <div style="margin-top: 8px; margin-bottom: 8px; font-size: 12px; color: #aaccff;">TP2 - Second Target (Remaining Position)</div>
-                <div class="row">
-                    <div class="col">
-                        <label>TP2 Price (Optional)</label>
-                        <input type="number" name="tp2" id="tp2_input" value="{{tp2}}" step="any" onchange="calculatePositionSizing();">
-                    </div>
+                <div class="col">
+                    <label>SL Value (⚠️ MANDATORY)</label>
+                    <input type="number" name="sl_value" value="{{default_sl_value}}" step="any" 
+                           onchange="this.form.submit();" required>
                 </div>
             </div>
 
-            <!-- POSITION SIZING & LEVERAGE -->
-            <div style="background: #0a2a3a; border: 2px solid #00b7ff; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
-                <div style="color: #00ddff; font-weight: bold; margin-bottom: 10px;">⚡ SMART POSITION SIZING (Auto-Calculated)</div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
-                    <div style="background: #0a1520; padding: 8px; border-radius: 4px; border: 1px solid #0ca7d4;">
-                        <small style="color: #999;">Suggested Qty</small><br>
-                        <span id="suggested_qty" style="color: #00ff88; font-weight: bold; font-size: 14px;">{{sizing.suggested_units | round(4)}}</span> units
-                    </div>
-                    <div style="background: #0a1520; padding: 8px; border-radius: 4px; border: 1px solid #0ca7d4;">
-                        <small style="color: #999;">Risk Amount</small><br>
-                        <span id="risk_display" style="color: #ffaa00; font-weight: bold; font-size: 14px;">${{sizing.risk_amount | round(2)}}</span>
-                    </div>
-                    <div style="background: #0a1520; padding: 8px; border-radius: 4px; border: 1px solid #0ca7d4;">
-                        <small style="color: #999;">Calculated Leverage</small><br>
-                        <span id="calc_leverage" style="color: #ffdd00; font-weight: bold; font-size: 14px;">{{sizing.suggested_leverage | round(2)}}x</span>
-                    </div>
-                    <div style="background: #0a1520; padding: 8px; border-radius: 4px; border: 1px solid #0ca7d4;">
-                        <small style="color: #999;">Max Available</small><br>
-                        <span id="max_leverage_display" style="color: #aaccff; font-weight: bold; font-size: 14px;">125x</span>
-                    </div>
+            <div class="row">
+                <div class="col">
+                    <label>Pos Override</label>
+                    <input type="number" name="user_units" step="any">
+                    <small>Sug: {{sizing.suggested_units}}</small>
                 </div>
-
-                <div id="leverage_warning" style="display: none; background: #2a1a1a; border: 1px solid #ff6b35; color: #ffaa88; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 12px;">
-                    ⚠️ <span id="leverage_warning_text"></span>
-                </div>
-
-                <div class="row">
-                    <div class="col">
-                        <label>Position Override (Units)</label>
-                        <input type="number" name="user_units" id="user_units_input" step="any" placeholder="Leave empty to use auto calculation">
-                    </div>
-                    <div class="col">
-                        <label>Leverage Override (1-125x)</label>
-                        <input type="number" name="user_lev" id="user_lev_input" min="1" max="125" step="0.5" placeholder="Leave empty to use auto calculation">
-                    </div>
+                <div class="col">
+                    <label>Lev Override</label>
+                    <input type="number" name="user_lev" step="any">
+                    <small>Sug: {{sizing.suggested_leverage}}x</small>
                 </div>
             </div>
 
-            <!-- EXECUTE BUTTON -->
-            <button type="button" id="execute_btn" class="place" data-testid="execute-order-button"
-                    onclick="executeTradeWithValidation()" style="width: 100%; margin-bottom: 10px;">
+            <button type="submit" name="place_order" class="place" data-testid="execute-order-button"
+                    {% if default_sl_value <= 0 %} disabled style="filter: grayscale(1);" {% endif %}
+                    onclick="return confirmTradeExecution()">
                 {% if default_sl_value <= 0 %} 
                     🔒 LOCK: SET SL FIRST (MANDATORY)
                 {% else %} 
-                    ✅ PLACE TRADE (1% Risk, SL: {{default_sl_value}})
+                    ✅ EXECUTE EXCHANGE ORDER (SL: {{default_sl_value}})
                 {% endif %}
             </button>
-
-            <!-- BACK BUTTONS -->
-            <div style="margin-bottom: 15px;">
+            <div style="margin-bottom: 15px; margin-top: 10px;">
                 <a href="{{ url_for('home') }}" 
                    style="display:inline-block; padding:10px 18px; background-color:#6c757d; color:#fff; text-decoration:none; border-radius:6px; font-size:14px; margin-right: 10px;">
                    ⬅ Back to Home
@@ -240,31 +210,36 @@
                    🐛 Debug Wallet
                 </a>
             </div>
-
-            <!-- FORMULA & DETAILS -->
             <div class="status-box">
                 {% if not sizing.error %}
                     <div class="formula" style="background: #06212a; padding: 10px; border-radius: 4px; border: 1px solid #0ca7d4; margin-top: 10px;">
-                        <b style="color: #00b7ff;">📐 1% Risk Smart Formula:</b><br>
+                        <b style="color: #00b7ff;">📐 1% Risk Precision Logic:</b><br>
                         <span style="font-size: 0.85em;">
-                            • <b>Risk Pool:</b> ${{ wallet_debug.unutilized | round(2) }}<br>
-                            • <b>1% Risk:</b> ${{ sizing.risk_amount | round(2) }}<br>
-                            • <b>SL Loss %:</b> Entry vs SL {{ sizing.suggested_leverage }}<br>
-                            • <b>Position:</b> {{ sizing.suggested_units | round(6) }} units @ {{ sizing.suggested_leverage }}x<br>
-                            • <b>Formula:</b> Position = (Risk $ / Loss per unit) × Leverage
+                            • <b>Risk Amount:</b> ${{ sizing.risk_amount | round(2) }} ({{ sizing.risk_amount / unutilized * 100 | round(1) }}% of ${{ unutilized | round(2) }} pool)<br>
+                            • <b>SL Distance:</b> {{ sizing.sl_percent }}% ({{ sizing.sl_distance | round(4) }} points)<br>
+                            • <b>Safe Leverage:</b> {{ sizing.suggested_leverage }}x<br>
+                            • <b>Position Value:</b> ${{ sizing.suggested_position_value | round(2) }} ({{ sizing.suggested_units | round(6) }} units @ ${{ default_entry | round(4) }})<br>
+                            {% if default_tp1_mode == 'TP1 % Movement' and default_tp1_value > 0 %}
+                                • <b>TP1:</b> ${{ tp1 | round(6) }} ({{ default_tp1_value }}% move)<br>
+                            {% endif %}
+                            • <b>Formula:</b> Pos = (Risk / (SL% + 0.2% buffer)) × 100 | Lev = 100 / (SL% + 0.2)
                         </span>
                     </div>
                 {% else %}
                     <div class="error">{{ sizing.error }}</div>
                 {% endif %}
             </div>
+            
+            <!-- Validation Warnings -->
+            <div id="validation-warnings" style="display: none; background: #2a1a1a; border: 1px solid #ff6b35; color: #ffaa88; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 13px;">
+                <strong>⚠️ Validation Issues:</strong>
+                <div id="warning-list"></div>
+            </div>
         </form>
     </div>
 
-    <!-- RIGHT PANEL: POSITIONS & CHART -->
     <div class="panel right">
-        <!-- TRADINGVIEW CHART -->
-        <div id="tv_chart" style="height: 300px; width: 100%; border-radius: 6px; overflow: hidden;"></div>
+        <div id="tv_chart" style="height: 400px; width: 100%;"></div>
 
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script type="text/javascript">
@@ -284,320 +259,266 @@
           });
         </script>
 
-        <!-- OPEN POSITIONS -->
+        <!-- DYNAMIC POSITION COUNTER -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-            <div class="header" style="margin: 0; flex: 1;" id="position_header">📍 POSITIONS (0)</div>
+            <div class="header" style="margin: 0; flex: 1;" id="position_header">POSITIONS (0) | Open Orders (0)</div>
             <button onclick="closeAllPositions()" class="close-all-btn" style="background: #4d1a1a; color: #ff4d4d; border: 1px solid #ff4d4d; padding: 6px 12px; border-radius: 4px; cursor: pointer;">
                 Close All
             </button>
         </div>
         
-        <div id="live_positions" style="background: #000; border: 1px solid #333; max-height: 250px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 10px; margin-top: 5px; border-radius: 6px;">
-            <div style="text-align: center; color: #888; padding-top: 50px;">
+        <div id="live_positions" style="background: #000; border: 1px solid #333; max-height: 350px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 11px; margin-top: 5px; border-radius: 6px;">
+            <div style="text-align: center; color: #888; padding-top: 60px;">
                 Loading positions... (Connect Binance first)
             </div>
         </div>
 
         <!-- TRADE HISTORY -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
             <div class="header" style="margin: 0; flex: 1;">📊 TRADE HISTORY</div>
-            <a href="/download_trades" style="color: #0d6efd; text-decoration: none; font-weight: bold; font-size: 12px;">
+            <a href="/download_trades" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                 📥 CSV
             </a>
         </div>
         
-        <div id="trade_history" style="background: #000; border: 1px solid #333; height: 120px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 9px; margin-top: 5px; border-radius: 6px;">
+        <div id="trade_history" style="background: #000; border: 1px solid #333; height: 140px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 11px; margin-top: 5px; border-radius: 6px;">
             <div style="text-align: center; color: #888; padding-top: 30px;">
                 Loading trades...
             </div>
         </div>
 
         <!-- LIVE TRADE LOG -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-            <div class="header" style="margin: 0; flex: 1;">🔴 LIVE TRADE LOG & PNL</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+            <div class="header" style="margin: 0; flex: 1;">🔴 LIVE TRADE LOG</div>
             <button onclick="clearTradeLog()" style="background: #6c757d; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 10px;">Clear</button>
         </div>
         
-        <div id="live_trade_log" style="background: #000; border: 1px solid #333; height: 150px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 9px; margin-top: 5px; border-radius: 6px;">
-            <div style="text-align: center; color: #888; padding-top: 50px;">
-                Live events and PnL updates will appear here...
+        <div id="live_trade_log" style="background: #000; border: 1px solid #333; height: 200px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 11px; margin-top: 5px; border-radius: 6px;">
+            <div style="text-align: center; color: #888; padding-top: 60px;">
+                Live trade events will appear here...
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    // UI State
-    let currentSide = '{{default_side}}';
-    let lastSymbol = '{{selected_symbol}}';
-
-    // Set side selection
-    function setSide(side) {
-        currentSide = side;
-        document.getElementById('side_hidden').value = side;
-        document.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'));
-        event.target.classList.add('active');
-        calculatePositionSizing();
-    }
-
-    // On symbol change
-    function onSymbolChange() {
-        const symbol = document.getElementById('symbol_select').value;
-        if (symbol !== lastSymbol) {
-            lastSymbol = symbol;
-            document.getElementById('trading_form').submit();
-        }
-    }
-
-    // Calculate position sizing from server
-    function calculatePositionSizing() {
-        const symbol = document.getElementById('symbol_select').value || 'BTCUSDT';
-        const entryPrice = parseFloat(document.getElementById('entry_input').value) || 0;
-        const slValue = parseFloat(document.getElementById('sl_value_input').value) || 0;
-        const slType = document.getElementById('sl_type_select').value;
-        const side = currentSide;
-        const unutilized = parseFloat(document.querySelector('#wallet-display input').value) || 0;
-
-        if (!entryPrice || !slValue || !unutilized) return;
-
-        fetch('/api/calculate_sizing', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                balance: unutilized,
-                entry_price: entryPrice,
-                sl_type: slType,
-                sl_value: slValue,
-                side: side,
-                symbol: symbol
-            })
-        }).then(r => r.json()).then(data => {
-            if (data.success) {
-                const sizing = data.sizing;
-                document.getElementById('suggested_qty').textContent = sizing.suggested_units.toFixed(4) + ' units';
-                document.getElementById('risk_display').textContent = '$' + sizing.risk_amount.toFixed(2);
-                document.getElementById('calc_leverage').textContent = sizing.calculated_lev.toFixed(2) + 'x';
-                document.getElementById('max_leverage_display').textContent = sizing.max_available_leverage + 'x';
-
-                // Validate leverage
-                if (!sizing.leverage_valid) {
-                    document.getElementById('leverage_warning').style.display = 'block';
-                    document.getElementById('leverage_warning_text').textContent = sizing.leverage_message;
-                } else {
-                    document.getElementById('leverage_warning').style.display = 'none';
-                }
-            }
-        }).catch(e => console.error('Sizing error:', e));
-    }
-
-    // Execute trade with full validation
-    function executeTradeWithValidation() {
-        const symbol = document.getElementById('symbol_select').value;
-        const side = currentSide;
-        const entryPrice = parseFloat(document.getElementById('entry_input').value);
-        const slValue = parseFloat(document.getElementById('sl_value_input').value);
-        const slType = document.getElementById('sl_type_select').value;
-        const tp1Value = parseFloat(document.getElementById('tp1_input').value) || 0;
-        const tp1Mode = document.getElementById('tp1_mode_select').value;
-        const tp1Pct = parseFloat(document.getElementById('tp1_pct_input').value) || 50;
-        const tp2Value = parseFloat(document.getElementById('tp2_input').value) || 0;
-        const userQty = parseFloat(document.getElementById('user_units_input').value);
-        const userLev = parseFloat(document.getElementById('user_lev_input').value);
-        const unutilized = parseFloat(document.querySelector('#wallet-display input').value) || 0;
-
-        // Validate SL (mandatory)
-        if (!slValue || slValue <= 0) {
-            alert('❌ STOP LOSS IS MANDATORY!\n\nYou must set a SL price or % movement to place a trade.');
-            return;
-        }
-
-        // Calculate SL price
-        let slPrice = slValue;
-        if (slType === 'SL % Movement') {
-            const slPct = slValue / 100;
-            slPrice = side === 'LONG' ? entryPrice * (1 - slPct) : entryPrice * (1 + slPct);
-        }
-
-        // Get calculated sizing
-        const suggestedQty = parseFloat(document.getElementById('suggested_qty').textContent);
-        const suggestedLev = parseFloat(document.getElementById('calc_leverage').textContent);
-        const maxLev = parseInt(document.getElementById('max_leverage_display').textContent);
-
-        // Use overrides if provided
-        const qty = userQty > 0 ? userQty : suggestedQty;
-        const leverage = userLev > 0 ? userLev : suggestedLev;
-
-        // Validate leverage
-        if (leverage > maxLev) {
-            alert(`❌ LEVERAGE ERROR!\n\nCalculated: ${leverage.toFixed(2)}x\nMax Available: ${maxLev}x\n\nPlease reduce position size or increase SL.`);
-            return;
-        }
-
-        // Validate limits
-        const totalTrades = parseInt(document.getElementById('total_trades_display').textContent.split('/')[0]);
-        const maxTrades = parseInt(document.getElementById('total_trades_display').textContent.split('/')[1]);
-        const symbolTrades = parseInt(document.getElementById('symbol_trades_display').textContent.split('/')[0]);
-        const maxSymbol = parseInt(document.getElementById('symbol_trades_display').textContent.split('/')[1]);
-
-        if (totalTrades >= maxTrades) {
-            alert(`❌ Daily limit reached!\n\n${totalTrades}/${maxTrades} trades`);
-            return;
-        }
-
-        if (symbolTrades >= maxSymbol) {
-            alert(`❌ ${symbol} daily limit reached!\n\n${symbolTrades}/${maxSymbol} trades`);
-            return;
-        }
-
-        // Calculate TP prices
-        let tp1Price = tp1Value;
-        if (tp1Mode === 'TP1 % Movement' && tp1Value > 0) {
-            const tpPct = tp1Value / 100;
-            tp1Price = side === 'LONG' ? entryPrice * (1 + tpPct) : entryPrice * (1 - tpPct);
-        }
-
-        // Confirm execution
-        const confirmMsg = `📋 TRADE CONFIRMATION\n\n` +
-            `Pair: ${symbol}\n` +
-            `Side: ${side}\n` +
-            `Quantity: ${qty.toFixed(4)} units\n` +
-            `Entry: $${entryPrice.toFixed(2)}\n` +
-            `SL: $${slPrice.toFixed(2)}\n` +
-            `TP1: ${tp1Price > 0 ? '$' + tp1Price.toFixed(2) : 'None'}\n` +
-            `TP2: ${tp2Value > 0 ? '$' + tp2Value.toFixed(2) : 'None'}\n` +
-            `Leverage: ${leverage.toFixed(2)}x (Max: ${maxLev}x)\n` +
-            `Risk: 1% of $${unutilized.toFixed(2)}\n\n` +
-            `Proceed?`;
-
-        if (!confirm(confirmMsg)) {
-            return;
-        }
-
-        // Place trade
-        document.getElementById('execute_btn').disabled = true;
-        document.getElementById('execute_btn').textContent = '⏳ Executing...';
-
-        fetch('/api/place_trade', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                symbol: symbol,
-                side: side,
-                quantity: qty,
-                entry_price: entryPrice,
-                sl_price: slPrice,
-                tp1_price: tp1Price,
-                tp1_qty_pct: tp1Pct,
-                tp2_price: tp2Value,
-                leverage: leverage,
-                order_type: 'MARKET'
-            })
-        }).then(r => r.json()).then(data => {
-            document.getElementById('execute_btn').disabled = false;
-            document.getElementById('execute_btn').textContent = '✅ PLACE TRADE';
-
-            if (data.success) {
-                alert(`✅ ${data.message}\n\nRemaining today: ${data.remaining_total} total, ${data.remaining_symbol} for ${symbol}`);
-                calculatePositionSizing();
-                updateTradeLimits();
-                updateLivePositions();
-                updateLiveTradeLog();
+    // Live Updates
+    function updateLivePositions() {
+        fetch('/get_open_positions')
+        .then(r => r.json())
+        .then(data => {
+            const container = document.getElementById('live_positions');
+            const header = document.getElementById('position_header');
+            if (data.positions && data.positions.length > 0) {
+                let totalOrders = 0;
+                let html = '';
+                data.positions.forEach(pos => {
+                    const pnlColor = pos.unrealized_pnl >= 0 ? '#00ff88' : '#ff4d4d';
+                    totalOrders += pos.open_orders ? pos.open_orders.length : 0;
+                    html += `
+                        <div style="border: 1px solid #333; padding: 12px; margin-bottom: 8px; border-radius: 6px; background: #111;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="font-weight: bold; color: ${pos.side === 'LONG' ? '#00ff88' : '#ff4444'}">${pos.symbol}</span>
+                                <small>${pos.leverage}x | Entry: $${pos.entry_price.toFixed(4)}</small>
+                            </div>
+                            <div>PnL: <span style="color: ${pnlColor};">$${pos.unrealized_pnl.toFixed(2)}</span></div>
+                            <div>ROI: <span style="color: ${pnlColor};">${(pos.roi_percent).toFixed(1)}%</span></div>
+                            <div>Margin: $${pos.margin_usdt.toFixed(2)} | Size: $${pos.size_usdt.toFixed(2)}</div>
+                            ${pos.open_orders && pos.open_orders.length > 0 ? `<div style="margin-top:8px; font-size: 11px; color:#aaa;"><strong>Open orders:</strong> ${pos.open_orders.map(o => `${o.type} ${o.side} @${o.price}`).join(' • ')}</div>` : ''}
+                            <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
+                                <button onclick="closePosition('${pos.symbol}')" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Close</button>
+                                <button onclick="partialClose('${pos.symbol}')" style="background: #0d6efd; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Close %</button>
+                                <button onclick="moveTrailingSL('${pos.symbol}')" style="background: #4d1a1a; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Trail SL</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                header.textContent = `POSITIONS (${data.positions.length}) | Orders (${totalOrders})`;
+                container.innerHTML = html;
             } else {
-                alert(`❌ Error: ${data.message}`);
+                header.textContent = 'POSITIONS (0)';
+                container.innerHTML = '<div style="text-align: center; color: #888; padding-top: 60px;">No open positions<br><small>Connect Binance account</small></div>';
             }
-        }).catch(e => {
-            document.getElementById('execute_btn').disabled = false;
-            document.getElementById('execute_btn').textContent = '❌ Error';
-            console.error('Trade error:', e);
-            alert('❌ Trade execution failed: ' + e.message);
+        }).catch(() => {
+            document.getElementById('live_positions').innerHTML = '<div style="text-align: center; color: #ff4444; padding: 60px;">Connection Error</div>';
         });
     }
 
-    // Update live price
-    function updateLivePrice() {
-        const symbol = document.getElementById('symbol_select').value || 'BTCUSDT';
-        fetch(`/get_live_price/${symbol}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data.price && data.price > 0) {
-                    const entryInput = document.getElementById('entry_input');
-                    entryInput.value = data.price.toFixed(4);
-                    calculatePositionSizing();
-                }
-            }).catch(e => console.error('Price fetch error:', e));
-    }
-
-    // Update positions
-    function updateLivePositions() {
-        fetch('/get_open_positions').then(r => r.json()).then(data => {
-            const posDiv = document.getElementById('live_positions');
-            if (data.positions.length === 0) {
-                posDiv.innerHTML = '<div style="text-align: center; color: #888; padding: 30px 0;">No open positions</div>';
-                document.getElementById('position_header').textContent = '📍 POSITIONS (0)';
-                return;
-            }
-
-            document.getElementById('position_header').textContent = `📍 POSITIONS (${data.positions.length})`;
-            
-            let html = '';
-            data.positions.forEach(pos => {
-                const pnlColor = pos.pnl >= 0 ? '#00ff88' : '#ff4444';
-                const pnlSign = pos.pnl >= 0 ? '+' : '';
-                html += `
-                    <div style="border-bottom: 1px solid #333; padding: 8px 0; margin-bottom: 8px;">
-                        <div><b>${pos.symbol}</b> ${pos.side} ${pos.amount.toFixed(4)} @ $${pos.entry_price.toFixed(2)}</div>
-                        <div>Mark: $${pos.mark_price.toFixed(2)} | ${pos.leverage}x | <span style="color: ${pnlColor};">${pnlSign}$${pos.pnl.toFixed(2)} (${pnlSign}${pos.pnl_pct.toFixed(2)}%)</span></div>
-                        <div style="margin-top: 4px;">
-                            <button onclick="partialClose('${pos.symbol}')" style="background: #ff8800; color: white; border: none; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 10px; margin-right: 4px;">Close %</button>
-                            <button onclick="closePosition('${pos.symbol}')" style="background: #ff4444; color: white; border: none; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 10px;">Close All</button>
-                        </div>
-                    </div>
-                `;
-            });
-            posDiv.innerHTML = html;
-        }).catch(e => console.error('Positions error:', e));
-    }
-
-    // Update trade history
     function updateTradeHistory() {
-        fetch('/get_trade_history').then(r => r.json()).then(data => {
-            const histDiv = document.getElementById('trade_history');
-            if (data.trades.length === 0) {
-                histDiv.innerHTML = '<div style="text-align: center; color: #888; padding: 20px 0;">No trades yet</div>';
-                return;
+        fetch('/get_trade_history')
+        .then(r => r.json())
+        .then(data => {
+            const container = document.getElementById('trade_history');
+            if (data.trades && data.trades.length > 0) {
+                let html = '';
+                data.trades.slice(0, 10).forEach(trade => {
+                    const pnlColor = trade.realized_pnl >= 0 ? '#00ff88' : '#ff4444';
+                    html += `<div style="padding: 6px 0; border-bottom: 1px solid #333; font-size: 11px; line-height: 1.4;">
+                        <div><strong>${trade.time}</strong> | ${trade.side} ${trade.symbol}</div>
+                        <div>Price: $${trade.price.toFixed(4)} | Qty: ${trade.qty} | PnL: <span style="color: ${pnlColor};">${trade.realized_pnl.toFixed(3)}</span></div>
+                        <div style="color: #888; font-size: 10px;">Order: ${trade.order_id}</div>
+                    </div>`;
+                });
+                container.innerHTML = html;
             }
-
-            let html = '';
-            data.trades.slice(0, 10).forEach(trade => {
-                const pnlColor = trade.realized_pnl >= 0 ? '#00ff88' : '#ff4444';
-                html += `<div>${trade.time} | ${trade.symbol} ${trade.side} ${trade.qty.toFixed(4)} @ $${trade.price.toFixed(2)} | <span style="color: ${pnlColor};">${trade.realized_pnl.toFixed(2)}</span></div>`;
-            });
-            histDiv.innerHTML = html;
-        }).catch(e => console.error('Trade history error:', e));
+        });
     }
 
-    // Update trade log
     function updateLiveTradeLog() {
-        // Can be extended to fetch from /api/trade_events
-        const logDiv = document.getElementById('live_trade_log');
-        logDiv.innerHTML += '<div style="color: #00ff88;">Trade log events...</div>';
+        fetch('/api/trade_logs')
+        .then(r => r.json())
+        .then(data => {
+            const container = document.getElementById('live_trade_log');
+            if (data.events && data.events.length > 0) {
+                let html = '';
+                data.events.forEach(event => {
+                    const eventColor = event.type === 'TRADE_OPEN' || event.type === 'TRAIL_SL' ? '#00ff88' : 
+                                      event.type === 'TRADE_CLOSE' ? '#ff4444' : 
+                                      event.type === 'SL_UPDATE' ? '#ffaa00' : '#ffffff';
+                    const pnlColor = event.pnl >= 0 ? '#00ff88' : '#ff4444';
+                    html += `<div style="padding: 4px 0; border-bottom: 1px solid #333; font-size: 10px; color: ${eventColor};">
+                        <strong>${event.timestamp}</strong> | ${event.message}
+                        ${event.pnl !== undefined ? `<span style="color: ${pnlColor}; font-weight: bold;"> PnL: ${event.pnl.toFixed(2)}$</span>` : ''}
+                    </div>`;
+                });
+                container.innerHTML = html;
+                container.scrollTop = 0;
+            }
+        });
     }
 
     function clearTradeLog() {
-        fetch('/clear_trade_events', {method: 'POST'}).then(() => {
-            document.getElementById('live_trade_log').innerHTML = '<div style="text-align: center; color: #888;">Log cleared</div>';
+        fetch('/clear_trade_events', {method: 'POST'})
+        .then(() => {
+            document.getElementById('live_trade_log').innerHTML = '<div style="text-align: center; color: #888; padding-top: 60px;">Log cleared...</div>';
         });
     }
 
-    // Update daily limits
-    function updateTradeLimits() {
-        fetch('/api/today_stats').then(r => r.json()).then(data => {
-            document.getElementById('total_trades_display').textContent = `${data.total_trades}/${data.max_trades}`;
-            const selectedSymbol = document.getElementById('symbol_select').value || '';
-            const symbolCount = data.symbol_trades && data.symbol_trades[selectedSymbol] ? data.symbol_trades[selectedSymbol] : 0;
-            document.getElementById('symbol_trades_display').textContent = `${symbolCount}/${data.max_per_symbol}`;
+    function validateFormInputs() {
+        const warnings = [];
+        const symbol = document.querySelector('select[name="symbol"]').value;
+        const side = document.getElementById('side_hidden').value;
+        const orderType = document.getElementById('order_type_select').value;
+        const entry = parseFloat(document.getElementById('entry_input').value) || 0;
+        const slValue = parseFloat(document.querySelector('input[name="sl_value"]').value) || 0;
+        const tp1 = parseFloat(document.querySelector('input[name="tp1"]').value) || 0;
+        const tp2 = parseFloat(document.querySelector('input[name="tp2"]').value) || 0;
+        
+        // Validate SL
+        if (slValue <= 0) {
+            warnings.push('🛡️ Stop Loss is mandatory and must be greater than 0');
+        } else if (side === 'LONG' && slValue >= entry) {
+            warnings.push('🛡️ For LONG trades, SL must be below entry price');
+        } else if (side === 'SHORT' && slValue <= entry) {
+            warnings.push('🛡️ For SHORT trades, SL must be above entry price');
+        }
+        
+        // Validate entry for LIMIT orders
+        if (orderType === 'LIMIT' && entry <= 0) {
+            warnings.push('💰 LIMIT orders require a valid entry price');
+        }
+        
+        // Validate TP levels
+        if (tp1 > 0) {
+            if (side === 'LONG' && tp1 <= entry) {
+                warnings.push('🎯 TP1 must be above entry price for LONG trades');
+            } else if (side === 'SHORT' && tp1 >= entry) {
+                warnings.push('🎯 TP1 must be below entry price for SHORT trades');
+            }
+        }
+        
+        if (tp2 > 0) {
+            if (side === 'LONG' && tp2 <= entry) {
+                warnings.push('🎯 TP2 must be above entry price for LONG trades');
+            } else if (side === 'SHORT' && tp2 >= entry) {
+                warnings.push('🎯 TP2 must be below entry price for SHORT trades');
+            }
+        }
+        
+        // Check minimum order size
+        if (entry > 0) {
+            const minNotional = 5; // Binance minimum USDT
+            const minQty = Math.ceil((minNotional / Math.max(entry, 0.01)) * 10000) / 10000;
+            
+            // Get suggested quantity from hidden input (server-rendered)
+            const suggestedUnitsInput = document.getElementById('sizing_suggested_units');
+            const suggestedQty = suggestedUnitsInput ? parseFloat(suggestedUnitsInput.value) : 0;
+            
+            if (suggestedQty > 0 && suggestedQty < minQty) {
+                warnings.push(`📦 Order size (${suggestedQty.toFixed(6)}) below Binance minimum (${minQty.toFixed(6)} units or $${minNotional} USDT). Increase risk allocation or widen SL.`);
+            }
+        }
+        
+        // Show/hide warnings
+        const warningDiv = document.getElementById('validation-warnings');
+        const warningList = document.getElementById('warning-list');
+        
+        if (warnings.length > 0) {
+            warningList.innerHTML = warnings.map(w => `<div>• ${w}</div>`).join('');
+            warningDiv.style.display = 'block';
+        } else {
+            warningDiv.style.display = 'none';
+        }
+        
+        return warnings.length === 0;
+    }
+
+    function confirmTradeExecution() {
+        const symbol = document.querySelector('select[name="symbol"]').value;
+        const side = document.getElementById('side_hidden').value;
+        const entry = document.getElementById('entry_input').value;
+        const sl = document.querySelector('input[name="sl_value"]').value;
+        const tp1 = document.querySelector('input[name="tp1"]').value;
+        const tp2 = document.querySelector('input[name="tp2"]').value;
+        const qty = document.querySelector('input[name="user_units"]').value || 'Auto';
+        const lev = document.querySelector('input[name="user_lev"]').value || 'Auto';
+        
+        let message = `🔥 CONFIRM TRADE EXECUTION:\n\n`;
+        message += `📊 ${symbol} ${side}\n`;
+        message += `💰 Entry: $${parseFloat(entry).toFixed(4)}\n`;
+        message += `🛡️ SL: $${parseFloat(sl).toFixed(4)}\n`;
+        if (tp1 && tp1 > 0) message += `🎯 TP1: $${parseFloat(tp1).toFixed(4)}\n`;
+        if (tp2 && tp2 > 0) message += `🎯 TP2: $${parseFloat(tp2).toFixed(4)}\n`;
+        message += `📦 Qty: ${qty}\n`;
+        message += `⚡ Leverage: ${lev}x\n\n`;
+        message += `⚠️ This will execute a REAL order on Binance!\n`;
+        message += `Are you sure you want to proceed?`;
+        
+        return confirm(message);
+    }
+
+    function updateLivePrice() {
+        const symbol = document.querySelector('select[name="symbol"]').value || 'BTCUSDT';
+        const entryInput = document.getElementById('entry_input');
+        const indicator = document.getElementById('live-indicator');
+        const resetBtn = document.getElementById('reset-live-btn');
+        
+        fetch(`/get_live_price/${symbol}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.price && data.price > 0) {
+                const oldValue = parseFloat(entryInput.value) || 0;
+                entryInput.value = data.price;
+                
+                // Visual feedback
+                indicator.style.display = 'inline-block';
+                entryInput.style.background = '#1a1a2e';
+                entryInput.style.transition = 'background 0.3s';
+                
+                setTimeout(() => {
+                    indicator.style.display = 'none';
+                    entryInput.style.background = '';
+                }, 2000);
+                
+                console.log(`🔄 Live price updated: ${oldValue.toFixed(4)} → ${data.price.toFixed(4)}`);
+            }
+        }).catch(err => {
+            console.error('Live price fetch failed:', err);
+            resetBtn.textContent = '❌';
+            setTimeout(() => resetBtn.textContent = '🔄 Live', 1000);
         });
     }
+
 
     function closePosition(symbol) {
         if(confirm(`Close ${symbol}?`)) {
@@ -624,35 +545,129 @@
     }
 
     function partialClose(symbol) {
-        const percent = prompt(`Enter percent of ${symbol} to close (1-100):`, '50');
+        const percent = prompt(`Enter percent of ${symbol} position to close (10-100%)\n\nExample: 50 = close half the position\nExample: 25 = close quarter of the position`, '50');
         if (!percent) return;
         const closePercent = parseFloat(percent);
         if (isNaN(closePercent) || closePercent <= 0 || closePercent > 100) {
-            return alert('Invalid percentage!');
+            return alert('❌ Invalid percentage! Enter a value between 1 and 100');
         }
+
+        if (!confirm(`⚠️ CONFIRM PARTIAL CLOSE:\n\n📊 ${symbol}\n📦 Close: ${closePercent}% of position\n\nThis will reduce your position size!\nProceed?`)) {
+            return;
+        }
+
         fetch('/partial_close', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({symbol: symbol, close_percent: closePercent})
         }).then(r => r.json()).then(data => {
-            alert(data.message || 'Closed');
+            alert(data.message || 'Partial close requested');
             updateLivePositions();
             updateTradeHistory();
         });
     }
 
-    // Auto-refresh intervals
-    setInterval(updateLivePrice, 5000);
-    setInterval(updateLivePositions, 10000);
-    setInterval(updateTradeHistory, 30000);
-    setInterval(updateTradeLimits, 10000);
+    function moveTrailingSL(symbol) {
+        const currentSL = prompt(`Set NEW trailing SL move percent for ${symbol} (-1 to 0)\n\nCurrent: Move SL closer to price by X%\nExample: -0.3 = move SL 0.3% closer to current price\n\nEnter value (-1 to 0):`, '-0.3');
+        if (!currentSL) return;
+        const newPercent = parseFloat(currentSL);
+        if (isNaN(newPercent) || newPercent < -1 || newPercent > 0) {
+            return alert('❌ Invalid value! Trailing SL must be between -1 and 0 percent\n\nExample: -0.3 = move SL 0.3% closer to price');
+        }
+
+        if (!confirm(`⚠️ CONFIRM TRAILING SL UPDATE:\n\n📊 ${symbol}\n🎯 New trailing: ${newPercent}%\n\nThis will modify your stop loss!\nProceed?`)) {
+            return;
+        }
+
+        fetch('/update_sl', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({symbol: symbol, new_sl_percent: newPercent})
+        }).then(r => r.json()).then(data => {
+            alert(data.message || 'SL updated');
+            updateLivePositions();
+        });
+    }
+
+    function updateTradeLimits() {
+        fetch('/api/today_stats').then(r => r.json()).then(data => {
+            document.getElementById('total_trades_display').textContent = `${data.total_trades}/${data.max_trades}`;
+            const selectedSymbol = document.querySelector('select[name="symbol"]').value || '';
+            const symbolCount = data.symbol_trades && data.symbol_trades[selectedSymbol] ? data.symbol_trades[selectedSymbol] : 0;
+            const symbolDisplay = document.getElementById('symbol_trades_display');
+            if (symbolDisplay) {
+                symbolDisplay.textContent = `${symbolCount}/${data.max_per_symbol}`;
+            }
+        });
+    }
+
+    function updateRiskSizing() {
+        const slider = document.getElementById('risk_slider');
+        const pct = parseFloat(slider.value);
+        document.getElementById('risk_pct_display').textContent = pct.toFixed(1) + '%';
+        
+        // Recalc preview using server sizing logic approximation
+        const unutilizedEl = document.querySelector('#wallet-display input');
+        const unutilized = parseFloat(unutilizedEl ? unutilizedEl.value : 0) || 0;
+        const slValue = parseFloat(document.querySelector('input[name="sl_value"]').value) || 1;
+        const entry = parseFloat(document.getElementById('entry_input').value) || 60000;
+        
+        if (unutilized > 0 && slValue > 0 && entry > 0) {
+            const risk = unutilized * (pct / 100);
+            const sl_pct = Math.abs(slValue / entry) * 100;  // Approx SL%
+            const lev = Math.max(1, Math.floor(100 / (sl_pct + 0.2)));
+            const pos_value = (risk / (sl_pct / 100 + 0.002)) * 100;
+            const qty = pos_value / entry;
+            
+            document.getElementById('risk_amount').textContent = risk.toFixed(2);
+            document.getElementById('risk_qty').textContent = qty.toFixed(4);
+            document.getElementById('risk_lev').textContent = lev;
+            document.getElementById('risk-preview').style.display = 'block';
+        } else {
+            document.getElementById('risk-preview').style.display = 'none';
+        }
+    }
+    // Auto refresh intervals - OPTIMIZED for performance
+    setInterval(updateLivePrice, 5000);     // Price 5s (was 1s - too frequent for external API)
+    setInterval(updateLivePositions, 10000); // Positions 10s (was 3s - reduce Binance API calls)
+    setInterval(updateTradeHistory, 30000);  // History 30s (was 5s - trade history doesn't change often)
+    setInterval(updateTradeLimits, 10000);  // Limits 10s (unchanged - local data)
+    setInterval(updateLiveTradeLog, 2000);  // Live log 2s (unchanged - local data)
+    
+    // Initial live sync on page load
+    setTimeout(updateLivePrice, 100);
+
 
     // Initial load
-    setTimeout(updateLivePrice, 500);
+    updateLivePrice();
     updateLivePositions();
     updateTradeHistory();
     updateTradeLimits();
-    calculatePositionSizing();
+    updateLiveTradeLog();
+    
+    // Form validation
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add validation listeners to key inputs
+        const inputs = [
+            'entry_input',
+            'input[name="sl_value"]',
+            'input[name="tp1"]',
+            'input[name="tp2"]',
+            'select[name="symbol"]',
+            '#order_type_select'
+        ];
+        
+        inputs.forEach(selector => {
+            const element = document.querySelector(selector);
+            if (element) {
+                element.addEventListener('input', validateFormInputs);
+                element.addEventListener('change', validateFormInputs);
+            }
+        });
+        
+        // Initial validation
+        setTimeout(validateFormInputs, 500);
+    });
 </script>
 </body>
 </html>

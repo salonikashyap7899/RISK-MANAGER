@@ -13,7 +13,6 @@ import csv
 import io
 import uuid
 import razorpay
-from binance.exceptions import BinanceAPIException
 
 # Load environment variables
 load_dotenv()
@@ -501,31 +500,103 @@ def add_exchange():
         exchange_type = data.get('exchange_type')
         api_key = data.get('api_key', '').strip()
         api_secret = data.get('api_secret', '').strip()
-        connection_name = data.get('connection_name', f'{exchange_type.capitalize()} Account').strip()
+        connection_name = data.get('connection_name', '').strip()
         
-        if not exchange_type or not api_key or not api_secret:
-            return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+        if exchange_type not in config.SUPPORTED_EXCHANGES:
+            return jsonify({'success': False, 'error': 'Invalid exchange type'}), 400
         
-        # Create connection record
+        required_fields = config.SUPPORTED_EXCHANGES[exchange_type]['api_required']
+        if not api_key or not api_secret:
+            return jsonify({'success': False, 'error': f'Missing required fields: {", ".join(required_fields)}'}), 400
+        
+        existing = ExchangeConnection.query.filter_by(
+            user_id=current_user.id,
+            exchange_type=exchange_type,
+            is_connected=True
+        ).first()
+        
+        if existing:
+            return jsonify({'success': False, 'error': f'You already have a {exchange_type} connection. Please disconnect it first.'}), 400
+        
         connection = ExchangeConnection(
             user_id=current_user.id,
             exchange_type=exchange_type,
             api_key=api_key,
             api_secret=api_secret,
-            connection_name=connection_name or f'{exchange_type.capitalize()} Account'
+            connection_name=connection_name or f"My {exchange_type} Account",
+            is_connected=False
         )
         
         db.session.add(connection)
         db.session.commit()
         
-        # Verify connection if Binance
         if exchange_type == 'binance':
+            from binance.client import Client
+            from binance.exceptions import BinanceAPIException
+            
+            # Basic key validation (now optional - comment shows expected format)
+            # if not (api_key.startswith(('vmPU', 'uD')) and len(api_key) > 20):
+            #     db.session.delete(connection)
+            #     db.session.commit()
+            #     return jsonify({
+            #         'success': False, 
+            #         'error': 'Invalid API key format. Binance keys start with vmPU... or uD... (64+ chars)'
+            #     }), 400
+
             try:
-                from binance.client import Client
+                client = Client(api_key, api_secret, {'timeout': 20})
+                client.futures_account(recvWindow=60000)
+                connection.is_connected = True
+                connection.last_verified = datetime.utcnow()
+                db.session.commit()
                 
-                client = Client(api_key=api_key, api_secret=api_secret)
-                # Test connection
-                account = client.futures_account(recvWindow=5000)
+                logic.clear_user_client(current_user.id)
+                
+                return jsonify({'success': True, 'message': f'{exchange_type} connected successfully!'})
+            except BinanceAPIException as e:
+                error_info = config.BINANCE_ERROR_CODES.get(e.code)
+                db.session.delete(connection)
+                db.session.commit()
+                return jsonify({
+                    'success': False,
+                    'error_code': getattr(e, 'code', None),
+                    'title': error_info['title'] if error_info else f'Binance Error {e.code}',
+                    'message': error_info['message'] if error_info else str(e),
+                    'raw_error': str(e)
+                }), 400
+            except Exception as e:
+                db.session.delete(connection)
+                db.session.commit()
+                return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 400
+        
+        connection.is_connected = True
+        connection.last_verified = datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': f'{exchange_type} added successfully!'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+
+@app.route('/verify-exchange/<int:connection_id>', methods=['POST'])
+@login_required
+@subscription_required
+def verify_exchange(connection_id):
+    connection = ExchangeConnection.query.get_or_404(connection_id)
+    
+    if connection.user_id != current_user.id:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        if connection.exchange_type == 'binance':
+            from binance.client import Client
+            from binance.exceptions import BinanceAPIException
+            
+            try:
+                client = Client(connection.api_key, connection.api_secret, {'timeout': 20})
+                client.futures_account(recvWindow=60000)
                 
                 connection.is_connected = True
                 connection.last_verified = datetime.utcnow()
@@ -610,7 +681,7 @@ def live_price_api(symbol):
 @login_required
 @subscription_required
 def get_open_positions_api():
-    positions = logic.get_positions(current_user.id)
+    positions = logic.get_open_positions(current_user.id)
     return jsonify({"positions": positions})
 
 @app.route("/get_trade_history")
@@ -668,9 +739,10 @@ def partial_close_api():
     data = request.get_json()
     symbol = data.get('symbol')
     close_percent = data.get('close_percent')
+    close_qty = data.get('close_qty')
     if not symbol:
         return jsonify({"success": False, "message": "Symbol required"})
-    result = logic.close_partial_position(symbol, close_percent, current_user.id)
+    result = logic.partial_close_position(symbol, close_percent, close_qty, current_user.id)
     return jsonify(result)
 
 @app.route("/api/trail_sl", methods=["POST"])
@@ -722,149 +794,6 @@ def download_trades():
     output.seek(0)
     return Response(output.getvalue(), mimetype='text/csv', 
                    headers={'Content-Disposition': f'attachment; filename=trade_history_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'})
-
-# NEW TRADING ROUTES
-
-@app.route("/api/max_leverage/<symbol>")
-@login_required
-@subscription_required
-def get_max_leverage_api(symbol):
-    """Fetch max available leverage for a symbol from Binance"""
-    try:
-        max_lev = logic.get_max_leverage(symbol, current_user.id)
-        return jsonify({
-            'success': True,
-            'symbol': symbol,
-            'max_leverage': max_lev
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'max_leverage': 125
-        }), 400
-
-@app.route("/api/calculate_sizing", methods=["POST"])
-@login_required
-@subscription_required
-def calculate_sizing_api():
-    """Calculate position sizing based on 1% risk rule"""
-    try:
-        data = request.get_json()
-        
-        balance = float(data.get('balance', 0))
-        entry_price = float(data.get('entry_price', 0))
-        sl_type = data.get('sl_type', 'SL % Movement')
-        sl_value = float(data.get('sl_value', 0))
-        side = data.get('side', 'LONG')
-        symbol = data.get('symbol', 'BTCUSDT')
-        
-        # Calculate position sizing
-        sizing = logic.calculate_position_sizing(balance, entry_price, sl_type, sl_value, side)
-        
-        # Get max available leverage
-        max_lev = logic.get_max_leverage(symbol, current_user.id)
-        
-        # Validate leverage
-        valid_lev, lev_msg, effective_lev = logic.validate_leverage(sizing['calculated_lev'], max_lev)
-        
-        sizing['max_available_leverage'] = max_lev
-        sizing['effective_leverage'] = effective_lev
-        sizing['leverage_valid'] = valid_lev
-        sizing['leverage_message'] = lev_msg
-        
-        return jsonify({
-            'success': True,
-            'sizing': sizing,
-            'symbol': symbol
-        })
-        
-    except Exception as e:
-        print(f"Error calculating sizing: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
-
-@app.route("/api/place_trade", methods=["POST"])
-@login_required
-@subscription_required
-def place_trade_api():
-    """Place a trade with SL and TP"""
-    try:
-        data = request.get_json()
-        
-        symbol = data.get('symbol', 'BTCUSDT')
-        side = data.get('side', 'LONG')  # BUY or SELL
-        qty = float(data.get('quantity', 0))
-        entry_price = float(data.get('entry_price', 0))
-        sl_price = float(data.get('sl_price', 0))
-        tp1_price = float(data.get('tp1_price', 0))
-        tp1_qty_pct = float(data.get('tp1_qty_pct', 50))
-        tp2_price = float(data.get('tp2_price', 0))
-        leverage = float(data.get('leverage', 1))
-        order_type = data.get('order_type', 'MARKET')
-        
-        # Validate inputs
-        if qty <= 0:
-            return jsonify({
-                'success': False,
-                'message': 'Invalid quantity'
-            }), 400
-        
-        if sl_price <= 0:
-            return jsonify({
-                'success': False,
-                'message': 'SL price is required'
-            }), 400
-        
-        if leverage < 1 or leverage > 125:
-            return jsonify({
-                'success': False,
-                'message': f'Leverage must be between 1x and 125x'
-            }), 400
-        
-        # Validate daily limits
-        can_trade, limit_msg, remaining_total, remaining_symbol = logic.validate_daily_limits(current_user.id, symbol)
-        if not can_trade:
-            return jsonify({
-                'success': False,
-                'message': limit_msg
-            }), 400
-        
-        # Validate leverage against max available
-        max_lev = logic.get_max_leverage(symbol, current_user.id)
-        if leverage > max_lev:
-            return jsonify({
-                'success': False,
-                'message': f'Leverage {leverage}x exceeds max {max_lev}x for {symbol}'
-            }), 400
-        
-        # Place the trade
-        result = logic.place_order(
-            symbol=symbol,
-            side=side,
-            qty=qty,
-            entry_price=entry_price,
-            sl_price=sl_price,
-            tp1_price=tp1_price,
-            tp1_qty_pct=tp1_qty_pct,
-            tp2_price=tp2_price,
-            leverage=leverage,
-            order_type=order_type,
-            user_id=current_user.id
-        )
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        print(f"Error placing trade: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'message': f'Error: {str(e)}'
-        }), 400
 
 @app.route("/index", methods=["GET", "POST"])
 @login_required
