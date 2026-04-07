@@ -468,6 +468,7 @@
         const side = document.getElementById('side_hidden').value;
         const entry = document.getElementById('entry_input').value;
         const sl = document.querySelector('input[name="sl_value"]').value;
+        const slType = document.querySelector('select[name="sl_type"]').value;
         const tp1 = document.querySelector('input[name="tp1"]').value;
         const tp2 = document.querySelector('input[name="tp2"]').value;
         const qty = document.querySelector('input[name="user_units"]').value || 'Auto';
@@ -476,7 +477,14 @@
         let message = `🔥 CONFIRM TRADE EXECUTION:\n\n`;
         message += `📊 ${symbol} ${side}\n`;
         message += `💰 Entry: $${parseFloat(entry).toFixed(4)}\n`;
-        message += `🛡️ SL: $${parseFloat(sl).toFixed(4)}\n`;
+        
+        // Show SL with correct unit based on SL type
+        if (slType === "SL % Movement") {
+            message += `🛡️ SL: ${parseFloat(sl).toFixed(2)}% (${(parseFloat(entry) * (1 - parseFloat(sl)/100)).toFixed(4)} for LONG)\n`;
+        } else {
+            message += `🛡️ SL: $${parseFloat(sl).toFixed(4)}\n`;
+        }
+        
         if (tp1 && tp1 > 0) message += `🎯 TP1: $${parseFloat(tp1).toFixed(4)}\n`;
         if (tp2 && tp2 > 0) message += `🎯 TP2: $${parseFloat(tp2).toFixed(4)}\n`;
         message += `📦 Qty: ${qty}\n`;

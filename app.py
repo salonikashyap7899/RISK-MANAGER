@@ -858,7 +858,32 @@ def index():
     sizing = logic.calculate_position_sizing(unutilized, entry, sl_type, sl_val, side, user_id=current_user.id, symbol=selected_symbol)
     trade_status = session.pop("trade_status", None)
 
-    
+    # ✅ EXECUTE TRADE if place_order button was clicked
+    if "place_order" in request.form:
+        user_units = float(request.form.get("user_units") or 0) or sizing.get("suggested_units", 0)
+        user_lev = float(request.form.get("user_lev") or 0) or sizing.get("suggested_leverage", 1)
+        
+        result = logic.execute_trade_action(
+            balance=balance,
+            symbol=selected_symbol,
+            side=side,
+            entry=entry,
+            order_type=order_type,
+            sl_type=sl_type,
+            sl_value=sl_val,
+            sizing=sizing,
+            user_units=user_units,
+            user_lev=user_lev,
+            margin_mode=margin_mode,
+            tp1=tp1,
+            tp1_pct=tp1_pct,
+            tp2=tp2,
+            user_id=current_user.id
+        )
+        
+        session["trade_status"] = result
+        return redirect(url_for("index"))
+
     return render_template(
         "index.html",
         user=current_user,
