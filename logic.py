@@ -517,56 +517,52 @@ def round_price(symbol, price, user_id=None):
 # NEW: Fetch maximum leverage allowed by Binance for a specific symbol
 def get_max_leverage(symbol, user_id=None):
     """
-    Fetch the maximum leverage allowed by Binance for a specific symbol.
-    Logic: Cache -> Binance API (Live) -> Known Map -> Safe Default (20x)
+    Fetches max leverage: Cache -> Live Binance API -> Known Map -> Safe Default
     """
     global _leverage_cache, _leverage_cache_time
     now = time.time()
     cache_key = f"{symbol}_{user_id or 'public'}"
     
-    # TIER 1: Check cache (Valid for 5 minutes)
+    # 1. Check Cache (Return immediately if we already fetched it recently)
     if cache_key in _leverage_cache and (now - _leverage_cache_time.get(cache_key, 0)) < 300:
         return _leverage_cache[cache_key]
     
-    # Use a single try block to wrap all fetching logic
+    # 2. Fetch LIVE data from Binance (This is the dynamic fix you need)
     try:
-        # TIER 2: Live Binance API (Highest Priority)
         client = get_client(user_id)
         if client:
-            try:
-                # Fetches the actual exchange limits for this specific coin
-                brackets = client.futures_leverage_bracket(symbol=symbol)
-                if brackets and isinstance(brackets, list):
-                    max_lev = int(brackets[0]['brackets'][0]['initialLeverage'])
-                    
-                    _leverage_cache[cache_key] = max_lev
-                    _leverage_cache_time[cache_key] = now
-                    print(f"✅ {symbol} Live Max: {max_lev}x")
-                    return max_lev
-            except Exception as api_err:
-                print(f"⚠️ Binance API bracket call failed: {api_err}")
-
-        # TIER 3: Known Map Fallback (If API fails or no keys)
-        if symbol in KNOWN_LEVERAGE_MAP:
-            max_lev = KNOWN_LEVERAGE_MAP[symbol]
-            print(f"📋 {symbol} using Known Map: {max_lev}x")
-            return max_lev
-
-        # TIER 4: Smart Fallback for common coins
-        if symbol.endswith('USDT'):
-            major_coins = ['BTC', 'ETH', 'BNB', 'SOL']
-            if any(symbol.startswith(m) for m in major_coins):
-                return 125
-            
-        # TIER 5: Absolute Safe Default
-        # We use 20x because almost every coin allows it. 
-        # Using 125x here is what causes "leverage too high" errors.
-        print(f"❓ {symbol} unknown, using safe default 20x")
-        return 20
-
+            # We call the Bracket API to get the TRUE limit for this specific coin
+            brackets = client.futures_leverage_bracket(symbol=symbol)
+            if brackets and isinstance(brackets, list):
+                max_lev = int(brackets[0]['brackets'][0]['initialLeverage'])
+                
+                # Save to cache and return the real number (e.g., 20, 50, or 125)
+                _leverage_cache[cache_key] = max_lev
+                _leverage_cache_time[cache_key] = now
+                print(f"✅ {symbol} Live Max: {max_lev}x")
+                return max_lev
     except Exception as e:
-        print(f"❌ Critical error in get_max_leverage: {str(e)}")
-        return 20 # Final safe return
+        print(f"⚠️ Binance API failed for {symbol}: {e}")
+
+    # 3. Fallback to Known Map (If API fails or no keys connected)
+    if symbol in KNOWN_LEVERAGE_MAP:
+        max_lev = KNOWN_LEVERAGE_MAP[symbol]
+        print(f"📋 {symbol} using Known Map: {max_lev}x")
+        return max_lev
+
+    # 4. Smart Safety Fallback (Preventing the 125x error)
+    if symbol.endswith('USDT'):
+        # Only allow 125x for the biggest, safest coins
+        if any(symbol.startswith(m) for m in ['BTC', 'ETH', 'BNB']):
+            return 125
+        
+        # For ALL other altcoins, default to 20x. 
+        # This prevents the "Leverage too high" error you were getting.
+        print(f"⚠️ {symbol} unknown, defaulting to safe 20x")
+        return 20
+        
+    # 5. Absolute Final Fallback
+    return 20
 
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value, side="LONG", user_id=None, symbol=None):
     import config
