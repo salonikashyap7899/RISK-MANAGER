@@ -524,8 +524,8 @@ def get_max_leverage(symbol, user_id=None):
     Five-tier fallback system:
     1. Cache (if fresh)
     2. Known leverage map
-    3. Direct HTTP call to Binance exchangeInfo (most reliable)
-    4. Authenticated client
+    3. Authenticated client (YOUR CONNECTED ACCOUNT - HIGH PRIORITY)
+    4. Direct HTTP call to Binance exchangeInfo (public API)
     5. Default to 125x
     """
     global _leverage_cache, _leverage_cache_time
@@ -547,8 +547,24 @@ def get_max_leverage(symbol, user_id=None):
             _leverage_cache_time[cache_key] = now
             return max_lev
         
-        # TIER 3: Direct HTTP call to Binance API (most reliable for any coin)
-        print(f"🔍 Fetching {symbol} from Binance REST API...")
+        # TIER 3: Try authenticated client FIRST (YOUR CONNECTED BINANCE ACCOUNT)
+        try:
+            client = get_client(user_id)
+            if client:
+                info = client.futures_exchange_info()
+                for s in info.get('symbols', []):
+                    if s.get('symbol') == symbol:
+                        max_lev = int(float(s.get('maxLeverage', 125)))
+                        if 0 < max_lev <= 999:
+                            _leverage_cache[cache_key] = max_lev
+                            _leverage_cache_time[cache_key] = now
+                            print(f"✅ {symbol} from YOUR Binance account: {max_lev}x")
+                            return max_lev
+        except Exception as auth_err:
+            print(f"⚠️ Account not connected or error: {type(auth_err).__name__}")
+        
+        # TIER 4: Direct HTTP call to Binance API (public API fallback)
+        print(f"🔍 Fetching {symbol} from Binance public API...")
         try:
             # Use shorter timeout (2 seconds) to fail fast
             resp = requests.get(
@@ -565,28 +581,12 @@ def get_max_leverage(symbol, user_id=None):
                     if max_lev > 0 and max_lev <= 999:  # Sanity check
                         _leverage_cache[cache_key] = max_lev
                         _leverage_cache_time[cache_key] = now
-                        print(f"✅ {symbol} from REST API: {max_lev}x")
+                        print(f"✅ {symbol} from public API: {max_lev}x")
                         return max_lev
         except requests.Timeout:
             print(f"⚠️ API timeout (slow network), using known map or default")
         except Exception as rest_err:
             print(f"⚠️ REST API error: {type(rest_err).__name__}")
-        
-        # TIER 4: Try authenticated client
-        try:
-            client = get_client(user_id)
-            if client:
-                info = client.futures_exchange_info()
-                for s in info.get('symbols', []):
-                    if s.get('symbol') == symbol:
-                        max_lev = int(float(s.get('maxLeverage', 125)))
-                        if 0 < max_lev <= 999:
-                            _leverage_cache[cache_key] = max_lev
-                            _leverage_cache_time[cache_key] = now
-                            print(f"✅ {symbol} from auth client: {max_lev}x")
-                            return max_lev
-        except Exception as auth_err:
-            print(f"⚠️ Auth client error: {type(auth_err).__name__}")
         
         # TIER 5: Smart default fallback
         # Most altcoins have 75x, majors have 125x
