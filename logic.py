@@ -22,6 +22,21 @@ _trade_history_cache_time = {}
 _last_call_time = 0
 CACHE_DURATION = 5
 
+# Known leverage limits for common coins (updated based on Binance data)
+# These serve as fallback when API fails
+KNOWN_LEVERAGE_MAP = {
+    'BTCUSDT': 125,   # Bitcoin max 125x
+    'ETHUSDT': 75,    # Ethereum max 75x
+    'BNBUSDT': 75,    # BNB max 75x
+    'BANKUSDT': 20,   # Bank max 20x
+    'SOLSOL': 20,     # Solana perp max 20x
+    'XRPUSDT': 75,    # XRP max 75x
+    'ADAUSDT': 75,    # Cardano max 75x
+    'DOGEUSDT': 50,   # Doge max 50x
+    'LINKUSDT': 75,   # Chainlink max 75x
+    'LTCUSDT': 75,    # Litecoin max 75x
+}
+
 # User-specific client storage
 _user_clients = {}
 
@@ -498,8 +513,9 @@ _leverage_cache_time = {}
 def get_max_leverage(symbol, user_id=None):
     """
     Fetch the maximum leverage allowed by Binance for a specific symbol.
+    Tries authenticated client first, then falls back to public API.
     Caches results for 5 minutes to avoid API spam.
-    Returns exchange max (e.g., 20x for some alts) or 125 fallback.
+    Returns actual exchange max (e.g., 20x for BANKUSDT, 150x for BTCUSDT).
     """
     global _leverage_cache, _leverage_cache_time
     now = time.time()
@@ -507,32 +523,62 @@ def get_max_leverage(symbol, user_id=None):
     
     # Return cached if fresh (<5min)
     if cache_key in _leverage_cache and (now - _leverage_cache_time.get(cache_key, 0)) < 300:
-        return _leverage_cache[cache_key]
+        cached = _leverage_cache[cache_key]
+        print(f"📦 {symbol} leverage from cache: {cached}x")
+        return cached
     
     try:
+        # Try authenticated client first
         client = get_client(user_id)
-        if not client:
-            print("⚠️ No client for leverage fetch, using 125x fallback")
-            return 125
+        if client:
+            try:
+                info = client.futures_exchange_info()
+                for s in info.get('symbols', []):
+                    if (s.get('symbol') == symbol and 
+                        s.get('status') == 'TRADING' and 
+                        s.get('contractType') == 'PERPETUAL'):
+                        
+                        max_lev = int(float(s.get('maxLeverage', 125)))
+                        _leverage_cache[cache_key] = max_lev
+                        _leverage_cache_time[cache_key] = now
+                        print(f"✅ {symbol} from authenticated client: {max_lev}x")
+                        return max_lev
+            except Exception as auth_err:
+                print(f"⚠️ Auth client failed for {symbol}: {auth_err}, trying public API...")
         
-        info = client.futures_exchange_info()
-        for s in info.get('symbols', []):
-            if (s.get('symbol') == symbol and 
-                s.get('status') == 'TRADING' and 
-                s.get('contractType') == 'PERPETUAL'):
-                
-                max_lev = int(float(s.get('maxLeverage', 125)))
-                # Cache result
-                _leverage_cache[cache_key] = max_lev
-                _leverage_cache_time[cache_key] = now
-                print(f"✅ {symbol} Binance max leverage: {max_lev}x")
-                return max_lev
+        # Fallback to Public API (no auth required)
+        print(f"🔍 Fetching {symbol} from Binance public API...")
+        from binance.client import Client
+        public_client = Client()  # Create unauthenticated client
         
-        print(f"⚠️ {symbol} not found in exchange info, 125x fallback")
+        try:
+            info = public_client.futures_exchange_info()
+            for s in info.get('symbols', []):
+                if (s.get('symbol') == symbol and 
+                    s.get('status') == 'TRADING' and 
+                    s.get('contractType') == 'PERPETUAL'):
+                    
+                    max_lev = int(float(s.get('maxLeverage', 125)))
+                    _leverage_cache[cache_key] = max_lev
+                    _leverage_cache_time[cache_key] = now
+                    print(f"✅ {symbol} from public API: {max_lev}x")
+                    return max_lev
+        except Exception as pub_err:
+            print(f"⚠️ Public API failed for {symbol}: {pub_err}")
+        
+        # Last resort: Check known leverage map
+        if symbol in KNOWN_LEVERAGE_MAP:
+            max_lev = KNOWN_LEVERAGE_MAP[symbol]
+            print(f"✅ {symbol} from known mapping: {max_lev}x")
+            _leverage_cache[cache_key] = max_lev
+            _leverage_cache_time[cache_key] = now
+            return max_lev
+        
+        print(f"⚠️ {symbol} not found in exchange info, using fallback 125x")
         return 125
         
     except Exception as e:
-        print(f"❌ Leverage fetch error for {symbol}: {e}, using 125x")
+        print(f"❌ Leverage fetch error for {symbol}: {e}")
         return 125
 
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value, side="LONG", user_id=None, symbol=None):
