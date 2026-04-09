@@ -13,6 +13,7 @@ import csv
 import io
 import uuid
 import razorpay
+import time
 
 # Load environment variables
 load_dotenv()
@@ -777,11 +778,31 @@ def today_stats_api():
 @login_required
 @subscription_required
 def coin_details_api(symbol):
-    """Get complete coin details including live position data"""
+    """Get real-time coin details including live position data"""
     try:
-        # Get max leverage
+        # Get actual SL from form (passed as query params for real-time calculation)
+        sl_type = request.args.get('sl_type', 'SL % Movement')
+        sl_value = float(request.args.get('sl_value', 1.5))  # Default to 1.5% if not provided
+        side = request.args.get('side', 'LONG')
+        
+        # Get max leverage from Binance
         max_lev = logic.get_max_leverage(symbol, current_user.id)
-        suggested_lev = min(int(100.0 / (2.0 + 0.2)), max_lev, 125)
+        
+        # Calculate suggested leverage based on ACTUAL SL value from form
+        if sl_type == "SL % Movement":
+            sl_percent = sl_value
+        else:
+            # For SL Points, get current price
+            current_price = logic.get_live_price(symbol, current_user.id) or 0
+            if current_price > 0 and sl_value > 0:
+                sl_distance = abs(float(sl_value) - float(current_price))
+                sl_percent = (sl_distance / current_price) * 100.0
+            else:
+                sl_percent = 2.0  # Fallback
+        
+        # Risk-based leverage: 100 / (SL% + 0.2% buffer)
+        risk_based_lev = 100.0 / (sl_percent + 0.2)
+        suggested_lev = min(int(risk_based_lev), max_lev, 125)
         
         # Get live position data
         position = None
@@ -808,14 +829,17 @@ def coin_details_api(symbol):
             position = None
         
         # Get current price
-        current_price = logic.get_live_price(symbol, current_user.id)
+        if 'current_price' not in locals():
+            current_price = logic.get_live_price(symbol, current_user.id)
         
         response_data = {
             "success": True,
             "symbol": symbol,
             "max_leverage": max_lev,
             "suggested_leverage": suggested_lev,
+            "sl_percent": round(sl_percent, 3),
             "current_price": float(current_price) if current_price else 0,
+            "timestamp": int(time.time()),
             "position": position
         }
         

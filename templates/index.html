@@ -190,7 +190,10 @@
                 <div class="col">
                     <label>Lev Override</label>
                     <input type="number" name="user_lev" step="any">
-                    <small>Sug: {{sizing.suggested_leverage}}x</small>
+                    <small>Sug: {{sizing.suggested_leverage}}x | Max: {{sizing.exchange_max_leverage | default(125)}}x 
+                        <button type="button" onclick="showCoinDetails()" 
+                                style="background: none; border: none; color: #00d4ff; cursor: pointer; font-size: 12px;">ℹ️</button>
+                    </small>
                 </div>
             </div>
 
@@ -220,12 +223,14 @@
                         <span style="font-size: 0.85em;">
                             • <b>Risk Amount:</b> ${{ sizing.risk_amount | round(2) }} ({{ sizing.risk_amount / unutilized * 100 | round(1) }}% of ${{ unutilized | round(2) }} pool)<br>
                             • <b>SL Distance:</b> {{ sizing.sl_percent }}% ({{ sizing.sl_distance | round(4) }} points)<br>
-                            • <b>Safe Leverage:</b> {{ sizing.suggested_leverage }}x<br>
+                            • <b>Calculated Leverage:</b> <span style="color: #ffaa00;">{{ sizing.leverage_breakdown.risk_based }}x</span> (risk-based)<br>
+                            • <b>Binance Max:</b> <span style="color: #00ff88;">{{ sizing.exchange_max_leverage | default(125) }}x</span> (exchange limit)<br>
+                            • <b>Safe Leverage:</b> <span style="color: #00d4ff;">{{ sizing.suggested_leverage }}x</span> (final capped)<br>
                             • <b>Position Value:</b> ${{ sizing.suggested_position_value | round(2) }} ({{ sizing.suggested_units | round(6) }} units @ ${{ default_entry | round(4) }})<br>
                             {% if default_tp1_mode == 'TP1 % Movement' and default_tp1_value > 0 %}
                                 • <b>TP1:</b> ${{ tp1 | round(6) }} ({{ default_tp1_value }}% move)<br>
                             {% endif %}
-                            • <b>Formula:</b> Pos = (Risk / (SL% + 0.2% buffer)) × 100 | Lev = 100 / (SL% + 0.2)
+                            • <b>Formula:</b> Pos = (Risk / (SL% + 0.2% buffer)) × 100 | Lev = MIN(Risk-Based, ExchangeMax, 125x)
                         </span>
                     </div>
                 {% else %}
@@ -711,24 +716,36 @@
         form.submit();
     }
 
-    // ✅ SHOW COIN DETAILS IN MODAL (WITH LIVE DATA)
+    // ✅ SHOW COIN DETAILS IN MODAL (WITH REAL-TIME DATA)
     function showCoinDetails() {
         const symbol = document.querySelector('select[name="symbol"]').value;
+        const sl_type = document.querySelector('select[name="sl_type"]').value;
+        const sl_value = document.querySelector('input[name="sl_value"]').value || '1.5';
+        const side = document.querySelector('select[name="side"]').value;
         
-        fetch(`/api/coin-details/${symbol}`)
+        // Show loading state
+        const modal = document.getElementById('coin-details-modal');
+        document.getElementById('modal-symbol').textContent = '⏳ ' + symbol;
+        document.getElementById('modal-max-lev').textContent = '...';
+        document.getElementById('modal-sugg-lev').textContent = '...';
+        document.getElementById('modal-rec').innerHTML = '⏳ Fetching live data...';
+        document.getElementById('modal-position-details').innerHTML = '<div style="color: #888; font-size: 11px; padding: 8px; text-align: center;">⏳ Loading position data...</div>';
+        modal.style.display = 'flex';
+        
+        // Fetch with SL parameters for real-time calculation
+        fetch(`/api/coin-details/${symbol}?sl_type=${encodeURIComponent(sl_type)}&sl_value=${encodeURIComponent(sl_value)}&side=${encodeURIComponent(side)}`)
             .then(r => r.json())
             .then(data => {
                 try {
                     if (data && data.success) {
-                        const modal = document.getElementById('coin-details-modal');
                         const pos = data.position;
                         
-                        // Update basic info
+                        // Update basic info with REAL data
                         document.getElementById('modal-symbol').textContent = symbol;
                         document.getElementById('modal-max-lev').textContent = data.max_leverage || '125';
                         document.getElementById('modal-sugg-lev').textContent = data.suggested_leverage || '45';
                         
-                        // Show recommendations
+                        // Show recommendations based on max leverage
                         let recommendations = '';
                         const maxLev = data.max_leverage || 125;
                         if (maxLev <= 20) {
@@ -738,11 +755,14 @@
                         } else {
                             recommendations = '🟢 High leverage - Use 1-2% SL';
                         }
+                        if (data.sl_percent) {
+                            recommendations += ` | Current SL: ${data.sl_percent}%`;
+                        }
                         document.getElementById('modal-rec').innerHTML = recommendations;
                         
                         // Show position details if open
                         const posDetailsDiv = document.getElementById('modal-position-details');
-                        if (pos && typeof pos === 'object') {
+                        if (pos && typeof pos === 'object' && Object.keys(pos).length > 0) {
                             try {
                                 // Format data with defaults
                                 const size = parseFloat(pos.amount || pos.positionAmt || 0).toFixed(5);
@@ -758,7 +778,7 @@
                                 const roiColor = roi >= 0 ? '#00ff88' : '#ff4444';
                                 
                                 posDetailsDiv.innerHTML = `
-                                    <div style="background: #1a1a2e; padding: 8px; border-radius: 4px; margin-bottom: 8px; font-size: 11px;">
+                                    <div style="background: #1a1a2e; padding: 8px; border-radius: 4px; margin-bottom: 8px; font-size: 11px; border-left: 3px solid #ff9800;">
                                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                                             <div><span style="color: #aaa;">Size:</span> <strong style="color: #fff;">${size}</strong></div>
                                             <div><span style="color: #aaa;">Entry:</span> <strong style="color: #fff;">$${entryPrice}</strong></div>
@@ -778,25 +798,25 @@
                                     </div>
                                 `;
                             } catch (parseErr) {
-                                posDetailsDiv.innerHTML = '<div style="color: #aaa; font-size: 11px;">Position data format error</div>';
+                                posDetailsDiv.innerHTML = '<div style="color: #ff6b6b; font-size: 11px;">⚠️ Position data format error</div>';
                             }
                         } else {
-                            posDetailsDiv.innerHTML = '<div style="color: #888; font-size: 11px; padding: 8px; text-align: center;">No open position</div>';
+                            posDetailsDiv.innerHTML = '<div style="color: #888; font-size: 11px; padding: 8px; text-align: center;">✅ No open position for this symbol</div>';
                         }
                         posDetailsDiv.style.display = 'block';
-                        
-                        modal.style.display = 'flex';
+                        console.log('✅ Coin details fetched:', data);
                     } else {
-                        alert('Error: ' + (data.message || 'Unknown error'));
+                        document.getElementById('modal-rec').innerHTML = '❌ ' + (data.message || 'Error fetching data');
+                        console.error('API error:', data);
                     }
                 } catch (err) {
                     console.error('Data processing error:', err);
-                    alert('Error processing coin details: ' + err.message);
+                    document.getElementById('modal-rec').innerHTML = '❌ Processing error: ' + err.message;
                 }
             })
             .catch(err => {
                 console.error('Fetch error:', err);
-                alert('Failed to fetch coin details: ' + err.message);
+                document.getElementById('modal-rec').innerHTML = '❌ Network error: ' + err.message;
             });
     }
 
