@@ -517,59 +517,54 @@ def round_price(symbol, price, user_id=None):
 # NEW: Fetch maximum leverage allowed by Binance for a specific symbol
 def get_max_leverage(symbol, user_id=None):
     """
-    Fetch the maximum leverage allowed by Binance for a specific symbol.
-    Logic: Cache -> Binance API (Live) -> Known Map -> Safe Default (20x)
+    Fetch max leverage. Flow: Cache -> Binance API -> Known Map -> Smart Defaults
     """
     global _leverage_cache, _leverage_cache_time
     now = time.time()
     cache_key = f"{symbol}_{user_id or 'public'}"
     
-    # TIER 1: Check cache (Valid for 5 minutes)
+    # TIER 1: Check cache (5 min)
     if cache_key in _leverage_cache and (now - _leverage_cache_time.get(cache_key, 0)) < 300:
         return _leverage_cache[cache_key]
     
-    # Wrap entire logic in a try block to catch any unexpected errors
+    # Start a try block for the remaining tiers to catch any unexpected errors
     try:
-        # TIER 2: Live Binance API (The most accurate way)
+        # TIER 2: Live Binance API (Highest Accuracy)
         client = get_client(user_id)
         if client:
             try:
-                # This is the specific Binance endpoint for leverage limits
                 brackets = client.futures_leverage_bracket(symbol=symbol)
                 if brackets and isinstance(brackets, list):
-                    # The first bracket [0] contains the max leverage for Tier 1
                     max_lev = int(brackets[0]['brackets'][0]['initialLeverage'])
-                    
                     _leverage_cache[cache_key] = max_lev
                     _leverage_cache_time[cache_key] = now
                     print(f"✅ {symbol} Live Max: {max_lev}x")
                     return max_lev
             except Exception as api_err:
-                print(f"⚠️ Binance API bracket call failed for {symbol}: {api_err}")
+                print(f"⚠️ Binance API call failed for {symbol}: {api_err}")
 
-        # TIER 3: Known Map Fallback (If API is down or No Keys connected)
+        # TIER 3: Known Map Fallback
         if symbol in KNOWN_LEVERAGE_MAP:
             max_lev = KNOWN_LEVERAGE_MAP[symbol]
             print(f"📋 {symbol} using Known Map: {max_lev}x")
             return max_lev
 
-        # TIER 4: Smart default fallback for common patterns
+        # TIER 4: Smart Fallback (BTC/ETH/BNB usually 125x, others 75x or 20x)
         if symbol.endswith('USDT'):
             major_coins = ['BTC', 'ETH', 'BNB', 'SOL']
-            for major in major_coins:
-                if symbol.startswith(major):
-                    print(f"⚠️ {symbol} assumed 75x-125x (major coin default)")
-                    return 75 # Safer than 125
+            if any(symbol.startswith(m) for m in major_coins):
+                print(f"⚠️ {symbol} assumed 125x (major coin)")
+                return 125
             
-        # TIER 5: Absolute Safe Default
-        # Almost every coin on Binance allows at least 20x.
-        # Defaulting to 125x is what causes the "leverage too high" errors.
-        print(f"❓ {symbol} unknown, using safe default 20x")
-        return 20
+            # For unknown altcoins, 20x or 25x is the safest "guess"
+            print(f"⚠️ {symbol} unknown altcoin, defaulting to 20x")
+            return 20
 
     except Exception as e:
         print(f"❌ Critical error in get_max_leverage: {str(e)}")
-        return 20 # Safe fallback to prevent trade crashes
+    
+    # TIER 5: Absolute safe fallback if everything above fails
+    return 20
 
 def calculate_position_sizing(unutilized_margin, entry, sl_type, sl_value, side="LONG", user_id=None, symbol=None):
     import config
