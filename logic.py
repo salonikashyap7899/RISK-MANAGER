@@ -651,7 +651,19 @@ def get_open_positions(user_id=None):
                 notional = float(pos.get('notional', 0))
                 
                 initial_margin = abs(notional) / leverage if leverage > 0 else abs(notional)
+                # ROI percent (Binance-style, not multiplied)
                 roi_percent = (unrealized_pnl / initial_margin * 100) if initial_margin > 0 else 0
+
+                # Dashboard ROI and margin ratio should be multiplied by leverage for correct reporting
+                dashboard_roi_percent = roi_percent * leverage
+
+                # Margin ratio (Binance-style, not multiplied)
+                if mark_price > 0 and liquidation_price > 0:
+                    margin_ratio = ((mark_price - liquidation_price) / mark_price) * 100 if position_amt > 0 else ((liquidation_price - mark_price) / mark_price) * 100
+                else: 
+                    margin_ratio = 0
+
+                dashboard_margin_ratio = abs(margin_ratio) * leverage
                 
                 if mark_price > 0 and liquidation_price > 0:
                     margin_ratio = ((mark_price - liquidation_price) / mark_price) * 100 if position_amt > 0 else ((liquidation_price - mark_price) / mark_price) * 100
@@ -666,11 +678,13 @@ def get_open_positions(user_id=None):
                     'amount': abs(position_amt), 
                     'size_usdt': abs(notional), 
                     'margin_usdt': initial_margin,
-                    'margin_ratio': abs(margin_ratio), 
+                    'margin_ratio': abs(margin_ratio),  # Raw
+                    'dashboard_margin_ratio': dashboard_margin_ratio,  # Multiplied by leverage
                     'entry_price': entry_price, 
                     'mark_price': mark_price,
                     'unrealized_pnl': unrealized_pnl, 
-                    'roi_percent': roi_percent, 
+                    'roi_percent': roi_percent,  # Raw
+                    'dashboard_roi_percent': dashboard_roi_percent,  # Multiplied by leverage
                     'leverage': leverage,
                     'liquidation_price': liquidation_price, 
                     'open_orders': open_orders,
