@@ -322,22 +322,31 @@
                 let html = '';
                 data.positions.forEach(pos => {
                     const pnlColor = pos.unrealized_pnl >= 0 ? '#00ff88' : '#ff4d4d';
+                    const roiPercent = (pos.dashboard_roi_percent ?? pos.roi_percent).toFixed(1);
+                    const marginRatio = (pos.dashboard_margin_ratio ?? pos.margin_ratio).toFixed(2);
                     totalOrders += pos.open_orders ? pos.open_orders.length : 0;
                     html += `
                         <div style="border: 1px solid #333; padding: 12px; margin-bottom: 8px; border-radius: 6px; background: #111;">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                <span style="font-weight: bold; color: ${pos.side === 'LONG' ? '#00ff88' : '#ff4444'}">${pos.symbol}</span>
+                                <span style="font-weight: bold; color: ${pos.side === 'LONG' ? '#00ff88' : '#ff4444'}; cursor: pointer;" onclick="showCoinDetails()" title="Click to see exact details">${pos.symbol}</span>
                                 <small>${pos.leverage}x | Entry: $${pos.entry_price.toFixed(4)}</small>
                             </div>
                             <div>PnL: <span style="color: ${pnlColor};">$${pos.unrealized_pnl.toFixed(2)}</span></div>
-                            <div>ROI: <span style="color: ${pnlColor};">${(pos.dashboard_roi_percent ?? pos.roi_percent).toFixed(1)}%</span></div>
+                            <div style="cursor: pointer; user-select: none;" onclick="showCoinDetails()" title="Click to see calculation breakdown">
+                                ROI: <span style="color: ${pnlColor}; font-weight: bold; text-decoration: underline;">${roiPercent}%</span> 
+                                <span style="color: #888; font-size: 10px;">(click for details)</span>
+                            </div>
                             <div>Margin: $${pos.margin_usdt.toFixed(2)} | Size: $${pos.size_usdt.toFixed(2)}</div>
-                            <div>Margin Ratio: <span style="color: #ffaa00;">${(pos.dashboard_margin_ratio ?? pos.margin_ratio).toFixed(2)}%</span></div>
+                            <div style="cursor: pointer; user-select: none;" onclick="showCoinDetails()" title="Click to see calculation breakdown">
+                                Margin Ratio: <span style="color: #ffaa00; font-weight: bold; text-decoration: underline;">${marginRatio}%</span> 
+                                <span style="color: #888; font-size: 10px;">(click for details)</span>
+                            </div>
                             ${pos.open_orders && pos.open_orders.length > 0 ? `<div style="margin-top:8px; font-size: 11px; color:#aaa;"><strong>Open orders:</strong> ${pos.open_orders.map(o => `${o.type} ${o.side} @${o.price}`).join(' • ')}</div>` : ''}
                             <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
-                                <button onclick="closePosition('${pos.symbol}')" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Close</button>
-                                <button onclick="partialClose('${pos.symbol}')" style="background: #0d6efd; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Close %</button>
-                                <button onclick="moveTrailingSL('${pos.symbol}')" style="background: #4d1a1a; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Trail SL</button>
+                                <button onclick="closePosition('${pos.symbol}')" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;">Close</button>
+                                <button onclick="partialClose('${pos.symbol}')" style="background: #0d6efd; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;">Close %</button>
+                                <button onclick="moveTrailingSL('${pos.symbol}')" style="background: #4d1a1a; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;">Trail SL</button>
+                                <button onclick="showCoinDetails()" style="background: #17a2b8; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;">📊 Details</button>
                             </div>
                         </div>
                     `;
@@ -815,26 +824,78 @@
                                     const pnlColor = unrealizedPnL >= 0 ? '#00ff88' : '#ff4444';
                                     const roiColor = roi >= 0 ? '#00ff88' : '#ff4444';
                                     
-                                    posDetailsDiv.innerHTML = `
-                                        <div style="background: #1a1a2e; padding: 8px; border-radius: 4px; margin-bottom: 8px; font-size: 11px; border-left: 3px solid #ff9800;">
-                                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                                                <div><span style="color: #aaa;">Size:</span> <strong style="color: #fff;">${size}</strong></div>
-                                                <div><span style="color: #aaa;">Entry:</span> <strong style="color: #fff;">$${entryPrice}</strong></div>
-                                                <div><span style="color: #aaa;">Mark:</span> <strong style="color: #fff;">$${markPrice}</strong></div>
-                                                <div><span style="color: #aaa;">Liq:</span> <strong style="color: #fff;">$${liqPrice}</strong></div>
-                                                <div><span style="color: #aaa;">Margin:</span> <strong style="color: #fff;">$${margin}</strong></div>
-                                                <div><span style="color: #aaa;">M.Ratio:</span> <strong style="color: #fff;">${marginRatio}%</strong></div>
+                                    // ✅ BUILD CALCULATION BREAKDOWN HTML
+                                    let breakdownHTML = `
+                                        <div style="background: #1a1a2e; padding: 10px; border-radius: 4px; margin-bottom: 10px; font-size: 11px; border-left: 3px solid #ff9800;">
+                                            <strong style="color: #00d4ff; display: block; margin-bottom: 8px;">📊 EXACT COIN DETAILS</strong>
+                                            
+                                            <!-- Price Info -->
+                                            <div style="background: #0d1419; padding: 6px; border-radius: 3px; margin-bottom: 8px;">
+                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Entry Price:</strong> $${entryPrice}</p>
+                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Mark Price:</strong> $${markPrice}</p>
+                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Liquidation Price:</strong> $${liqPrice}</p>
                                             </div>
-                                            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #333;">
-                                                <div style="display: flex; justify-content: space-between;">
-                                                    <span style="color: #aaa;">PnL:</span> <strong style="color: ${pnlColor};">$${unrealizedPnL}</strong>
-                                                </div>
-                                                <div style="display: flex; justify-content: space-between;">
-                                                    <span style="color: #aaa;">ROI:</span> <strong style="color: ${roiColor};">${roi >= 0 ? '+' : ''}${roi}%</strong>
-                                                </div>
+                                            
+                                            <!-- Size & Margin -->
+                                            <div style="background: #0d1419; padding: 6px; border-radius: 3px; margin-bottom: 8px;">
+                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Position Size:</strong> ${size} units</p>
+                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Margin Used:</strong> $${margin}</p>
+                                            </div>
+                                            
+                                            <!-- ROI CALCULATION BREAKDOWN -->
+                                            <div style="background: #0d261a; padding: 8px; border-radius: 3px; margin-bottom: 8px; border: 1px solid #00ff88;">
+                                                <p style="margin: 0 0 6px 0; color: #00ff88; font-weight: bold;">📈 ROI BREAKDOWN</p>`;
+                                    
+                                    if (data.calculation_breakdown && data.calculation_breakdown.roi) {
+                                        const roi_calc = data.calculation_breakdown.roi;
+                                        breakdownHTML += `
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Base ROI:</strong> <span style="color: #00ff88;">${roi_calc.base_percent.toFixed(4)}%</span></p>
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Leverage:</strong> <span style="color: #ffaa00;">${roi_calc.leverage}x</span></p>
+                                                <p style="margin: 4px 0; padding: 6px; background: #0a1a0f; border-radius: 2px; color: #fff; font-weight: bold;">
+                                                    Calculation: ${roi_calc.base_percent.toFixed(4)}% × ${roi_calc.leverage}x = <span style="color: ${roiColor};">${roi_calc.calculated_percent.toFixed(2)}%</span>
+                                                </p>
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Actual ROI:</strong> <span style="color: ${roiColor};">${roi >= 0 ? '+' : ''}${roi}%</span></p>
+                                                <p style="margin: 4px 0; color: #888; font-size: 10px; font-style: italic;">Dashboard shows: ${roi}% (based on ${roi_calc.leverage}x leverage)</p>`;
+                                    } else {
+                                        breakdownHTML += `
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">ROI:</strong> <span style="color: ${roiColor};">${roi >= 0 ? '+' : ''}${roi}%</span></p>`;
+                                    }
+                                    
+                                    breakdownHTML += `
+                                            </div>
+                                            
+                                            <!-- MARGIN RATIO CALCULATION BREAKDOWN -->
+                                            <div style="background: #1a0d0d; padding: 8px; border-radius: 3px; margin-bottom: 8px; border: 1px solid #ff9800;">
+                                                <p style="margin: 0 0 6px 0; color: #ff9800; font-weight: bold;">⚠️ MARGIN RATIO BREAKDOWN</p>`;
+                                    
+                                    if (data.calculation_breakdown && data.calculation_breakdown.margin_ratio) {
+                                        const margin_calc = data.calculation_breakdown.margin_ratio;
+                                        breakdownHTML += `
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Base Margin Ratio:</strong> <span style="color: #ff9800;">${margin_calc.base_percent.toFixed(4)}%</span></p>
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Leverage:</strong> <span style="color: #ffaa00;">${margin_calc.leverage}x</span></p>
+                                                <p style="margin: 4px 0; padding: 6px; background: #260a0a; border-radius: 2px; color: #fff; font-weight: bold;">
+                                                    Calculation: ${margin_calc.base_percent.toFixed(4)}% × ${margin_calc.leverage}x = <span style="color: #ff9800;">${margin_calc.calculated_percent.toFixed(2)}%</span>
+                                                </p>
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Actual Margin Ratio:</strong> <span style="color: #ff9800;">${marginRatio}%</span></p>
+                                                <p style="margin: 4px 0; color: #888; font-size: 10px; font-style: italic;">Dashboard shows: ${marginRatio}% (based on ${margin_calc.leverage}x leverage)</p>`;
+                                    } else {
+                                        breakdownHTML += `
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Margin Ratio:</strong> <span style="color: #ff9800;">${marginRatio}%</span></p>`;
+                                    }
+                                    
+                                    breakdownHTML += `
+                                            </div>
+                                            
+                                            <!-- PnL Summary -->
+                                            <div style="background: #0d1419; padding: 6px; border-radius: 3px; border-top: 2px solid #333;">
+                                                <p style="margin: 4px 0; display: flex; justify-content: space-between;">
+                                                    <span style="color: #aaa;">Unrealized PnL:</span> <strong style="color: ${pnlColor};font-size:12px;">$${unrealizedPnL}</strong>
+                                                </p>
                                             </div>
                                         </div>
                                     `;
+                                    
+                                    posDetailsDiv.innerHTML = breakdownHTML;
                                 } catch (parseErr) {
                                     console.error('Position parsing error:', parseErr);
                                     posDetailsDiv.innerHTML = '<div style="color: #ff6b6b; font-size: 11px;">⚠️ Position data format error</div>';
@@ -877,39 +938,42 @@
     }
 </script>
 
-<!-- ✅ COIN DETAILS MODAL POPUP - COMPACT VERSION -->
+<!-- ✅ COIN DETAILS MODAL POPUP - EXPANDED VERSION WITH CALCULATION BREAKDOWN -->
 <div id="coin-details-modal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.7);" onclick="if(event.target.id === 'coin-details-modal') closeCoinModal()">
     <div style="display:flex; align-items:center; justify-content:center; width:100%; height:100%;">
-        <div style="background-color: #0d1117; padding: 20px; border: 2px solid #00d4ff; border-radius: 8px; width: 85%; max-width: 420px; color: #fff; max-height: 80vh; overflow-y: auto; box-shadow: 0 0 30px rgba(0, 212, 255, 0.3);" onclick="event.stopPropagation();">
+        <div style="background-color: #0d1117; padding: 20px; border: 2px solid #00d4ff; border-radius: 8px; width: 90%; max-width: 600px; color: #fff; max-height: 90vh; overflow-y: auto; box-shadow: 0 0 30px rgba(0, 212, 255, 0.3);" onclick="event.stopPropagation();">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #00d4ff; padding-bottom: 10px; margin-bottom: 15px;">
             <h3 style="color: #00d4ff; margin: 0; font-size: 16px;">ℹ️ <span id="modal-symbol" style="color: #00ff88;">BTCUSDT</span></h3>
             <span onclick="closeCoinModal()" style="color: #ff6b6b; font-size: 24px; font-weight: bold; cursor: pointer; line-height: 1;">&times;</span>
         </div>
         
-        <!-- MAX LEVERAGE INFO -->
-        <div style="background: #1a1a2e; padding: 10px; border-radius: 6px; margin-bottom: 10px; border-left: 3px solid #00ff88;">
-            <p style="margin: 0; font-size: 11px; color: #aaa;">Max Leverage</p>
-           <p style="margin: 4px 0; font-size: 22px; color: #00ff88; font-weight: bold;"><span id="modal-max-lev">-</span>x</p>
-        </div>
-        
-        <!-- SUGGESTED LEVERAGE -->
-        <div style="background: #1a1a2e; padding: 10px; border-radius: 6px; margin-bottom: 10px; border-left: 3px solid #ffaa00;">
-            <p style="margin: 0; font-size: 11px; color: #aaa;">Suggested Safe Lev</p>
-            <p style="margin: 4px 0; font-size: 20px; color: #ffaa00; font-weight: bold;"><span id="modal-sugg-lev">45</span>x</p>
+        <!-- LEVERAGE INFO ROW -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+            <!-- MAX LEVERAGE INFO -->
+            <div style="background: #1a1a2e; padding: 10px; border-radius: 6px; border-left: 3px solid #00ff88;">
+                <p style="margin: 0; font-size: 11px; color: #aaa;">Max Leverage</p>
+                <p style="margin: 4px 0; font-size: 22px; color: #00ff88; font-weight: bold;"><span id="modal-max-lev">-</span>x</p>
+            </div>
+            
+            <!-- SUGGESTED LEVERAGE -->
+            <div style="background: #1a1a2e; padding: 10px; border-radius: 6px; border-left: 3px solid #ffaa00;">
+                <p style="margin: 0; font-size: 11px; color: #aaa;">Suggested Safe Lev</p>
+                <p style="margin: 4px 0; font-size: 22px; color: #ffaa00; font-weight: bold;"><span id="modal-sugg-lev">45</span>x</p>
+            </div>
         </div>
         
         <!-- POSITION DETAILS (DYNAMIC) -->
-        <div id="modal-position-details" style="background: #1a1a2e; padding: 10px; border-radius: 6px; margin-bottom: 10px; border-left: 3px solid #17a2b8; display: none;">
+        <div id="modal-position-details" style="margin-bottom: 10px; display: none;">
             <!-- Filled dynamically by JS -->
         </div>
         
         <!-- RECOMMENDATION -->
         <div style="background: #0d2a3a; padding: 10px; border-radius: 6px; border-left: 3px solid #00d4ff; margin-bottom: 10px;">
-            <p style="margin: 0; font-size: 11px; color: #aaa;">📌 Tip:</p>
+            <p style="margin: 0; font-size: 11px; color: #aaa;">📌 Leverage Recommendations:</p>
             <p style="margin: 4px 0; font-size: 12px; color: #fff;" id="modal-rec">Loading...</p>
         </div>
         
-        <button onclick="closeCoinModal()" style="width: 100%; padding: 8px; background: #00d4ff; color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
+        <button onclick="closeCoinModal()" style="width: 100%; padding: 10px; background: #00d4ff; color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
             ✓ Close
         </button>
         </div>

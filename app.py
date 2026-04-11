@@ -778,7 +778,7 @@ def today_stats_api():
 @login_required
 @subscription_required
 def coin_details_api(symbol):
-    """Get real-time coin details including live position data"""
+    """Get real-time coin details including live position data with calculation breakdowns"""
     try:
         # Get actual SL from form (passed as query params for real-time calculation)
         sl_type = request.args.get('sl_type', 'SL % Movement')
@@ -806,6 +806,7 @@ def coin_details_api(symbol):
         
         # Get live position data
         position = None
+        calculation_breakdown = None
         try:
             positions_data = logic.get_open_positions(current_user.id)
             
@@ -824,6 +825,48 @@ def coin_details_api(symbol):
                     if isinstance(pos, dict) and pos.get("symbol") == symbol:
                         position = pos
                         break
+            
+            # ✅ CALCULATE BREAKDOWN if position exists
+            if position and isinstance(position, dict):
+                leverage = position.get('leverage', 1)
+                
+                # Extract base ROI (before leverage multiplication)
+                dashboard_roi = position.get('dashboard_roi_percent', 0)
+                roi = position.get('roi_percent', 0)
+                actual_roi = dashboard_roi if dashboard_roi else roi
+                
+                # Extract base margin ratio (before leverage multiplication)
+                dashboard_margin_ratio = position.get('dashboard_margin_ratio', 0)
+                margin_ratio = position.get('margin_ratio', 0)
+                actual_margin_ratio = dashboard_margin_ratio if dashboard_margin_ratio else margin_ratio
+                
+                # Base percentages (divide by leverage to get base)
+                base_roi = actual_roi / leverage if leverage > 0 else actual_roi
+                base_margin_ratio = actual_margin_ratio / leverage if leverage > 0 else actual_margin_ratio
+                
+                # Actual calculated values
+                calculated_roi = base_roi * leverage
+                calculated_margin_ratio = base_margin_ratio * leverage
+                
+                calculation_breakdown = {
+                    "roi": {
+                        "base_percent": round(base_roi, 4),
+                        "leverage": leverage,
+                        "calculated_percent": round(calculated_roi, 2),
+                        "formula": f"{base_roi:.4f}% × {leverage}x = {calculated_roi:.2f}%"
+                    },
+                    "margin_ratio": {
+                        "base_percent": round(base_margin_ratio, 4),
+                        "leverage": leverage,
+                        "calculated_percent": round(calculated_margin_ratio, 2),
+                        "formula": f"{base_margin_ratio:.4f}% × {leverage}x = {calculated_margin_ratio:.2f}%"
+                    },
+                    "liquidation_price": position.get('liquidation_price', position.get('liquidationPrice', 0)),
+                    "entry_price": position.get('entry_price', position.get('avgPrice', 0)),
+                    "mark_price": position.get('mark_price', position.get('markPrice', 0)),
+                    "size": position.get('amount', position.get('positionAmt', 0)),
+                    "margin": position.get('margin_usdt', position.get('notional', 0))
+                }
         except Exception as pos_err:
             print(f"Position fetch warning (non-blocking): {pos_err}")
             position = None
@@ -840,7 +883,8 @@ def coin_details_api(symbol):
             "sl_percent": round(sl_percent, 3),
             "current_price": float(current_price) if current_price else 0,
             "timestamp": int(time.time()),
-            "position": position
+            "position": position,
+            "calculation_breakdown": calculation_breakdown
         }
         
         return jsonify(response_data)
