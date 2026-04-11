@@ -91,18 +91,11 @@
             <div class="row">
                 <div class="col" style="flex: 1;">
                     <label>Symbol</label>
-                    <div style="position: relative;">
-                        <input type="text" id="symbol_search" placeholder="Search symbol (e.g., BTC, ETH, GOLD)..." 
-                               value="{{selected_symbol}}" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #1a1a2e; color: #fff; font-size: 14px;">
-                        <div id="symbol_dropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #0d1117; border: 1px solid #444; border-top: none; max-height: 200px; overflow-y: auto; z-index: 100; border-radius: 0 0 4px 4px;">
-                            <!-- Options will be populated by JavaScript -->
-                        </div>
-                    </div>
-                    <select name="symbol" id="symbol_select" style="display: none;">
-                        {% for sym in symbols %}
-                        <option value="{{sym}}" {{ 'selected' if sym == selected_symbol }}>{{sym}}</option>
-                        {% endfor %}
-                    </select>
+                    <select name="symbol" onchange="changeSymbol(this.value)" id="symbol_select">
+        {% for sym in symbols %}
+        <option value="{{sym}}" {{ 'selected' if sym == selected_symbol }}>{{sym}}</option>
+        {% endfor %}
+    </select>
                 </div>
                 <div style="display: flex; align-items: flex-end; margin-left: 10px;">
                     <button type="button" class="place" id="coin-info-btn" style="padding: 6px 12px; font-size: 12px; background: #17a2b8;" onclick="showCoinDetails()">ℹ️ Coin Details</button>
@@ -707,9 +700,6 @@
         
         // Initial validation
         setTimeout(validateFormInputs, 500);
-        
-        // ✅ Initialize symbol search
-        initSymbolSearch();
     });
 
     // ✅ PRESERVE FORM STATE when changing coins
@@ -725,65 +715,6 @@
         
         form.appendChild(input);
         form.submit();
-    }
-
-    // ✅ SYMBOL SEARCH FUNCTIONALITY
-    function initSymbolSearch() {
-        const searchInput = document.getElementById('symbol_search');
-        const dropdown = document.getElementById('symbol_dropdown');
-        const selectElement = document.getElementById('symbol_select');
-        
-        if (!searchInput || !dropdown || !selectElement) return;
-        
-        // Get all available symbols from select options
-        const allSymbols = Array.from(selectElement.options).map(opt => opt.value);
-        
-        // Show dropdown on focus
-        searchInput.addEventListener('focus', () => {
-            dropdown.style.display = 'block';
-            filterSymbols('');
-        });
-        
-        // Filter symbols on input
-        searchInput.addEventListener('input', (e) => {
-            filterSymbols(e.target.value);
-        });
-        
-        // Hide dropdown when clicking outside
-        document.addEventListener('click', (e) => {
-            if (e.target !== searchInput && e.target !== dropdown) {
-                dropdown.style.display = 'none';
-            }
-        });
-        
-        function filterSymbols(query) {
-            const lowerQuery = query.toLowerCase();
-            const filtered = allSymbols.filter(sym => sym.toLowerCase().includes(lowerQuery));
-            
-            dropdown.innerHTML = '';
-            
-            if (filtered.length === 0) {
-                dropdown.innerHTML = '<div style="padding: 8px; color: #888; text-align: center;">No symbols found</div>';
-                dropdown.style.display = 'block';
-                return;
-            }
-            
-            filtered.forEach(sym => {
-                const option = document.createElement('div');
-                option.style.cssText = 'padding: 8px 12px; cursor: pointer; color: #fff; border-bottom: 1px solid #333; transition: background 0.2s;';
-                option.textContent = sym;
-                option.onmouseover = () => option.style.background = '#1a1a2e';
-                option.onmouseout = () => option.style.background = '';
-                option.onclick = () => {
-                    searchInput.value = sym;
-                    dropdown.style.display = 'none';
-                    changeSymbol(sym);
-                };
-                dropdown.appendChild(option);
-            });
-            
-            dropdown.style.display = filtered.length > 0 ? 'block' : 'none';
-        }
     }
 
     // ✅ SHOW COIN DETAILS IN MODAL (WITH REAL-TIME DATA)
@@ -846,12 +777,11 @@
                     try {
                         if (data && data.success) {
                             const pos = data.position;
-                            const suggestedLev = data.suggested_leverage || 50;
                             
                             // Update basic info with REAL data
                             document.getElementById('modal-symbol').textContent = symbol;
                             document.getElementById('modal-max-lev').textContent = data.max_leverage || '125';
-                            document.getElementById('modal-sugg-lev').textContent = suggestedLev;
+                            document.getElementById('modal-sugg-lev').textContent = data.suggested_leverage || '45';
                             
                             // Show recommendations based on max leverage
                             let recommendations = '';
@@ -866,7 +796,8 @@
                             if (data.sl_percent) {
                                 recommendations += ` | Current SL: ${data.sl_percent}%`;
                             }
-                            document.getElementById('modal-rec').innerHTML = `Current SL: ${data.sl_percent || sl_value}% | Target: 0.6% base move`;                            
+                            document.getElementById('modal-rec').innerHTML = recommendations;
+                            
                             // Show position details if open
                             const posDetailsDiv = document.getElementById('modal-position-details');
                             if (pos && typeof pos === 'object' && Object.keys(pos).length > 0) {
@@ -875,31 +806,35 @@
                                     const size = parseFloat(pos.amount || pos.positionAmt || 0).toFixed(5);
                                     const entryPrice = parseFloat(pos.entry_price || pos.avgPrice || 0).toFixed(8);
                                     const markPrice = parseFloat(pos.mark_price || data.current_price || 0).toFixed(8);
-                                    const liqPrice = pos && pos.liquidation_price ? parseFloat(pos.liquidation_price).toLocaleString() : "---";                                    
+                                    const liqPrice = parseFloat(pos.liquidation_price || pos.liquidationPrice || 0).toFixed(8);
                                     const unrealizedPnL = parseFloat(pos.unrealized_pnl || pos.unrealizedProfit || 0).toFixed(2);
                                     const roi = parseFloat(pos.dashboard_roi_percent || pos.roi_percent || 0).toFixed(2);
                                     const margin = parseFloat(pos.margin_usdt || pos.notional || 0).toFixed(2);
                                     const marginRatio = parseFloat(pos.dashboard_margin_ratio || pos.margin_ratio || 0).toFixed(2);
-                                    const baseMove = 0.6; 
-                                    const mRatio = pos && pos.margin_ratio ? parseFloat(pos.margin_ratio).toFixed(2) : "0.00";
-                                    const actualRoi = (baseMove * suggestedLev).toFixed(2);
+                                    
                                     const pnlColor = unrealizedPnL >= 0 ? '#00ff88' : '#ff4444';
                                     const roiColor = roi >= 0 ? '#00ff88' : '#ff4444';
                                     
-                                   posDetailsDiv.innerHTML = `
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <span style="color: #aaa; font-size: 12px;">Liquidation Price</span>
-                            <span style="color: #ff4444; font-weight: bold; font-family: monospace; font-size: 14px;">$${liqPrice}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <span style="color: #aaa; font-size: 12px;">Margin Ratio</span>
-                            <span style="color: #ffaa00; font-weight: bold; font-family: monospace; font-size: 14px;">${mRatio}%</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="color: #aaa; font-size: 12px;">Est. ROI (0.6% move)</span>
-                            <span style="color: #00ff88; font-weight: bold; font-family: monospace; font-size: 14px;">+${actualRoi}%</span>
-                        </div>
-                    `;
+                                    posDetailsDiv.innerHTML = `
+                                        <div style="background: #1a1a2e; padding: 8px; border-radius: 4px; margin-bottom: 8px; font-size: 11px; border-left: 3px solid #ff9800;">
+                                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                                <div><span style="color: #aaa;">Size:</span> <strong style="color: #fff;">${size}</strong></div>
+                                                <div><span style="color: #aaa;">Entry:</span> <strong style="color: #fff;">$${entryPrice}</strong></div>
+                                                <div><span style="color: #aaa;">Mark:</span> <strong style="color: #fff;">$${markPrice}</strong></div>
+                                                <div><span style="color: #aaa;">Liq:</span> <strong style="color: #fff;">$${liqPrice}</strong></div>
+                                                <div><span style="color: #aaa;">Margin:</span> <strong style="color: #fff;">$${margin}</strong></div>
+                                                <div><span style="color: #aaa;">M.Ratio:</span> <strong style="color: #fff;">${marginRatio}%</strong></div>
+                                            </div>
+                                            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #333;">
+                                                <div style="display: flex; justify-content: space-between;">
+                                                    <span style="color: #aaa;">PnL:</span> <strong style="color: ${pnlColor};">$${unrealizedPnL}</strong>
+                                                </div>
+                                                <div style="display: flex; justify-content: space-between;">
+                                                    <span style="color: #aaa;">ROI:</span> <strong style="color: ${roiColor};">${roi >= 0 ? '+' : ''}${roi}%</strong>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `;
                                 } catch (parseErr) {
                                     console.error('Position parsing error:', parseErr);
                                     posDetailsDiv.innerHTML = '<div style="color: #ff6b6b; font-size: 11px;">⚠️ Position data format error</div>';
