@@ -352,29 +352,29 @@
                 <div id="warning-list"></div>
             </div>
 
-            <!-- POSITIONS + RECENT TRADES (Side by Side) -->
-            <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 5px; margin-top: 8px;">
+            <!-- POSITIONS + RECENT TRADES (Side by Side - Clean) -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; height: auto;">
                 <!-- LIVE POSITIONS (Left) -->
-                <div class="dashboard-card positions-card" style="padding: 7px; display: flex; flex-direction: column; min-height: 0; border: 1.5px solid #00d4ff; background: linear-gradient(135deg, rgba(0,212,255,0.03) 0%, rgba(0,100,120,0.05) 100%);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1.5px solid #00d4ff; padding-bottom: 4px;">
-                        <h3 style="color: #00d4ff; margin: 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;" id="position_header">📍 POSITIONS (0)</h3>
-                        <button onclick="closeAllPositions()" style="background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%); color: #fff; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 8px; font-weight: bold; transition: all 0.2s; box-shadow: 0 2px 6px rgba(255,68,68,0.3);">Close All</button>
+                <div class="dashboard-card positions-card" style="padding: 6px; display: flex; flex-direction: column; min-height: 0; border: 1px solid #00d4ff; background: #0e1419;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; border-bottom: 1px solid #00d4ff; padding-bottom: 2px;">
+                        <h3 style="color: #00d4ff; margin: 0; font-size: 10px; font-weight: bold;" id="position_header">📍 POSITIONS (0)</h3>
+                        <button onclick="closeAllPositions()" style="background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%); color: #fff; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 7px; font-weight: bold; transition: all 0.2s;">Close All</button>
                     </div>
 
-                    <div id="live_positions" class="positions-scroll" style="max-height: 125px; overflow-y: auto; flex: 1; min-height: 0; font-size: 9px; padding-right: 3px;">
-                        <div style="text-align: center; color: #888; padding: 25px 8px; font-size: 9px;">No open positions yet</div>
+                    <div id="live_positions" class="positions-scroll" style="max-height: 140px; overflow-y: auto; flex: 1; min-height: 0; font-size: 8px; padding-right: 2px;">
+                        <div style="text-align: center; color: #666; padding: 20px 4px; font-size: 8px;">No open positions yet</div>
                     </div>
                 </div>
 
                 <!-- RECENT TRADES (Right) -->
-                <div class="dashboard-card recent-trades-card" style="padding: 7px; display: flex; flex-direction: column; min-height: 0; border: 1.5px solid #00d4ff; background: linear-gradient(135deg, rgba(0,212,255,0.03) 0%, rgba(0,100,120,0.05) 100%);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1.5px solid #00d4ff; padding-bottom: 4px;">
-                        <h3 style="color: #00d4ff; margin: 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">📊 RECENT TRADES</h3>
-                        <a href="/download_trades" style="color: #0d6efd; text-decoration: none; font-weight: bold; font-size: 9px; transition: all 0.2s; padding: 2px 4px; border-radius: 3px;">📥 CSV</a>
+                <div class="dashboard-card recent-trades-card" style="padding: 6px; display: flex; flex-direction: column; min-height: 0; border: 1px solid #00d4ff; background: #0e1419;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; border-bottom: 1px solid #00d4ff; padding-bottom: 2px;">
+                        <h3 style="color: #00d4ff; margin: 0; font-size: 10px; font-weight: bold;">📊 TRADES</h3>
+                        <a href="/download_trades" style="color: #0d6efd; text-decoration: none; font-weight: bold; font-size: 7px; transition: all 0.2s;">📥 CSV</a>
                     </div>
 
-                    <div id="trade_history" class="trade-history-box" style="max-height: 125px; overflow-y: auto; flex: 1; min-height: 0; background: #000; border: 1px solid #1a3a45; border-radius: 4px; padding: 5px; font-family: 'Courier New', monospace; font-size: 8px; line-height: 1.5;">
-                        <div style="text-align: center; color: #888; padding: 25px 0; font-size: 9px;">Loading trades...</div>
+                    <div id="trade_history" class="trade-history-box" style="max-height: 140px; overflow-y: auto; flex: 1; min-height: 0; background: #000; border: 1px solid #1a3a45; border-radius: 3px; padding: 3px; font-family: 'Courier New', monospace; font-size: 7px; line-height: 1.4;">
+                        <div style="text-align: center; color: #666; padding: 20px 0; font-size: 8px;">Loading trades...</div>
                     </div>
                 </div>
             </div>
