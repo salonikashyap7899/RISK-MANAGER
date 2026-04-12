@@ -47,8 +47,8 @@
             min-width: 0;
         }
         .coin-analysis-card {
-            padding: 12px;
-            overflow-y: auto;
+            padding: 10px;
+            overflow: hidden;
         }
         .recent-trades-card {
             padding: 12px;
@@ -353,12 +353,12 @@
             <!-- COIN ANALYSIS PANEL - LEFT -->
             <div class="dashboard-card coin-analysis-card">
                 <!-- Header -->
-                <div style="border-bottom: 2px solid #00d4ff; padding-bottom: 10px; margin-bottom: 15px;">
+                <div style="border-bottom: 2px solid #00d4ff; padding-bottom: 8px; margin-bottom: 10px;">
                     <h3 style="color: #00d4ff; margin: 0; font-size: 13px; font-weight: bold;">📊 COIN ANALYSIS - <span id="embed-modal-symbol" style="color: #00ff88;">BTCUSDT</span></h3>
                 </div>
                 
                 <!-- ROW 1: PNL and ROI -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;">
                     <div style="background: rgba(0, 212, 255, 0.05); padding: 8px; border-radius: 6px; border-left: 3px solid #00d4ff;">
                         <p style="margin: 0; font-size: 9px; color: #888; text-transform: uppercase;">PNL (USDT)</p>
                         <p style="margin: 4px 0 0 0; font-size: 14px; color: #00ff88; font-weight: bold;" id="embed-pnl">0.00</p>
@@ -370,7 +370,7 @@
                 </div>
                 
                 <!-- ROW 2: SIZE and MARGIN -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;">
                     <div style="background: rgba(255, 170, 0, 0.05); padding: 8px; border-radius: 6px; border-left: 3px solid #ffaa00;">
                         <p style="margin: 0; font-size: 9px; color: #888; text-transform: uppercase;">Size (USDT)</p>
                         <p style="margin: 4px 0 0 0; font-size: 13px; color: #ffaa00; font-weight: bold;" id="embed-size">0.00</p>
@@ -382,7 +382,7 @@
                 </div>
                 
                 <!-- ROW 3: MARGIN RATIO -->
-                <div style="display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 10px;">
+                <div style="display: grid; grid-template-columns: 1fr; gap: 6px; margin-bottom: 8px;">
                     <div style="background: rgba(255, 100, 100, 0.05); padding: 8px; border-radius: 6px; border-left: 3px solid #ff6464;">
                         <p style="margin: 0; font-size: 9px; color: #888; text-transform: uppercase;">Margin Ratio</p>
                         <p style="margin: 4px 0 0 0; font-size: 13px; color: #ff6464; font-weight: bold;" id="embed-margin-ratio">0.00%</p>
@@ -390,7 +390,7 @@
                 </div>
                 
                 <!-- ROW 4: PRICES -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 10px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; margin-bottom: 8px;">
                     <div style="background: rgba(0, 212, 255, 0.05); padding: 6px; border-radius: 6px; text-align: center;">
                         <p style="margin: 0; font-size: 8px; color: #888; text-transform: uppercase;">Entry</p>
                         <p style="margin: 3px 0 0 0; font-size: 11px; color: #00d4ff; font-weight: bold; word-break: break-all;" id="embed-entry">-</p>
@@ -406,10 +406,10 @@
                 </div>
                 
                 <!-- ACTION BUTTONS -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;">
-                    <button onclick="editLeverageMod()" style="padding: 8px 4px; background: linear-gradient(135deg, #ffaa00 0%, #ff8800 100%); color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 10px; transition: all 0.2s;">⚙️ Leverage</button>
-                    <button onclick="editTPSLMod()" style="padding: 8px 4px; background: linear-gradient(135deg, #00d4ff 0%, #00aadd 100%); color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 10px; transition: all 0.2s;">🎯 TP/SL</button>
-                    <button onclick="closePosModal()" style="padding: 8px 4px; background: linear-gradient(135deg, #ff6b6b 0%, #ff4444 100%); color: #fff; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 10px; transition: all 0.2s;">❌ Close</button>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px;">
+                    <button onclick="editLeverageMod()" style="padding: 7px 4px; background: linear-gradient(135deg, #ffaa00 0%, #ff8800 100%); color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 9px; transition: all 0.2s;">⚙️ Leverage</button>
+                    <button onclick="editTPSLMod()" style="padding: 7px 4px; background: linear-gradient(135deg, #00d4ff 0%, #00aadd 100%); color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 9px; transition: all 0.2s;">🎯 TP/SL</button>
+                    <button onclick="closePosModal()" style="padding: 7px 4px; background: linear-gradient(135deg, #ff6b6b 0%, #ff4444 100%); color: #fff; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 9px; transition: all 0.2s;">❌ Close</button>
                 </div>
             </div>
             
