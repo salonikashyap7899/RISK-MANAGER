@@ -295,6 +295,46 @@
             </div>
         </div>
 
+        <!-- COIN DETAILS (EMBEDDED - No Modal) -->
+        <div style="margin-top: 10px; background-color: #0d1117; padding: 15px; border: 2px solid #00d4ff; border-radius: 8px; color: #fff; box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #00d4ff; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="color: #00d4ff; margin: 0; font-size: 16px;">ℹ️ <span id="embed-modal-symbol" style="color: #00ff88;">BTCUSDT</span></h3>
+            </div>
+            
+            <!-- LEVERAGE INFO ROW -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                <!-- MAX LEVERAGE INFO -->
+                <div style="background: #1a1a2e; padding: 10px; border-radius: 6px; border-left: 3px solid #00ff88;">
+                    <p style="margin: 0; font-size: 11px; color: #aaa;">Max Leverage</p>
+                    <p style="margin: 4px 0; font-size: 22px; color: #00ff88; font-weight: bold;"><span id="embed-modal-max-lev">-</span>x</p>
+                </div>
+                
+                <!-- SUGGESTED LEVERAGE -->
+                <div style="background: #1a1a2e; padding: 10px; border-radius: 6px; border-left: 3px solid #ffaa00;">
+                    <p style="margin: 0; font-size: 11px; color: #aaa;">Suggested Safe Lev</p>
+                    <p style="margin: 4px 0; font-size: 22px; color: #ffaa00; font-weight: bold;"><span id="embed-modal-sugg-lev">45</span>x</p>
+                </div>
+            </div>
+            
+            <!-- POSITION DETAILS (DYNAMIC) -->
+            <div id="embed-modal-position-details" style="margin-bottom: 10px; display: none;">
+                <!-- Filled dynamically by JS -->
+            </div>
+            
+            <!-- RECOMMENDATION -->
+            <div style="background: #0d2a3a; padding: 10px; border-radius: 6px; border-left: 3px solid #00d4ff; margin-bottom: 10px;">
+                <p style="margin: 0; font-size: 11px; color: #aaa;">📌 Leverage Recommendations:</p>
+                <p style="margin: 4px 0; font-size: 12px; color: #fff;" id="embed-modal-rec">Loading...</p>
+            </div>
+            
+            <!-- ACTION BUTTONS -->
+            <div id="embed-modal-action-buttons" style="display: grid; gap: 8px; grid-template-columns: 1fr 1fr 1fr;">
+                <button onclick="editLeverageMod()" style="padding: 8px; background: #ffaa00; color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.2s; white-space: nowrap;">⚙️ Leverage</button>
+                <button onclick="editTPSLMod()" style="padding: 8px; background: #00d4ff; color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.2s; white-space: nowrap;">🎯 TP/SL</button>
+                <button onclick="closePosModal()" style="padding: 8px; background: #ff6b6b; color: #fff; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.2s; white-space: nowrap;">❌ Close</button>
+            </div>
+        </div>
+
         <!-- LIVE TRADE LOG REMOVED -->
     </div>
 </div>
@@ -302,6 +342,101 @@
 <script>
     // Store positions data for real-time updates
     let currentPositions = {};
+    
+    // Auto-populate embedded coin details with selected symbol
+    function updateEmbeddedCoinDetails() {
+        const symbolElem = document.querySelector('select[name="symbol"]');
+        const symbol = symbolElem ? symbolElem.value : 'BTCUSDT';
+        const sl_typeElem = document.querySelector('select[name="sl_type"]');
+        const sl_type = sl_typeElem ? sl_typeElem.value : 'SL % Movement';
+        const sl_valueElem = document.querySelector('input[name="sl_value"]');
+        const sl_value = (sl_valueElem && sl_valueElem.value) ? sl_valueElem.value : '1.5';
+        const sideElem = document.querySelector('select[name="side"]');
+        const side = sideElem ? sideElem.value : 'LONG';
+        
+        if (!symbol) return;
+        
+        document.getElementById('embed-modal-symbol').textContent = symbol;
+        document.getElementById('embed-modal-max-lev').textContent = '...';
+        document.getElementById('embed-modal-sugg-lev').textContent = '...';
+        document.getElementById('embed-modal-rec').innerHTML = '⏳ Fetching...';
+        document.getElementById('embed-modal-position-details').innerHTML = '<div style="color: #888; font-size: 11px; padding: 8px; text-align: center;">⏳ Loading...</div>';
+        
+        const fetchUrl = `/api/coin-details/${symbol}?sl_type=${encodeURIComponent(sl_type)}&sl_value=${encodeURIComponent(sl_value)}&side=${encodeURIComponent(side)}`;
+        
+        fetch(fetchUrl)
+            .then(r => r.json())
+            .then(data => {
+                if (data && data.success) {
+                    const pos = data.position;
+                    document.getElementById('embed-modal-max-lev').textContent = data.max_leverage || '125';
+                    document.getElementById('embed-modal-sugg-lev').textContent = data.suggested_leverage || '45';
+                    
+                    let recommendations = '';
+                    const maxLev = data.max_leverage || 125;
+                    if (maxLev <= 20) {
+                        recommendations = '🔴 Low leverage - Use 5-10% SL';
+                    } else if (maxLev <= 50) {
+                        recommendations = '🟡 Medium leverage - Use 2-5% SL';
+                    } else {
+                        recommendations = '🟢 High leverage - Use 1-2% SL';
+                    }
+                    if (data.sl_percent) {
+                        recommendations += ` | Current SL: ${data.sl_percent}%`;
+                    }
+                    document.getElementById('embed-modal-rec').innerHTML = recommendations;
+                    
+                    const posDetailsDiv = document.getElementById('embed-modal-position-details');
+                    if (pos && typeof pos === 'object' && Object.keys(pos).length > 0) {
+                        try {
+                            const size = parseFloat(pos.amount || pos.positionAmt || 0).toFixed(5);
+                            const entryPrice = parseFloat(pos.entry_price || pos.avgPrice || 0).toFixed(8);
+                            const markPrice = parseFloat(pos.mark_price || data.current_price || 0).toFixed(8);
+                            const liqPrice = parseFloat(pos.liquidation_price || pos.liquidationPrice || 0).toFixed(8);
+                            const unrealizedPnL = parseFloat(pos.unrealized_pnl || pos.unrealizedProfit || 0).toFixed(2);
+                            const roi = parseFloat(pos.dashboard_roi_percent || pos.roi_percent || 0).toFixed(2);
+                            const margin = parseFloat(pos.margin_usdt || pos.notional || 0).toFixed(2);
+                            const marginRatio = parseFloat(pos.dashboard_margin_ratio || pos.margin_ratio || 0).toFixed(2);
+                            
+                            const pnlColor = unrealizedPnL >= 0 ? '#00ff88' : '#ff4444';
+                            const roiColor = roi >= 0 ? '#00ff88' : '#ff4444';
+                            
+                            let breakdownHTML = `
+                                <div style="background: #0d1419; padding: 8px; border-radius: 3px; margin-bottom: 8px; font-size: 11px;">
+                                    <p style="margin: 3px 0;"><strong style="color: #00d4ff;">Entry:</strong> $${entryPrice}</p>
+                                    <p style="margin: 3px 0;"><strong style="color: #00d4ff;">Mark:</strong> $${markPrice}</p>
+                                    <p style="margin: 3px 0;"><strong style="color: #ff4444;">Liq:</strong> $${liqPrice}</p>
+                                    <p style="margin: 3px 0;"><strong>Size:</strong> ${size} units | <strong>Margin:</strong> $${margin}</p>
+                                    <p style="margin: 3px 0;"><strong style="color: ${pnlColor};">PnL:</strong> $${unrealizedPnL} | <strong style="color: ${roiColor};">ROI:</strong> ${roi}%</p>
+                                    <p style="margin: 3px 0;"><strong style="color: #ff9800;">Margin Ratio:</strong> ${marginRatio}%</p>
+                                </div>
+                            `;
+                            posDetailsDiv.innerHTML = breakdownHTML;
+                        } catch (err) {
+                            posDetailsDiv.innerHTML = '<div style="color: #ff6b6b; font-size: 11px;">⚠️ Error loading data</div>';
+                        }
+                    } else {
+                        posDetailsDiv.innerHTML = '<div style="color: #888; font-size: 11px; padding: 8px; text-align: center;">✅ No open position for this symbol</div>';
+                    }
+                    posDetailsDiv.style.display = 'block';
+                } else {
+                    document.getElementById('embed-modal-rec').innerHTML = '❌ Error fetching data';
+                }
+            })
+            .catch(err => {
+                document.getElementById('embed-modal-rec').innerHTML = '❌ Network error';
+            });
+    }
+    
+    // Update embedded coin details when symbol changes
+    document.addEventListener('DOMContentLoaded', () => {
+        const symbolSelect = document.querySelector('select[name="symbol"]');
+        if (symbolSelect) {
+            symbolSelect.addEventListener('change', updateEmbeddedCoinDetails);
+        }
+        updateEmbeddedCoinDetails();
+        setInterval(updateEmbeddedCoinDetails, 5000); // Refresh every 5 seconds
+    });
     
     // Live Updates - Enhanced with real-time liquidation prices
     function updateLivePositions() {
