@@ -10,14 +10,21 @@
         }
         .live-badge { animation: pulse 2s infinite; }
         .dashboard-right {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            grid-template-areas:
+                "chart chart"
+                "coin coin"
+                "positions trades";
+            grid-template-rows: auto auto minmax(0, 1fr);
             gap: 12px;
             min-height: 0;
             overflow: hidden;
         }
         .dashboard-chart {
+            grid-area: chart;
             width: 100%;
             height: clamp(220px, 28vh, 280px);
-            flex: 0 0 clamp(220px, 28vh, 280px);
         }
         .dashboard-card {
             background: linear-gradient(135deg, #0a0a0a 0%, #0d0d0a 100%);
@@ -25,36 +32,40 @@
             border-radius: 8px;
             color: #fff;
             min-height: 0;
+            min-width: 0;
             box-sizing: border-box;
         }
         .positions-card {
+            grid-area: positions;
             padding: 10px 12px;
-            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
         }
         .positions-scroll {
-            max-height: clamp(95px, 13vh, 125px);
+            flex: 1 1 auto;
+            min-height: 0;
             overflow-y: auto;
             padding-right: 2px;
         }
         .dashboard-bottom-grid {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: 12px;
-            flex: 1 1 auto;
-            min-height: 0;
+            display: contents;
         }
         .dashboard-bottom-grid > div {
             min-width: 0;
         }
         .coin-analysis-card {
+            grid-area: coin;
             padding: 10px;
             overflow: hidden;
         }
         .recent-trades-card {
+            grid-area: trades;
             padding: 12px;
             border-color: #333;
             display: flex;
             flex-direction: column;
+            min-height: 0;
         }
         .trade-history-box {
             background: #000;
@@ -70,15 +81,17 @@
         @media (max-height: 920px) {
             .dashboard-chart {
                 height: 220px;
-                flex-basis: 220px;
-            }
-            .positions-scroll {
-                max-height: 92px;
             }
         }
         @media (max-width: 1200px) {
-            .dashboard-bottom-grid {
+            .dashboard-right {
                 grid-template-columns: 1fr;
+                grid-template-areas:
+                    "chart"
+                    "coin"
+                    "positions"
+                    "trades";
+                grid-template-rows: auto auto auto minmax(0, 1fr);
             }
         }
     </style>
