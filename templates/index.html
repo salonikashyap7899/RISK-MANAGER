@@ -13,6 +13,7 @@
             height: calc(100vh - 14px);
             min-height: 0;
             align-items: stretch;
+            padding: 0 !important;
         }
         @keyframes pulse {
             0%, 100% { opacity: 1; }
@@ -56,7 +57,7 @@
         .positions-scroll {
             flex: 1 1 auto;
             min-height: 0;
-            overflow-y: auto;
+            overflow: hidden;
             padding-right: 2px;
         }
         .dashboard-bottom-row {
@@ -165,10 +166,10 @@
 
             <div class="row">
                 <div class="col">
-                    <label>Unutilized Capital (1% Risk Pool)</label>
+                    <label style="font-size: 10px;">Unutilized Capital (1% Risk Pool)</label>
                     <div id="wallet-display" style="position: relative;">
-<input value="{{ wallet_debug.unutilized | default(0) | round(2) }}" disabled style="color: #7aff00; width: 100%;">
-                        <div id="wallet-status" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; padding: 2px 8px; border-radius: 12px;">
+<input value="{{ wallet_debug.unutilized | default(0) | round(2) }}" disabled style="color: #7aff00; width: 100%; font-size: 10px;">
+                        <div id="wallet-status" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 9px; padding: 2px 6px; border-radius: 8px;">
                             {% if wallet_debug.needs_connection %}
                                 <span style="background: #ff4444; color: white;">⚠️ Connect</span>
                             {% elif not wallet_debug.success %}
@@ -183,25 +184,25 @@
 
             <!-- Wallet Debug Box -->
             {% if wallet_debug.needs_connection %}
-            <div style="background: #4d1a1a; border: 1px solid #ff4444; color: #ffaa88; padding: 10px; margin-bottom: 15px; border-radius: 6px; font-size: 13px;">
-                <strong>🚨 NO BINANCE CONNECTION</strong><br>
-                <a href="/exchange-connections" style="color: #ffddaa; text-decoration: underline;">Click here to connect → Add API Key + Secret (Futures Enabled)</a>
+            <div style="background: #4d1a1a; border: 1px solid #ff4444; color: #ffaa88; padding: 6px; margin-bottom: 8px; border-radius: 6px; font-size: 11px;">
+                <strong style="font-size: 10px;">🚨 NO BINANCE CONNECTION</strong><br>
+                <a href="/exchange-connections" style="color: #ffddaa; text-decoration: underline; font-size: 10px;">Click here to connect → Add API Key + Secret (Futures Enabled)</a>
             </div>
             {% elif not wallet_debug.success %}
-            <div style="background: #1a1a2e; border: 1px solid #ffaa00; color: #ffdd88; padding: 10px; margin-bottom: 15px; border-radius: 6px;">
-                <strong>⚠️ Wallet Error:</strong> {{ wallet_debug.error }}
-                <br><small>Details: {{ wallet_debug.debug_info }}</small>
+            <div style="background: #1a1a2e; border: 1px solid #ffaa00; color: #ffdd88; padding: 6px; margin-bottom: 8px; border-radius: 6px; font-size: 10px;">
+                <strong style="font-size: 10px;">⚠️ Wallet Error:</strong> {{ wallet_debug.error }}
+                <br><small style="font-size: 8px;">Details: {{ wallet_debug.debug_info }}</small>
             </div>
             {% endif %}
 
             <!-- Enhanced Risk Control + Limits -->
             <div class="risk-control">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <label>🔒 Risk % (1% Default)</label>
-                    <input type="range" id="risk_slider" min="0.5" max="2" step="0.1" value="1" onchange="updateRiskSizing()" style="width: 120px;">
-                    <span id="risk_pct_display">1.0%</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label style="margin-bottom: 0;">🔒 Risk % (1% Default)</label>
+                    <input type="range" id="risk_slider" min="0.5" max="2" step="0.1" value="1" onchange="updateRiskSizing()" style="width: 80px;">
+                    <span id="risk_pct_display" style="font-size: 10px;">1.0%</span>
                 </div>
-                <div id="risk-preview" class="risk-preview" style="display: none;">
+                <div id="risk-preview" class="risk-preview" style="display: none; font-size: 10px;">
                     <strong>✅ Suggested Trade (1% Risk)</strong><br>
                     <span>Risk: $<span id="risk_amount">0</span> | Pos: <span id="risk_qty">0</span> units</span><br>
                     <span>Leverage: <span id="risk_lev">0</span>x (Max Safe)</span>
@@ -210,16 +211,16 @@
 
             <!-- Persistent Daily Limits -->
             <div class="status">
-                <strong>📊 Daily Limits (Persistent):</strong><br>
-                Total: <span id="total_trades_display">{{today_stats.total_trades}}/{{today_stats.max_trades}}</span> trades 
-                <div class="limit-bar"><div class="limit-{{ 'green' if today_stats.total_trades < today_stats.max_trades else 'red' }}" style="width: {{ (today_stats.total_trades / today_stats.max_trades * 100) }}%;"></div></div>
-                <br>{{selected_symbol}}: <span id="symbol_trades_display">{{ today_stats.symbol_trades.get(selected_symbol, 0) if today_stats.symbol_trades else 0 }}/{{today_stats.max_per_symbol}}</span>
+                <strong style="font-size: 10px;">📊 Daily Limits (Persistent):</strong><br>
+                <span style="font-size: 9px;">Total: <span id="total_trades_display">{{today_stats.total_trades}}/{{today_stats.max_trades}}</span> trades 
+                <div class="limit-bar" style="margin: 2px 0;"><div class="limit-{{ 'green' if today_stats.total_trades < today_stats.max_trades else 'red' }}" style="width: {{ (today_stats.total_trades / today_stats.max_trades * 100) }}%;"></div></div>
+                {{selected_symbol}}: <span id="symbol_trades_display">{{ today_stats.symbol_trades.get(selected_symbol, 0) if today_stats.symbol_trades else 0 }}/{{today_stats.max_per_symbol}}</span></span>
             </div>
 
             <div class="row">
                 <div class="col" style="flex: 1;">
                     <label>Symbol</label>
-                    <select name="symbol" onchange="changeSymbol(this.value)" id="symbol_select">
+                    <select name="symbol" onchange="changeSymbol(this.value)" id="symbol_select" style="font-size: 10px;">
         {% for sym in symbols %}
         <option value="{{sym}}" {{ 'selected' if sym == selected_symbol }}>{{sym}}</option>
         {% endfor %}
@@ -229,11 +230,11 @@
 
             <div class="button-row">
                 <button type="button" class="tab {{ 'active' if default_side == 'LONG' }}" 
-                        onclick="document.getElementById('side_hidden').value='LONG'; this.form.submit();" data-testid="long-button">
+                        onclick="document.getElementById('side_hidden').value='LONG'; this.form.submit();" data-testid="long-button" style="font-size: 10px;">
                     LONG
                 </button>
                 <button type="button" class="tab {{ 'active' if default_side == 'SHORT' }}" 
-                        onclick="document.getElementById('side_hidden').value='SHORT'; this.form.submit();" data-testid="short-button">
+                        onclick="document.getElementById('side_hidden').value='SHORT'; this.form.submit();" data-testid="short-button" style="font-size: 10px;">
                     SHORT
                 </button>
             </div>
@@ -241,14 +242,14 @@
             <div class="row">
                 <div class="col">
                     <label>Order Type</label>
-                    <select name="order_type" id="order_type_select">
+                    <select name="order_type" id="order_type_select" style="font-size: 10px;">
                         <option value="MARKET" {{ 'selected' if order_type == 'MARKET' }}>MARKET</option>
                         <option value="LIMIT" {{ 'selected' if order_type == 'LIMIT' }}>LIMIT</option>
                     </select>
                 </div>
                 <div class="col">
                     <label>Margin Mode (Manual - No Auto Change)</label>
-                    <select name="margin_mode" id="margin_mode_select">
+                    <select name="margin_mode" id="margin_mode_select" style="font-size: 10px;">
                         <option value="ISOLATED" {{ 'selected' if margin_mode == 'ISOLATED' }}>ISOLATED</option>
                         <option value="CROSS" {{ 'selected' if margin_mode == 'CROSS' }}>CROSS</option>
                     </select>
@@ -258,10 +259,10 @@
             <div class="row">
                 <div class="col">
                     <label>Entry Price</label>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <input type="number" name="entry" id="entry_input" value="{{default_entry}}" step="any" style="flex: 1;">
-                        <span id="live-indicator" class="live-badge" style="display: none; background: #00ff88; color: black; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; animation: pulse 2s infinite;">LIVE</span>
-                        <button type="button" id="reset-live-btn" onclick="updateLivePrice()" style="background: #0d6efd; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">🔄 Live</button>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <input type="number" name="entry" id="entry_input" value="{{default_entry}}" step="any" style="flex: 1; font-size: 10px;">
+                        <span id="live-indicator" class="live-badge" style="display: none; background: #00ff88; color: black; padding: 2px 6px; border-radius: 8px; font-size: 8px; font-weight: bold; animation: pulse 2s infinite;">LIVE</span>
+                        <button type="button" id="reset-live-btn" onclick="updateLivePrice()" style="background: #0d6efd; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 9px;">🔄 Live</button>
                     </div>
 
                 </div>
@@ -270,31 +271,31 @@
             <div class="row">
                 <div class="col">
                     <label>TP 1 Type</label>
-                    <select name="tp1_mode" onchange="this.form.submit();">
+                    <select name="tp1_mode" onchange="this.form.submit();" style="font-size: 10px;">
                         <option value="TP1 Price" {{ 'selected' if default_tp1_mode == 'TP1 Price' }}>TP1 Price</option>
                         <option value="TP1 % Movement" {{ 'selected' if default_tp1_mode == 'TP1 % Movement' }}>TP1 % Movement</option>
                     </select>
                 </div>
                 <div class="col">
                     <label>TP 1 Value</label>
-                    <input type="number" name="tp1" value="{{default_tp1_value}}" step="any">
+                    <input type="number" name="tp1" value="{{default_tp1_value}}" step="any" style="font-size: 10px;">
                 </div>
                 <div class="col">
                     <label>TP 1 Qty %</label>
-                    <input type="number" name="tp1_pct" value="{{tp1_pct}}">
+                    <input type="number" name="tp1_pct" value="{{tp1_pct}}" style="font-size: 10px;">
                 </div>
             </div>
             <div class="row">
                 <div class="col">
                     <label>TP 2 Price</label>
-                    <input type="number" name="tp2" value="{{tp2}}" step="any">
+                    <input type="number" name="tp2" value="{{tp2}}" step="any" style="font-size: 10px;">
                 </div>
             </div>
 
             <div class="row">
                 <div class="col">
                     <label>SL Method</label>
-                    <select name="sl_type" onchange="this.form.submit();">
+                    <select name="sl_type" onchange="this.form.submit();" style="font-size: 10px;">
                         <option value="SL Points" {{ 'selected' if default_sl_type == 'SL Points' }}>SL Points</option>
                         <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>SL % Movement</option>
                     </select>
@@ -302,47 +303,47 @@
                 <div class="col">
                     <label>SL Value (⚠️ MANDATORY)</label>
                     <input type="number" name="sl_value" value="{{default_sl_value}}" step="any" 
-                           onchange="this.form.submit();" required>
+                           onchange="this.form.submit();" required style="font-size: 10px;">
                 </div>
             </div>
 
             <div class="row">
                 <div class="col">
                     <label>Pos Override</label>
-                    <input type="number" name="user_units" step="any">
-                    <small>Sug: {{sizing.suggested_units}}</small>
+                    <input type="number" name="user_units" step="any" style="font-size: 10px;">
+                    <small style="font-size: 8px;">Sug: {{sizing.suggested_units}}</small>
                 </div>
                 <div class="col">
                     <label>Lev Override</label>
-                    <input type="number" name="user_lev" step="any">
-                    <small>Sug: {{sizing.suggested_leverage}}x | Max: {{sizing.exchange_max_leverage | default('-')}}x</small>
+                    <input type="number" name="user_lev" step="any" style="font-size: 10px;">
+                    <small style="font-size: 8px;">Sug: {{sizing.suggested_leverage}}x | Max: {{sizing.exchange_max_leverage | default('-')}}x</small>
                 </div>
             </div>
 
             <button type="submit" name="place_order" class="place" data-testid="execute-order-button"
                     {% if default_sl_value <= 0 %} disabled style="filter: grayscale(1);" {% endif %}
-                    onclick="return confirmTradeExecution()">
+                    onclick="return confirmTradeExecution()" style="font-size: 10px; padding: 4px;">
                 {% if default_sl_value <= 0 %} 
                     🔒 LOCK: SET SL FIRST (MANDATORY)
                 {% else %} 
                     ✅ EXECUTE EXCHANGE ORDER (SL: {{default_sl_value}})
                 {% endif %}
             </button>
-            <div style="margin-bottom: 15px; margin-top: 10px;">
+            <div style="margin-bottom: 8px; margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;">
                 <a href="{{ url_for('home') }}" 
-                   style="display:inline-block; padding:10px 18px; background-color:#6c757d; color:#fff; text-decoration:none; border-radius:6px; font-size:14px; margin-right: 10px;">
+                   style="display:inline-block; padding:6px 10px; background-color:#6c757d; color:#fff; text-decoration:none; border-radius:4px; font-size:9px; flex: 1; min-width: 80px;">
                    ⬅ Back to Home
                 </a>
                 <a href="/debug-wallet?user_id={{ current_user.id }}" 
-                   style="display:inline-block; padding:10px 18px; background-color:#0d6efd; color:#fff; text-decoration:none; border-radius:6px; font-size:14px;">
+                   style="display:inline-block; padding:6px 10px; background-color:#0d6efd; color:#fff; text-decoration:none; border-radius:4px; font-size:9px; flex: 1; min-width: 80px;">
                    🐛 Debug Wallet
                 </a>
             </div>
             <div class="status-box">
                 {% if not sizing.error %}
-                    <div class="formula" style="background: #06212a; padding: 10px; border-radius: 4px; border: 1px solid #0ca7d4; margin-top: 10px;">
-                        <b style="color: #00b7ff;">📐 1% Risk Precision Logic:</b><br>
-                        <span style="font-size: 0.85em;">
+                    <div class="formula" style="background: #06212a; padding: 6px; border-radius: 4px; border: 1px solid #0ca7d4; margin-top: 6px;">
+                        <b style="color: #00b7ff; font-size: 9px;">📐 1% Risk Precision Logic:</b><br>
+                        <span style="font-size: 0.75em;">
                             • <b>Risk Amount:</b> ${{ sizing.risk_amount | round(2) }} ({{ sizing.risk_amount / unutilized * 100 | round(1) }}% of ${{ unutilized | round(2) }} pool)<br>
                             • <b>SL Distance:</b> {{ sizing.sl_percent }}% ({{ sizing.sl_distance | round(4) }} points)<br>
                             • <b>Calculated Leverage:</b> <span style="color: #ffaa00;">{{ sizing.leverage_breakdown.risk_based }}x</span> (risk-based)<br>
@@ -361,8 +362,8 @@
             </div>
             
             <!-- Validation Warnings -->
-            <div id="validation-warnings" style="display: none; background: #2a1a1a; border: 1px solid #ff6b35; color: #ffaa88; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 13px;">
-                <strong>⚠️ Validation Issues:</strong>
+            <div id="validation-warnings" style="display: none; background: #2a1a1a; border: 1px solid #ff6b35; color: #ffaa88; padding: 6px; border-radius: 4px; margin-top: 6px; font-size: 10px;">
+                <strong style="font-size: 9px;">⚠️ Validation Issues:</strong>
                 <div id="warning-list"></div>
             </div>
         </form>
