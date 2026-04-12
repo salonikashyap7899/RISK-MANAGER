@@ -261,17 +261,17 @@
           });
         </script>
 
-        <!-- LIVE POSITIONS BOX - Enhanced -->
-        <div style="background: linear-gradient(135deg, #0a0a0a 0%, #0d0d0a 100%); border: 2px solid #00ff88; border-radius: 8px; padding: 15px; margin-bottom: 15px; box-shadow: 0 0 20px rgba(0, 255, 136, 0.15);">
+        <!-- LIVE POSITIONS BOX - Matching Style -->
+        <div style="background: linear-gradient(135deg, #0a0a0a 0%, #0d0d0a 100%); border: 1px solid #00d4ff; border-radius: 8px; padding: 15px; margin-bottom: 12px;">
             <!-- Header -->
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 2px solid #00ff88; padding-bottom: 10px;">
-                <h3 style="color: #00ff88; margin: 0; font-size: 14px; font-weight: bold;" id="position_header">📍 LIVE POSITIONS (0)</h3>
-                <button onclick="closeAllPositions()" style="background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%); color: #fff; border: none; padding: 8px 14px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold;">Close All</button>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 2px solid #00d4ff; padding-bottom: 10px;">
+                <h3 style="color: #00d4ff; margin: 0; font-size: 13px; font-weight: bold;" id="position_header">📍 LIVE POSITIONS (0)</h3>
+                <button onclick="closeAllPositions()" style="background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%); color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold;">Close All</button>
             </div>
             
             <!-- Positions Container -->
-            <div id="live_positions" style="max-height: 380px; overflow-y: auto; padding: 0;">
-                <div style="text-align: center; color: #666; padding: 80px 20px; font-size: 12px;">No open positions yet</div>
+            <div id="live_positions" style="max-height: 330px; overflow-y: auto;">
+                <div style="text-align: center; color: #666; padding: 60px 20px; font-size: 11px;">No open positions yet</div>
             </div>
         </div>
 
@@ -513,63 +513,63 @@
                 const marginRatio = (pos.dashboard_margin_ratio ?? pos.margin_ratio).toFixed(2);
                 totalOrders += pos.open_orders ? pos.open_orders.length : 0;
                 html += `
-                    <div style="border: 1px solid #00d4ff; padding: 12px; margin-bottom: 10px; border-radius: 6px; background: linear-gradient(135deg, #0a0f1a 0%, #0d1419 100%); box-shadow: 0 0 15px rgba(0, 212, 255, 0.1);">
+                    <div style="border: 1px solid #333; padding: 12px; margin-bottom: 10px; border-radius: 6px; background: rgba(10, 10, 10, 0.5);">
                         <!-- Header -->
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #00d4ff; padding-bottom: 8px;">
-                            <span style="font-weight: bold; color: ${pos.side === 'LONG' ? '#00ff88' : '#ff4444'}; font-size: 13px;">${pos.symbol} ${pos.side}</span>
-                            <small style="color: #88ddff; font-weight: bold;">${pos.leverage}x Leverage</small>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 8px;">
+                            <span style="font-weight: bold; color: ${pos.side === 'LONG' ? '#00ff88' : '#ff4444'}; font-size: 12px;">${pos.symbol} <span style="font-size: 10px; color: #888;">${pos.side}</span></span>
+                            <small style="color: #888; font-size: 9px;">${pos.leverage}x Leverage</small>
                         </div>
                         
-                        <!-- Price Cards -->
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px; font-size: 10px;">
-                            <div style="background: rgba(0, 212, 255, 0.08); padding: 6px; border-radius: 4px; border-left: 2px solid #00d4ff;">
-                                <div style="color: #888; margin-bottom: 2px;">Entry</div>
-                                <div style="color: #00d4ff; font-weight: bold;">$${pos.entry_price.toFixed(4)}</div>
+                        <!-- Price Cards Row -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px; font-size: 9px;">
+                            <div style="background: rgba(0, 212, 255, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid #00d4ff;">
+                                <div style="color: #666; margin-bottom: 2px;">Entry</div>
+                                <div style="color: #00d4ff; font-weight: bold; font-size: 10px;">$${pos.entry_price.toFixed(4)}</div>
                             </div>
-                            <div style="background: rgba(100, 200, 255, 0.08); padding: 6px; border-radius: 4px; border-left: 2px solid #64c8ff;">
-                                <div style="color: #888; margin-bottom: 2px;">Mark</div>
-                                <div style="color: #64c8ff; font-weight: bold;">$${pos.mark_price.toFixed(4)}</div>
+                            <div style="background: rgba(100, 200, 255, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid #64c8ff;">
+                                <div style="color: #666; margin-bottom: 2px;">Mark</div>
+                                <div style="color: #64c8ff; font-weight: bold; font-size: 10px;">$${pos.mark_price.toFixed(4)}</div>
                             </div>
-                            <div style="background: rgba(255, 100, 100, 0.08); padding: 6px; border-radius: 4px; border-left: 2px solid #ff6464;">
-                                <div style="color: #888; margin-bottom: 2px;">Liquidation</div>
-                                <div style="color: #ff6464; font-weight: bold;">$${pos.liquidation_price.toFixed(4)}</div>
-                            </div>
-                        </div>
-                        
-                        <!-- Position & Margin -->
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; font-size: 10px;">
-                            <div style="background: rgba(0, 255, 136, 0.08); padding: 6px; border-radius: 4px; border-left: 2px solid #00ff88;">
-                                <div style="color: #888; margin-bottom: 2px;">Position Size</div>
-                                <div style="color: #00ff88; font-weight: bold;">${pos.amount.toFixed(4)} | $${pos.size_usdt.toFixed(2)}</div>
-                            </div>
-                            <div style="background: rgba(100, 200, 255, 0.08); padding: 6px; border-radius: 4px; border-left: 2px solid #64c8ff;">
-                                <div style="color: #888; margin-bottom: 2px;">Margin Used</div>
-                                <div style="color: #64c8ff; font-weight: bold;">$${pos.margin_usdt.toFixed(2)}</div>
+                            <div style="background: rgba(255, 100, 100, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid #ff6464;">
+                                <div style="color: #666; margin-bottom: 2px;">Liq.</div>
+                                <div style="color: #ff6464; font-weight: bold; font-size: 10px;">$${pos.liquidation_price.toFixed(4)}</div>
                             </div>
                         </div>
                         
-                        <!-- PnL & ROI -->
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px; font-size: 10px;">
-                            <div style="background: rgba(${pnlColor.includes('88') ? '0,255,136' : '255,77,77'}, 0.1); padding: 6px; border-radius: 4px; border-left: 2px solid ${pnlColor};">
-                                <div style="color: #888; margin-bottom: 2px;">PnL</div>
-                                <div style="color: ${pnlColor}; font-weight: bold;">$${pos.unrealized_pnl.toFixed(2)}</div>
+                        <!-- Position & Margin Row -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; font-size: 9px;">
+                            <div style="background: rgba(0, 255, 136, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid #00ff88;">
+                                <div style="color: #666; margin-bottom: 2px;">Position</div>
+                                <div style="color: #00ff88; font-weight: bold; font-size: 10px;">${pos.amount.toFixed(4)} | $${pos.size_usdt.toFixed(2)}</div>
                             </div>
-                            <div style="background: rgba(${pnlColor.includes('88') ? '0,255,136' : '255,77,77'}, 0.1); padding: 6px; border-radius: 4px; border-left: 2px solid ${pnlColor};">
-                                <div style="color: #888; margin-bottom: 2px;">ROI</div>
-                                <div style="color: ${pnlColor}; font-weight: bold;">${roiPercent}%</div>
+                            <div style="background: rgba(100, 200, 255, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid #64c8ff;">
+                                <div style="color: #666; margin-bottom: 2px;">Margin</div>
+                                <div style="color: #64c8ff; font-weight: bold; font-size: 10px;">$${pos.margin_usdt.toFixed(2)}</div>
                             </div>
-                            <div style="background: rgba(${marginRatio < 5 ? '255,100,100' : '255,170,0'}, 0.1); padding: 6px; border-radius: 4px; border-left: 2px solid ${marginRatio < 5 ? '#ff6464' : '#ffaa00'};">
-                                <div style="color: #888; margin-bottom: 2px;">Margin Ratio</div>
-                                <div style="color: ${marginRatio < 5 ? '#ff6464' : '#ffaa00'}; font-weight: bold;">${marginRatio}%</div>
+                        </div>
+                        
+                        <!-- PnL, ROI, Margin Ratio Row -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px; font-size: 9px;">
+                            <div style="background: rgba(${pnlColor.includes('88') ? '0,255,136' : '255,77,77'}, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid ${pnlColor};">
+                                <div style="color: #666; margin-bottom: 2px;">PnL</div>
+                                <div style="color: ${pnlColor}; font-weight: bold; font-size: 10px;">$${pos.unrealized_pnl.toFixed(2)}</div>
+                            </div>
+                            <div style="background: rgba(${pnlColor.includes('88') ? '0,255,136' : '255,77,77'}, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid ${pnlColor};">
+                                <div style="color: #666; margin-bottom: 2px;">ROI</div>
+                                <div style="color: ${pnlColor}; font-weight: bold; font-size: 10px;">${roiPercent}%</div>
+                            </div>
+                            <div style="background: rgba(${marginRatio < 5 ? '255,100,100' : '255,170,0'}, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid ${marginRatio < 5 ? '#ff6464' : '#ffaa00'};">
+                                <div style="color: #666; margin-bottom: 2px;">Margin Ratio</div>
+                                <div style="color: ${marginRatio < 5 ? '#ff6464' : '#ffaa00'}; font-weight: bold; font-size: 10px;">${marginRatio}%</div>
                             </div>
                         </div>
                         
                         <!-- Action Buttons -->
                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px;">
-                            <button onclick="closePosition('${pos.symbol}')" style="background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%); color: white; border: none; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold;">❌ Close</button>
-                            <button onclick="partialClose('${pos.symbol}')" style="background: linear-gradient(135deg, #0d6efd 0%, #0a47ab 100%); color: white; border: none; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold;">📊 Close %</button>
-                            <button onclick="moveTrailingSL('${pos.symbol}')" style="background: linear-gradient(135deg, #ffaa00 0%, #ff8800 100%); color: #000; border: none; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold;">🎯 Trail SL</button>
-                            <button onclick="editTPSLMod()" style="background: linear-gradient(135deg, #00d4ff 0%, #00aadd 100%); color: #000; border: none; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold;">⚙️ TP/SL</button>
+                            <button onclick="closePosition('${pos.symbol}')" style="background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%); color: white; border: none; padding: 5px 6px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold;">❌ Close</button>
+                            <button onclick="partialClose('${pos.symbol}')" style="background: linear-gradient(135deg, #0d6efd 0%, #0a47ab 100%); color: white; border: none; padding: 5px 6px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold;">📊 Close %</button>
+                            <button onclick="moveTrailingSL('${pos.symbol}')" style="background: linear-gradient(135deg, #ffaa00 0%, #ff8800 100%); color: #000; border: none; padding: 5px 6px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold;">🎯 Trail SL</button>
+                            <button onclick="editTPSLMod()" style="background: linear-gradient(135deg, #00d4ff 0%, #00aadd 100%); color: #000; border: none; padding: 5px 6px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold;">⚙️ TP/SL</button>
                         </div>
                     </div>
                 `;
@@ -578,7 +578,7 @@
             container.innerHTML = html;
         } else {
             header.textContent = '📍 LIVE POSITIONS (0)';
-            container.innerHTML = '<div style="text-align: center; color: #666; padding: 80px 20px; font-size: 12px; line-height: 1.6;">No open positions yet<br><small style="color: #555;">Place a trade to see live position details</small></div>';
+            container.innerHTML = '<div style="text-align: center; color: #666; padding: 60px 20px; font-size: 11px; line-height: 1.6;">No open positions yet<br><small style="color: #555; font-size: 10px;">Place a trade to see live position details</small></div>';
         }
     }
 
