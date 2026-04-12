@@ -380,12 +380,17 @@
                     <div style="border: 1px solid #333; padding: 12px; margin-bottom: 8px; border-radius: 6px; background: #111;">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                             <span style="font-weight: bold; color: ${pos.side === 'LONG' ? '#00ff88' : '#ff4444'}">${pos.symbol}</span>
-                            <small>${pos.leverage}x | Entry: $${pos.entry_price.toFixed(4)} | Liq: $${pos.liquidation_price.toFixed(4)}</small>
+                            <small style="color: #aaa;">${pos.leverage}x Leverage</small>
+                        </div>
+                        <div style="margin-bottom: 8px; padding: 8px; background: #0a0a0a; border-radius: 4px; border-left: 3px solid #00d4ff;">
+                            <div style="font-size: 11px; color: #888; margin-bottom: 4px;">📍 Entry: $${pos.entry_price.toFixed(4)}</div>
+                            <div style="font-size: 11px; color: #888; margin-bottom: 4px;">📊 Mark: $${pos.mark_price.toFixed(4)}</div>
+                            <div style="font-size: 11px; color: #ff4444; font-weight: bold;">🚨 Liquidation: $${pos.liquidation_price.toFixed(4)}</div>
                         </div>
                         <div>PnL: <span style="color: ${pnlColor};">$${pos.unrealized_pnl.toFixed(2)}</span></div>
                         <div>ROI: <span style="color: ${pnlColor};">${roiPercent}%</span></div>
                         <div>Margin: $${pos.margin_usdt.toFixed(2)} | Size: $${pos.size_usdt.toFixed(2)}</div>
-                        <div>Margin Ratio: <span style="color: #ffaa00;">${marginRatio}%</span> | Mark: $${pos.mark_price.toFixed(4)}</div>
+                        <div>Margin Ratio: <span style="color: #ffaa00;">${marginRatio}%</span></div>
                         ${pos.open_orders && pos.open_orders.length > 0 ? `<div style="margin-top:8px; font-size: 11px; color:#aaa;"><strong>Open orders:</strong> ${pos.open_orders.map(o => `${o.type} ${o.side} @${o.price}`).join(' • ')}</div>` : ''}
                         <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
                             <button onclick="closePosition('${pos.symbol}')" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Close</button>
