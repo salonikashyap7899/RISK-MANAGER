@@ -61,9 +61,11 @@ body {
     flex: 0 0 700px; 
     min-width: 360px; 
     max-width: 900px; 
-    overflow: hidden; 
+    overflow-y: auto;
+    overflow-x: hidden;
     display: flex; 
-    flex-direction: column; 
+    flex-direction: column;
+    max-height: calc(100vh - 16px);
 }
 
 .panel.right { 
