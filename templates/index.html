@@ -36,7 +36,7 @@
         }
         .dashboard-chart {
             width: 100%;
-            height: clamp(175px, 23vh, 230px);
+            height: clamp(120px, 16vh, 150px);
             flex: 0 0 auto;
         }
         .dashboard-card {
@@ -75,6 +75,8 @@
             padding: 7px;
             overflow: hidden;
             flex: 0 0 auto;
+            max-height: 110px;
+            overflow-y: auto;
         }
         .recent-trades-card {
             padding: 8px;
@@ -96,12 +98,12 @@
         }
         @media (max-height: 920px) {
             .dashboard-chart {
-                height: 160px;
+                height: 130px;
             }
         }
         @media (max-height: 760px) {
             .dashboard-chart {
-                height: 140px;
+                height: 110px;
             }
         }
         @media (max-width: 1200px) {
@@ -359,8 +361,8 @@
                         <button onclick="closeAllPositions()" style="background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%); color: #fff; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; font-weight: bold; transition: all 0.2s;">Close All</button>
                     </div>
 
-                    <div id="live_positions" class="positions-scroll" style="max-height: 135px; overflow-y: auto; flex: 1; min-height: 0; font-size: 9px;">
-                        <div style="text-align: center; color: #888; padding: 22px 8px; font-size: 9px;">No open positions yet</div>
+                    <div id="live_positions" class="positions-scroll" style="max-height: 100px; overflow-y: auto; flex: 1; min-height: 0; font-size: 9px;">
+                        <div style="text-align: center; color: #888; padding: 15px 8px; font-size: 9px;">No open positions yet</div>
                     </div>
                 </div>
 
@@ -371,8 +373,8 @@
                         <a href="/download_trades" style="color: #0d6efd; text-decoration: none; font-weight: bold; font-size: 9px; transition: all 0.2s;">📥 CSV</a>
                     </div>
 
-                    <div id="trade_history" class="trade-history-box" style="max-height: 135px; overflow-y: auto; flex: 1; min-height: 0; background: #000; border: 1px solid #1a3a45; border-radius: 4px; padding: 4px; font-family: 'Courier New', monospace; font-size: 8px; line-height: 1.4;">
-                        <div style="text-align: center; color: #888; padding: 22px 0; font-size: 9px;">Loading trades...</div>
+                    <div id="trade_history" class="trade-history-box" style="max-height: 100px; overflow-y: auto; flex: 1; min-height: 0; background: #000; border: 1px solid #1a3a45; border-radius: 4px; padding: 4px; font-family: 'Courier New', monospace; font-size: 8px; line-height: 1.4;">
+                        <div style="text-align: center; color: #888; padding: 15px 0; font-size: 9px;">Loading trades...</div>
                     </div>
                 </div>
             </div>
