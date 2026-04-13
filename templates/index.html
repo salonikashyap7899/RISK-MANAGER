@@ -228,6 +228,21 @@
             flex-direction: column;
             min-height: 0;
         }
+        .left-panel-scroll {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-right: 0;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .left-panel-scroll::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+            display: none;
+            background: transparent;
+        }
         .trade-history-box {
             background: #000;
             border: 1px solid #333;
@@ -326,7 +341,7 @@
         </div>
         {% endif %}
      
-        <div style="flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; padding-right: 2px;">
+        <div class="left-panel-scroll">
         <form method="POST" style="display: flex; flex-direction: column;">
             <input type="hidden" name="side" id="side_hidden" value="{{default_side}}">
             <input type="hidden" name="prev_symbol" value="{{selected_symbol}}">
