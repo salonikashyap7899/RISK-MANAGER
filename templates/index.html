@@ -22,27 +22,45 @@
         .live-badge { animation: pulse 2s infinite; }
         .panel.right.dashboard-right {
             overflow: hidden;
+            padding: 8px;
         }
         .dashboard-right {
             display: flex;
             flex-direction: column;
             flex: 1 1 auto;
             height: 100%;
-            gap: 4px;
+            gap: 12px;
             min-height: 0;
             min-width: 0;
-            max-height: none;
+        }
+        .dashboard-section {
+            background: linear-gradient(180deg, #09111a 0%, #0c141d 100%);
+            border: 1px solid #0ca7d4;
+            border-radius: 12px;
+            box-shadow: inset 0 0 0 1px rgba(0, 212, 255, 0.08);
+            min-height: 0;
+            min-width: 0;
+        }
+        .chart-section {
+            display: flex;
+            flex: 0 0 48%;
+            padding: 4px;
             overflow: hidden;
         }
         .dashboard-chart {
             width: 100%;
-            height: clamp(180px, 45vh, 280px);
-            flex: 0 0 auto;
+            height: 100%;
+            min-height: 320px;
+            flex: 1 1 auto;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #090d12;
         }
         .dashboard-card {
-            background: linear-gradient(135deg, #0a0a0a 0%, #0d0d0a 100%);
-            border: 1px solid #00d4ff;
-            border-radius: 8px;
+            background: linear-gradient(180deg, #09111a 0%, #0c141d 100%);
+            border: 1px solid #0ca7d4;
+            border-radius: 12px;
+            box-shadow: inset 0 0 0 1px rgba(0, 212, 255, 0.08);
             color: #fff;
             min-height: 0;
             min-width: 0;
@@ -72,11 +90,251 @@
             min-height: 0;
         }
         .coin-analysis-card {
-            padding: 6px;
+            display: flex;
+            flex: 1 1 auto;
+            flex-direction: column;
+            padding: 0;
             overflow: hidden;
-            flex: 0 0 auto;
-            max-height: 200px;
+        }
+        .coin-analysis-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(12, 167, 212, 0.55);
+            background: linear-gradient(90deg, rgba(0, 212, 255, 0.14), rgba(0, 212, 255, 0.04));
+        }
+        .coin-analysis-title {
+            margin: 0;
+            color: #e9fbff;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .coin-analysis-subtitle {
+            margin: 2px 0 0;
+            color: #81b8c5;
+            font-size: 10px;
+        }
+        .analysis-badge {
+            padding: 5px 9px;
+            border-radius: 999px;
+            border: 1px solid rgba(0, 212, 255, 0.35);
+            background: rgba(0, 212, 255, 0.08);
+            color: #89ebff;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+            text-transform: uppercase;
+        }
+        .coin-analysis-body {
+            flex: 1 1 auto;
+            min-height: 0;
             overflow-y: auto;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .analysis-overview {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 12px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 212, 255, 0.12);
+            background:
+                radial-gradient(circle at top right, rgba(0, 212, 255, 0.18), transparent 35%),
+                linear-gradient(135deg, rgba(9, 20, 28, 0.98), rgba(11, 17, 24, 0.96));
+        }
+        .analysis-overview-copy {
+            color: #81b8c5;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .analysis-overview-symbol {
+            margin-top: 6px;
+            color: #f4fcff;
+            font-size: clamp(22px, 2vw, 32px);
+            font-weight: 700;
+            letter-spacing: 0.08em;
+        }
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+        .analysis-grid.analysis-prices {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .analysis-metric {
+            min-height: 78px;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 212, 255, 0.12);
+            background: linear-gradient(180deg, rgba(10, 18, 24, 0.96), rgba(8, 13, 18, 0.94));
+        }
+        .analysis-metric.warm {
+            border-color: rgba(255, 170, 0, 0.22);
+        }
+        .analysis-metric.danger {
+            border-color: rgba(255, 100, 100, 0.22);
+        }
+        .analysis-metric-label {
+            margin: 0;
+            color: #81b8c5;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .analysis-metric-value {
+            margin: 8px 0 0;
+            color: #f4fcff;
+            font-size: 19px;
+            font-weight: 700;
+            line-height: 1.15;
+            word-break: break-word;
+        }
+        .analysis-metric-value.price {
+            font-size: 16px;
+        }
+        .analysis-actions {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: auto;
+        }
+        .analysis-action-btn {
+            border: none;
+            border-radius: 10px;
+            padding: 11px 10px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .analysis-action-btn.action-leverage {
+            background: linear-gradient(135deg, #ffbf3f 0%, #ff8a00 100%);
+            color: #081017;
+        }
+        .analysis-action-btn.action-tpsl {
+            background: linear-gradient(135deg, #3fd8ff 0%, #0099ff 100%);
+            color: #081017;
+        }
+        .analysis-action-btn.action-close {
+            background: linear-gradient(135deg, #ff7f7f 0%, #ff3d3d 100%);
+            color: #fff;
+        }
+        .coin-analysis-card > div:first-child {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 10px !important;
+            padding: 12px 14px !important;
+            margin: 0 !important;
+            border-bottom: 1px solid rgba(12, 167, 212, 0.55) !important;
+            background: linear-gradient(90deg, rgba(0, 212, 255, 0.14), rgba(0, 212, 255, 0.04)) !important;
+        }
+        .coin-analysis-card > div:first-child h3 {
+            color: #e9fbff !important;
+            font-size: 14px !important;
+            letter-spacing: 0.08em !important;
+            text-transform: uppercase !important;
+        }
+        .coin-analysis-card > div:nth-child(2),
+        .coin-analysis-card > div:nth-child(3),
+        .coin-analysis-card > div:nth-child(4),
+        .coin-analysis-card > div:nth-child(5),
+        .coin-analysis-card > div:nth-child(6) {
+            margin-left: 14px !important;
+            margin-right: 14px !important;
+            margin-bottom: 12px !important;
+        }
+        .coin-analysis-card > div:nth-child(2) {
+            margin-top: 14px !important;
+        }
+        .coin-analysis-card > div:nth-child(2),
+        .coin-analysis-card > div:nth-child(3) {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 10px !important;
+        }
+        .coin-analysis-card > div:nth-child(4) {
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+            gap: 10px !important;
+        }
+        .coin-analysis-card > div:nth-child(5) {
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 10px !important;
+        }
+        .coin-analysis-card > div:nth-child(2) > div,
+        .coin-analysis-card > div:nth-child(3) > div,
+        .coin-analysis-card > div:nth-child(4) > div,
+        .coin-analysis-card > div:nth-child(5) > div {
+            min-height: 78px !important;
+            padding: 12px !important;
+            border-radius: 10px !important;
+            border: 1px solid rgba(0, 212, 255, 0.12) !important;
+            border-left: none !important;
+            background: linear-gradient(180deg, rgba(10, 18, 24, 0.96), rgba(8, 13, 18, 0.94)) !important;
+            box-sizing: border-box !important;
+        }
+        .coin-analysis-card > div:nth-child(2) > div:nth-child(2) {
+            border-color: rgba(0, 255, 136, 0.18) !important;
+        }
+        .coin-analysis-card > div:nth-child(3) > div:nth-child(1) {
+            border-color: rgba(255, 170, 0, 0.22) !important;
+        }
+        .coin-analysis-card > div:nth-child(4) > div,
+        .coin-analysis-card > div:nth-child(5) > div:nth-child(3) {
+            border-color: rgba(255, 100, 100, 0.22) !important;
+        }
+        .coin-analysis-card > div:nth-child(2) > div > p:first-child,
+        .coin-analysis-card > div:nth-child(3) > div > p:first-child,
+        .coin-analysis-card > div:nth-child(4) > div > p:first-child,
+        .coin-analysis-card > div:nth-child(5) > div > p:first-child {
+            margin: 0 !important;
+            color: #81b8c5 !important;
+            font-size: 10px !important;
+            letter-spacing: 0.08em !important;
+            text-transform: uppercase !important;
+        }
+        .coin-analysis-card #embed-pnl,
+        .coin-analysis-card #embed-roi,
+        .coin-analysis-card #embed-size,
+        .coin-analysis-card #embed-margin,
+        .coin-analysis-card #embed-margin-ratio {
+            margin-top: 8px !important;
+            font-size: 19px !important;
+            line-height: 1.15 !important;
+        }
+        .coin-analysis-card #embed-entry,
+        .coin-analysis-card #embed-mark,
+        .coin-analysis-card #embed-liq {
+            margin-top: 8px !important;
+            font-size: 16px !important;
+            line-height: 1.15 !important;
+        }
+        .coin-analysis-card > div:nth-child(6) {
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 10px !important;
+            margin-top: auto !important;
+        }
+        .coin-analysis-card > div:nth-child(6) button {
+            padding: 11px 10px !important;
+            border-radius: 10px !important;
+            font-size: 11px !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.04em !important;
         }
         .recent-trades-card {
             padding: 8px;
@@ -97,13 +355,19 @@
             font-family: monospace;
         }
         @media (max-height: 920px) {
+            .chart-section {
+                flex-basis: 45%;
+            }
             .dashboard-chart {
-                height: 130px;
+                min-height: 260px;
             }
         }
         @media (max-height: 760px) {
+            .dashboard-right {
+                gap: 8px;
+            }
             .dashboard-chart {
-                height: 110px;
+                min-height: 220px;
             }
         }
         @media (max-width: 1200px) {
@@ -129,8 +393,28 @@
                 overflow: visible;
                 gap: 10px;
             }
+            .chart-section {
+                flex: none;
+            }
             .dashboard-chart {
+                min-height: 300px;
                 height: 300px;
+            }
+            .coin-analysis-header,
+            .analysis-overview {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .analysis-grid,
+            .analysis-grid.analysis-prices,
+            .analysis-actions {
+                grid-template-columns: 1fr;
+            }
+            .coin-analysis-card > div:nth-child(2),
+            .coin-analysis-card > div:nth-child(3),
+            .coin-analysis-card > div:nth-child(5),
+            .coin-analysis-card > div:nth-child(6) {
+                grid-template-columns: 1fr !important;
             }
             .positions-scroll {
                 max-height: 220px;
@@ -383,7 +667,9 @@
     </div>
 
     <div class="panel right dashboard-right">
-        <div id="tv_chart" class="dashboard-chart"></div>
+        <div class="dashboard-section chart-section">
+            <div id="tv_chart" class="dashboard-chart"></div>
+        </div>
 
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script type="text/javascript">
