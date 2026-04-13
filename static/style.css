@@ -1,17 +1,27 @@
+/* ============================================================
+   MindRiskControl — Premium Dark Trading UI
+   Drop-in replacement for style.css
+   All features, labels, inputs, and font sizes preserved.
+   ============================================================ */
+
+/* ── Reset & Base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
 html, body {
     height: 100%;
     overflow: hidden;
 }
 
 body {
-    background: #0b0f12;
-    color: #e6e6e6;
+    background: #060b10;
+    color: #d6e8f0;
     margin: 0;
     font-family: Arial, sans-serif;
     font-size: 14px;
     -webkit-font-smoothing: antialiased;
 }
 
+/* ── Layout Container ─────────────────────────────────────── */
 .container {
     padding: 8px;
     display: flex;
@@ -23,376 +33,431 @@ body {
     margin: 7px auto;
 }
 
+/* ── Panels ───────────────────────────────────────────────── */
 .panel {
     padding: 6px;
-    border: 2px solid #064d64;
-    border-radius: 8px;
-    background: #0e1419;
+    border: 1px solid rgba(0, 212, 255, 0.18);
+    border-radius: 12px;
+    background: linear-gradient(160deg, #0b1520 0%, #0d1a24 100%);
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
     overflow: hidden;
+    box-shadow:
+        0 0 0 1px rgba(0, 212, 255, 0.06),
+        0 4px 32px rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .panel.left {
+    flex: 0 0 700px;
+    min-width: 360px;
+    max-width: 900px;
     overflow-y: auto;
     overflow-x: hidden;
-    max-height: calc(100vh - 30px);
-}
-
-.panel.left::-webkit-scrollbar {
-    width: 4px;
-}
-
-.panel.left::-webkit-scrollbar-track {
-    background: #0e1419;
-}
-
-.panel.left::-webkit-scrollbar-thumb {
-    background: #0ca7d4;
-    border-radius: 2px;
-}
-
-.panel.left::-webkit-scrollbar-thumb:hover {
-    background: #00d4ff;
-}
-
-.panel.left { 
-    flex: 0 0 700px; 
-    min-width: 360px; 
-    max-width: 900px; 
-    overflow-y: auto;
-    overflow-x: hidden;
-    display: flex; 
+    display: flex;
     flex-direction: column;
     max-height: calc(100vh - 16px);
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 
-.panel.right { 
-    flex: 1 1 420px; 
-    min-width: 380px; 
-    overflow: visible; 
-    display: flex; 
-    flex-direction: column; 
+.panel.left::-webkit-scrollbar { display: none; }
+
+.panel.right {
+    flex: 1 1 420px;
+    min-width: 380px;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
 }
 
+/* ── Header Bar ───────────────────────────────────────────── */
 .header {
-    background: #0b5d7a;
-    padding: 4px 8px;
-    border-radius: 5px;
-    color: white;
+    background: linear-gradient(90deg, #0a4f6e 0%, #0b3d56 60%, #081e2d 100%);
+    padding: 5px 10px;
+    border-radius: 7px;
+    color: #e0f8ff;
     font-weight: bold;
-    margin-bottom: 4px;
-    border: 1px solid #0ca7d4;
+    margin-bottom: 5px;
+    border: 1px solid rgba(0, 212, 255, 0.35);
     font-size: 0.9em;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    box-shadow: 0 0 14px rgba(0, 188, 212, 0.18), inset 0 1px 0 rgba(255,255,255,0.06);
+    position: relative;
+    overflow: hidden;
 }
 
+.header::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, #00d4ff, #0066ff);
+    border-radius: 7px 0 0 7px;
+}
+
+/* ── Alerts ───────────────────────────────────────────────── */
 .message {
-    padding: 10px;
-    border-radius: 5px;
-    margin-bottom: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin-bottom: 8px;
     font-weight: bold;
 }
 
 .message.success {
-    background: #1a4d2e;
+    background: rgba(0, 200, 100, 0.1);
     color: #00ff88;
-    border: 1px solid #00ff88;
+    border: 1px solid rgba(0, 255, 136, 0.4);
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.1);
 }
 
 .message.error {
-    background: #4d1a1a;
-    color: #ff4d4d;
-    border: 1px solid #ff4d4d;
+    background: rgba(200, 30, 30, 0.12);
+    color: #ff6b6b;
+    border: 1px solid rgba(255, 80, 80, 0.4);
+    box-shadow: 0 0 10px rgba(255, 60, 60, 0.12);
 }
 
-.row { 
-    display: flex; 
-    gap: 6px; 
-    margin-bottom: 4px; 
-}
-
-.col { 
-    flex: 1; 
-    display: flex; 
-    flex-direction: column; 
-}
-
-label { 
-    font-size: 11px; 
-    opacity: 0.9; 
-    margin-bottom: 2px; 
-    color: #c9d6de; 
-}
-
-input, select { 
-    background: #101b22; 
-    color: #00b7ff; 
-    border: 1px solid #0d4a5e; 
-    padding: 4px 6px; 
-    border-radius: 4px; 
-    font-size: 11px; 
-    height: 22px; 
-}
-
-.button-row { 
-    display: flex; 
-    gap: 4px; 
-    margin: 4px 0; 
-    flex-wrap: wrap; 
-}
-
-.tab { 
-    flex: 1; 
-    padding: 4px 0; 
-    background: #0d4a5e; 
-    border: 1px solid #0ea8d5; 
-    color: white; 
-    border-radius: 4px; 
-    font-weight: bold; 
-    cursor: pointer; 
-    font-size: 0.8em; 
-    height: 22px; 
-}
-
-.tab.active { 
-    background: #00baff; 
-    color: black; 
-}
-
-.status { 
-    background: #111d23; 
-    padding: 6px; 
-    border-radius: 4px; 
-    border: 1px solid #1d3a45; 
-    color: #a8ffcc; 
-    margin: 6px 0; 
-    font-size: 0.85em; 
-}
-
-.reset { 
-    flex: 1; 
-    padding: 6px; 
-    background: #3a3a3a; 
-    color: white; 
-    border: 1px solid #777; 
-    border-radius: 4px; 
-    cursor: pointer; 
-    font-size: 0.8em; 
-    height: 20px;
-}
-
-.place { 
-    flex: 2; 
-    padding: 6px; 
-    background: #009dff; 
-    color: white; 
-    border-radius: 4px; 
-    border: 1px solid #11c0ff; 
-    font-weight: bold; 
-    cursor: pointer; 
-    font-size: 0.9em; 
-    height: 24px; 
-}
-
-.place:hover {
-    background: #00b8ff;
-}
-
-.place:disabled {
-    background: #444;
-    border-color: #666;
-    cursor: not-allowed;
-}
-
-/* Close All Positions Button */
-.close-all-btn {
-    background: #4d1a1a;
-    color: #ff4d4d;
-    border: 1px solid #ff4d4d;
-    padding: 4px 12px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: all 0.2s;
-    margin-left: 10px;
-}
-
-.close-all-btn:hover {
-    background: #ff4d4d;
-    color: #000;
-}
-
-/* CSV Download Button */
-.csv-download-btn {
-    background: #1a4d2e;
-    color: #00ff88;
-    border: 1px solid #00ff88;
-    padding: 4px 12px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: bold;
-    text-decoration: none;
-    cursor: pointer;
-    transition: all 0.2s;
-    margin-left: 10px;
-}
-
-.csv-download-btn:hover {
-    background: #00ff88;
-    color: #000;
-}
-
-.chart-box { 
-    background: #0b0f12; 
-    padding: 4px; 
-    border-radius: 5px; 
-    margin-bottom: 8px; 
-    height: 200px; 
-    min-height: 140px; 
-    overflow: hidden; 
-}
-
-.trade-log-section { 
-    overflow: hidden; 
-    flex: 1 1 auto; 
-    padding-top: 4px; 
-    max-height: 140px; 
-}
-
-.panel::-webkit-scrollbar, 
-.trade-log-section::-webkit-scrollbar { 
-    display: none; 
-}
-
-.panel { 
-    -ms-overflow-style: none; 
-    scrollbar-width: none; 
-}
-
-.trade-log-section { 
-    -ms-overflow-style: none; 
-    scrollbar-width: none; 
-}
-
-.panel { 
-    font-size: 0.92em; 
-}
-
-.panel .header { 
-    padding: 5px 8px; 
-}
-
-.button-row .tab { 
-    padding: 4px 6px; 
-    font-size: 0.82em; 
-}
-
-.place, .reset { 
-    padding: 4px 8px; 
-    height: 24px; 
-}
-
-.panel.left::-webkit-scrollbar { 
-    display: none; 
-}
-
-.panel.left { 
-    -ms-overflow-style: none; 
-    scrollbar-width: none; 
-}
-
-table { 
-    width: 100%; 
-    border-collapse: collapse; 
-    font-size: 0.85em; 
-}
-
-table th { 
-    background: #0a5168; 
-    color: white; 
-    padding: 4px; 
-    border: 1px solid #0ca7d4; 
-    font-size: 10px;
-}
-
-table td { 
-    padding: 3px; 
-    border: 1px solid #333; 
-    font-size: 10px;
-}
-
-.long { 
-    color: #00ff99; 
-    font-weight: bold; 
-}
-
-.short { 
-    color: #ff5757; 
-    font-weight: bold; 
-}
-
-small {
-    display: block;
-    margin-top: 1px;
-    line-height: 1.2;
-}
-
+/* ── Form Layout ──────────────────────────────────────────── */
 form {
     display: flex;
     flex-direction: column;
     gap: 0;
 }
 
-.no-trades { 
-    padding: 5px; 
-    opacity: 0.8; 
+.row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 4px;
 }
 
-/* Custom scrollbar for position container */
+.col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ── Labels ───────────────────────────────────────────────── */
+label {
+    font-size: 11px;
+    margin-bottom: 2px;
+    color: #7ab8cc;
+    letter-spacing: 0.02em;
+}
+
+/* ── Inputs & Selects ─────────────────────────────────────── */
+input, select {
+    background: rgba(8, 20, 30, 0.85);
+    color: #00d4ff;
+    border: 1px solid rgba(0, 150, 200, 0.25);
+    padding: 4px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    height: 22px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    outline: none;
+    backdrop-filter: blur(4px);
+}
+
+input:focus, select:focus {
+    border-color: rgba(0, 212, 255, 0.7);
+    box-shadow: 0 0 0 2px rgba(0, 188, 212, 0.15), 0 0 8px rgba(0, 212, 255, 0.12);
+    background: rgba(10, 26, 38, 0.95);
+}
+
+input:disabled {
+    color: #7aff00;
+    background: rgba(8, 20, 30, 0.6);
+    border-color: rgba(122, 255, 0, 0.2);
+    cursor: default;
+}
+
+input[type="range"] {
+    height: 4px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    border-radius: 2px;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    background: linear-gradient(90deg, #00d4ff var(--range-progress, 50%), rgba(0,212,255,0.15) var(--range-progress, 50%));
+    border-radius: 2px;
+}
+
+input[type="range"]::-moz-range-track {
+    height: 4px;
+    background: rgba(0, 212, 255, 0.18);
+    border-radius: 2px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #00d4ff;
+    border: 2px solid #060b10;
+    margin-top: -5px;
+    box-shadow: 0 0 8px rgba(0, 212, 255, 0.6);
+    cursor: pointer;
+}
+
+input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #00d4ff;
+    border: 2px solid #060b10;
+    box-shadow: 0 0 8px rgba(0, 212, 255, 0.6);
+    cursor: pointer;
+}
+
+small {
+    display: block;
+    margin-top: 1px;
+    line-height: 1.2;
+    color: #5a8898;
+}
+
+/* ── LONG / SHORT Tab Buttons ─────────────────────────────── */
+.button-row {
+    display: flex;
+    gap: 4px;
+    margin: 5px 0;
+    flex-wrap: wrap;
+}
+
+.tab {
+    flex: 1;
+    padding: 4px 0;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 0.8em;
+    height: 26px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(14, 28, 40, 0.8);
+    color: #8aaabb;
+    transition: all 0.2s ease;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.tab:hover {
+    color: #fff;
+    border-color: rgba(0, 212, 255, 0.3);
+}
+
+/* LONG active */
+.tab.active[data-testid="long-button"],
+.tab[onclick*="LONG"].active,
+.button-row .tab:first-child.active {
+    background: linear-gradient(135deg, #007a38 0%, #00c853 100%);
+    color: #fff;
+    border-color: #00e57a;
+    box-shadow: 0 0 16px rgba(0, 200, 83, 0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+    text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+/* SHORT active */
+.tab.active[data-testid="short-button"],
+.tab[onclick*="SHORT"].active,
+.button-row .tab:last-child.active {
+    background: linear-gradient(135deg, #8b0000 0%, #e53935 100%);
+    color: #fff;
+    border-color: #ff5252;
+    box-shadow: 0 0 16px rgba(229, 57, 53, 0.35), inset 0 1px 0 rgba(255,255,255,0.1);
+    text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+/* ── Status Box ───────────────────────────────────────────── */
+.status {
+    background: rgba(10, 22, 30, 0.8);
+    padding: 5px 7px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 212, 255, 0.12);
+    border-left: 2px solid rgba(0, 212, 255, 0.5);
+    color: #7aff99;
+    margin: 4px 0;
+    font-size: 0.85em;
+}
+
+/* ── Buttons ──────────────────────────────────────────────── */
+.reset {
+    flex: 1;
+    padding: 5px;
+    background: rgba(40, 40, 50, 0.7);
+    color: #aaa;
+    border: 1px solid rgba(100, 100, 120, 0.35);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.8em;
+    height: 22px;
+    transition: all 0.2s;
+}
+
+.reset:hover {
+    background: rgba(60, 60, 75, 0.9);
+    color: #ddd;
+    border-color: rgba(150,150,180,0.5);
+}
+
+.place {
+    flex: 2;
+    padding: 5px 8px;
+    background: linear-gradient(135deg, #005fa3 0%, #0099ff 100%);
+    color: #fff;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 180, 255, 0.5);
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 0.9em;
+    height: 26px;
+    transition: all 0.2s;
+    box-shadow: 0 0 12px rgba(0, 153, 255, 0.25);
+    letter-spacing: 0.04em;
+}
+
+.place:hover {
+    background: linear-gradient(135deg, #006fbf 0%, #00b0ff 100%);
+    box-shadow: 0 0 18px rgba(0, 180, 255, 0.4);
+    transform: translateY(-1px);
+}
+
+.place:disabled {
+    background: rgba(50, 50, 60, 0.7);
+    border-color: rgba(80,80,100,0.4);
+    color: #666;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+/* ── Close All Positions Button ───────────────────────────── */
+.close-all-btn {
+    background: rgba(100, 20, 20, 0.5);
+    color: #ff6b6b;
+    border: 1px solid rgba(255, 77, 77, 0.45);
+    padding: 3px 10px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-left: 8px;
+}
+
+.close-all-btn:hover {
+    background: #e53935;
+    color: #fff;
+    box-shadow: 0 0 10px rgba(229, 57, 53, 0.4);
+}
+
+/* ── CSV Download Button ──────────────────────────────────── */
+.csv-download-btn {
+    background: rgba(0, 80, 40, 0.4);
+    color: #00ff88;
+    border: 1px solid rgba(0, 255, 136, 0.35);
+    padding: 3px 10px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: bold;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-left: 8px;
+}
+
+.csv-download-btn:hover {
+    background: #00c853;
+    color: #000;
+    box-shadow: 0 0 10px rgba(0, 200, 83, 0.4);
+}
+
+/* ── Chart Box ────────────────────────────────────────────── */
+.chart-box {
+    background: #060b10;
+    padding: 4px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    height: 200px;
+    min-height: 140px;
+    overflow: hidden;
+    border: 1px solid rgba(0, 212, 255, 0.1);
+}
+
+/* ── Trade Log Section ────────────────────────────────────── */
+.trade-log-section {
+    overflow: hidden;
+    flex: 1 1 auto;
+    padding-top: 4px;
+    max-height: 140px;
+}
+
+.trade-log-section::-webkit-scrollbar { display: none; }
+.trade-log-section { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Tables ───────────────────────────────────────────────── */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85em;
+}
+
+table th {
+    background: rgba(8, 60, 85, 0.8);
+    color: #a0e0f0;
+    padding: 4px;
+    border: 1px solid rgba(12, 167, 212, 0.25);
+    font-size: 10px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+table td {
+    padding: 3px;
+    border: 1px solid rgba(30, 60, 80, 0.6);
+    font-size: 10px;
+}
+
+table tr:nth-child(even) td {
+    background: rgba(0, 212, 255, 0.02);
+}
+
+.long { color: #00ff99; font-weight: bold; }
+.short { color: #ff5757; font-weight: bold; }
+
+/* ── Scrollbars (custom where shown) ─────────────────────── */
 #live_positions::-webkit-scrollbar,
 #trade_history::-webkit-scrollbar {
-    width: 6px;
+    width: 3px;
 }
 
 #live_positions::-webkit-scrollbar-track,
 #trade_history::-webkit-scrollbar-track {
-    background: #0a1520;
+    background: rgba(6, 12, 18, 0.6);
+    border-radius: 3px;
 }
 
 #live_positions::-webkit-scrollbar-thumb,
 #trade_history::-webkit-scrollbar-thumb {
-    background: #0ca7d4;
+    background: linear-gradient(180deg, #0ca7d4, #00d4ff);
     border-radius: 3px;
 }
 
 #live_positions::-webkit-scrollbar-thumb:hover,
 #trade_history::-webkit-scrollbar-thumb:hover {
-    background: #00b7ff;
+    background: linear-gradient(180deg, #00d4ff, #00ff88);
 }
 
-/* Small screens: stack panels */
-@media (max-width: 900px) {
-    .container { 
-        flex-direction: column; 
-        height: auto; 
-    }
-    .panel.left { 
-        flex: none; 
-        width: auto; 
-        max-width: 100%; 
-    }
-    .panel.right { 
-        flex: none; 
-        width: auto; 
-    }
-    html, body { 
-        overflow: auto; 
-    }
-}
-
-/* Perfected Box Styling */
+/* ── Positions & Trade History Box ───────────────────────── */
 .positions-scroll::-webkit-scrollbar,
 .trade-history-box::-webkit-scrollbar {
     width: 3px;
@@ -400,25 +465,20 @@ form {
 
 .positions-scroll::-webkit-scrollbar-track,
 .trade-history-box::-webkit-scrollbar-track {
-    background: rgba(10, 30, 40, 0.8);
+    background: rgba(6, 12, 18, 0.8);
     border-radius: 3px;
 }
 
 .positions-scroll::-webkit-scrollbar-thumb,
 .trade-history-box::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #0ca7d4 0%, #00d4ff 100%);
+    background: linear-gradient(180deg, #0ca7d4, #00d4ff);
     border-radius: 3px;
-    transition: all 0.2s ease;
 }
 
-.positions-scroll::-webkit-scrollbar-thumb:hover,
-.trade-history-box::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, #00d4ff 0%, #00ff88 100%);
-}
-
+/* ── Dashboard Card Buttons ───────────────────────────────── */
 .dashboard-card button:hover {
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 212, 255, 0.3);
+    box-shadow: 0 2px 10px rgba(0, 212, 255, 0.25);
     transition: all 0.2s ease;
 }
 
@@ -426,5 +486,125 @@ form {
     transform: translateY(0);
 }
 
+/* ── no-trades placeholder ────────────────────────────────── */
+.no-trades {
+    padding: 5px;
+    opacity: 0.6;
+    color: #4a7080;
+}
 
-/* Paste this into your style.css or <style> block for index.html */
+/* ── Neon Dividers (utility class) ───────────────────────── */
+.neon-divider {
+    border: none;
+    border-top: 1px solid rgba(0, 188, 212, 0.15);
+    margin: 5px 0;
+}
+
+/* ── Risk Preview Box ─────────────────────────────────────── */
+.risk-preview {
+    background: rgba(0, 100, 140, 0.12);
+    border: 1px solid rgba(0, 212, 255, 0.15);
+    border-radius: 5px;
+    padding: 4px 6px;
+    color: #8dd8e8;
+}
+
+/* ── Limit Bar ────────────────────────────────────────────── */
+.limit-bar {
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    height: 4px;
+}
+
+.limit-green {
+    background: linear-gradient(90deg, #00c853, #69f0ae);
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+
+.limit-red {
+    background: linear-gradient(90deg, #c62828, #ff5252);
+    height: 100%;
+    border-radius: 2px;
+}
+
+/* ── Risk Control Container ───────────────────────────────── */
+.risk-control {
+    background: rgba(8, 20, 30, 0.6);
+    border: 1px solid rgba(0, 212, 255, 0.1);
+    border-radius: 6px;
+    padding: 5px 7px;
+    margin-bottom: 4px;
+}
+
+/* ── Left Panel Scroll ────────────────────────────────────── */
+.left-panel-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 0;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.left-panel-scroll::-webkit-scrollbar { display: none; }
+
+/* ── Trade History Box ────────────────────────────────────── */
+.trade-history-box {
+    background: rgba(4, 10, 16, 0.9);
+    border: 1px solid rgba(0, 212, 255, 0.1);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 6px;
+    border-radius: 6px;
+    font-size: 8px;
+    font-family: monospace;
+}
+
+/* ── Dashboard Right Panel (in <style> block, enhanced) ───── */
+
+/* Wallet display badge glow */
+#wallet-status span {
+    border-radius: 6px;
+    padding: 1px 5px;
+    font-size: 8px;
+    font-weight: bold;
+}
+
+/* ── Misc Utility ─────────────────────────────────────────── */
+details > summary {
+    cursor: pointer;
+    user-select: none;
+}
+
+details > summary::-webkit-details-marker { color: #0ca7d4; }
+
+/* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 900px) {
+    .container {
+        flex-direction: column;
+        height: auto;
+    }
+    .panel.left {
+        flex: none;
+        width: auto;
+        max-width: 100%;
+    }
+    .panel.right {
+        flex: none;
+        width: auto;
+    }
+    html, body {
+        overflow: auto;
+    }
+}
+
+/* ── Focus rings (accessibility) ─────────────────────────── */
+button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid rgba(0, 212, 255, 0.5);
+    outline-offset: 1px;
+}
