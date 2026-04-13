@@ -1,8 +1,58 @@
 /* ============================================================
-   MindRiskControl — Premium Dark Trading UI
-   Drop-in replacement for style.css
-   All features, labels, inputs, and font sizes preserved.
+   MindRiskControl — Animated Smooth Dark UI
    ============================================================ */
+
+/* ── Keyframe Animations ──────────────────────────────────── */
+@keyframes borderGlow {
+    0%, 100% { box-shadow: 0 0 6px rgba(0,212,255,0.2), inset 0 0 6px rgba(0,212,255,0.04); }
+    50%       { box-shadow: 0 0 18px rgba(0,212,255,0.45), inset 0 0 10px rgba(0,212,255,0.08); }
+}
+
+@keyframes headerShimmer {
+    0%   { background-position: -200% center; }
+    100% { background-position: 200% center; }
+}
+
+@keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+}
+
+@keyframes scanline {
+    0%   { transform: translateY(-100%); }
+    100% { transform: translateY(400%); }
+}
+
+@keyframes tabGlow {
+    0%, 100% { box-shadow: 0 0 8px rgba(0,200,83,0.3); }
+    50%       { box-shadow: 0 0 22px rgba(0,200,83,0.65); }
+}
+
+@keyframes tabGlowRed {
+    0%, 100% { box-shadow: 0 0 8px rgba(229,57,53,0.3); }
+    50%       { box-shadow: 0 0 22px rgba(229,57,53,0.65); }
+}
+
+@keyframes sliderPulse {
+    0%, 100% { box-shadow: 0 0 6px rgba(0,212,255,0.5); }
+    50%       { box-shadow: 0 0 14px rgba(0,212,255,0.9); }
+}
+
+@keyframes rowFadeIn {
+    from { opacity: 0; transform: translateX(-4px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes inputFocus {
+    0%   { box-shadow: 0 0 0 0 rgba(0,212,255,0.4); }
+    70%  { box-shadow: 0 0 0 4px rgba(0,212,255,0.1); }
+    100% { box-shadow: 0 0 0 2px rgba(0,188,212,0.15), 0 0 8px rgba(0,212,255,0.12); }
+}
 
 /* ── Reset & Base ─────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
@@ -31,12 +81,13 @@ body {
     box-sizing: border-box;
     max-width: 1600px;
     margin: 7px auto;
+    animation: fadeSlideIn 0.5s ease both;
 }
 
 /* ── Panels ───────────────────────────────────────────────── */
 .panel {
     padding: 6px;
-    border: 1px solid rgba(0, 212, 255, 0.18);
+    border: 1px solid rgba(0,212,255,0.2);
     border-radius: 12px;
     background: linear-gradient(160deg, #0b1520 0%, #0d1a24 100%);
     display: flex;
@@ -44,9 +95,11 @@ body {
     box-sizing: border-box;
     overflow: hidden;
     box-shadow:
-        0 0 0 1px rgba(0, 212, 255, 0.06),
-        0 4px 32px rgba(0, 0, 0, 0.55),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        0 0 0 1px rgba(0,212,255,0.06),
+        0 6px 40px rgba(0,0,0,0.6),
+        inset 0 1px 0 rgba(255,255,255,0.04);
+    animation: borderGlow 4s ease-in-out infinite;
+    transition: border-color 0.3s ease;
 }
 
 .panel.left {
@@ -74,19 +127,25 @@ body {
 
 /* ── Header Bar ───────────────────────────────────────────── */
 .header {
-    background: linear-gradient(90deg, #0a4f6e 0%, #0b3d56 60%, #081e2d 100%);
     padding: 5px 10px;
     border-radius: 7px;
     color: #e0f8ff;
     font-weight: bold;
     margin-bottom: 5px;
-    border: 1px solid rgba(0, 212, 255, 0.35);
+    border: 1px solid rgba(0,212,255,0.35);
     font-size: 0.9em;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    box-shadow: 0 0 14px rgba(0, 188, 212, 0.18), inset 0 1px 0 rgba(255,255,255,0.06);
     position: relative;
     overflow: hidden;
+    background: linear-gradient(
+        100deg,
+        #0a3d52 0%, #0b5d7a 20%, #0d7a9e 40%,
+        #0b5d7a 60%, #0a3d52 80%, #0b5d7a 100%
+    );
+    background-size: 200% auto;
+    animation: headerShimmer 5s linear infinite;
+    box-shadow: 0 0 16px rgba(0,188,212,0.25), inset 0 1px 0 rgba(255,255,255,0.07);
 }
 
 .header::before {
@@ -94,8 +153,18 @@ body {
     position: absolute;
     left: 0; top: 0; bottom: 0;
     width: 3px;
-    background: linear-gradient(180deg, #00d4ff, #0066ff);
+    background: linear-gradient(180deg, #00ffee, #0066ff);
     border-radius: 7px 0 0 7px;
+}
+
+.header::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 40%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, transparent 100%);
+    animation: scanline 3s linear infinite;
+    pointer-events: none;
 }
 
 /* ── Alerts ───────────────────────────────────────────────── */
@@ -104,20 +173,21 @@ body {
     border-radius: 6px;
     margin-bottom: 8px;
     font-weight: bold;
+    animation: fadeSlideIn 0.35s ease both;
 }
 
 .message.success {
-    background: rgba(0, 200, 100, 0.1);
+    background: rgba(0,200,100,0.1);
     color: #00ff88;
-    border: 1px solid rgba(0, 255, 136, 0.4);
-    box-shadow: 0 0 10px rgba(0, 255, 136, 0.1);
+    border: 1px solid rgba(0,255,136,0.4);
+    box-shadow: 0 0 12px rgba(0,255,136,0.12);
 }
 
 .message.error {
-    background: rgba(200, 30, 30, 0.12);
+    background: rgba(200,30,30,0.12);
     color: #ff6b6b;
-    border: 1px solid rgba(255, 80, 80, 0.4);
-    box-shadow: 0 0 10px rgba(255, 60, 60, 0.12);
+    border: 1px solid rgba(255,80,80,0.4);
+    box-shadow: 0 0 12px rgba(255,60,60,0.14);
 }
 
 /* ── Form Layout ──────────────────────────────────────────── */
@@ -131,6 +201,7 @@ form {
     display: flex;
     gap: 6px;
     margin-bottom: 4px;
+    animation: rowFadeIn 0.4s ease both;
 }
 
 .col {
@@ -143,37 +214,43 @@ form {
 label {
     font-size: 11px;
     margin-bottom: 2px;
-    color: #7ab8cc;
+    color: #6aacbf;
     letter-spacing: 0.02em;
+    transition: color 0.2s;
 }
 
 /* ── Inputs & Selects ─────────────────────────────────────── */
 input, select {
-    background: rgba(8, 20, 30, 0.85);
+    background: rgba(8,20,30,0.85);
     color: #00d4ff;
-    border: 1px solid rgba(0, 150, 200, 0.25);
+    border: 1px solid rgba(0,150,200,0.22);
     padding: 4px 6px;
     border-radius: 6px;
     font-size: 11px;
     height: 22px;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
     outline: none;
-    backdrop-filter: blur(4px);
+}
+
+input:hover, select:hover {
+    border-color: rgba(0,212,255,0.35);
+    background: rgba(10,24,36,0.92);
 }
 
 input:focus, select:focus {
-    border-color: rgba(0, 212, 255, 0.7);
-    box-shadow: 0 0 0 2px rgba(0, 188, 212, 0.15), 0 0 8px rgba(0, 212, 255, 0.12);
-    background: rgba(10, 26, 38, 0.95);
+    border-color: rgba(0,212,255,0.7);
+    background: rgba(10,26,38,0.97);
+    animation: inputFocus 0.35s ease forwards;
 }
 
 input:disabled {
     color: #7aff00;
-    background: rgba(8, 20, 30, 0.6);
-    border-color: rgba(122, 255, 0, 0.2);
+    background: rgba(8,20,30,0.6);
+    border-color: rgba(122,255,0,0.18);
     cursor: default;
 }
 
+/* ── Range Slider ─────────────────────────────────────────── */
 input[type="range"] {
     height: 4px;
     padding: 0;
@@ -187,13 +264,13 @@ input[type="range"] {
 
 input[type="range"]::-webkit-slider-runnable-track {
     height: 4px;
-    background: linear-gradient(90deg, #00d4ff var(--range-progress, 50%), rgba(0,212,255,0.15) var(--range-progress, 50%));
+    background: linear-gradient(90deg, #00d4ff 0%, rgba(0,212,255,0.15) 100%);
     border-radius: 2px;
 }
 
 input[type="range"]::-moz-range-track {
     height: 4px;
-    background: rgba(0, 212, 255, 0.18);
+    background: rgba(0,212,255,0.18);
     border-radius: 2px;
 }
 
@@ -202,20 +279,24 @@ input[type="range"]::-webkit-slider-thumb {
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: #00d4ff;
+    background: radial-gradient(circle, #00eeff 0%, #0099cc 100%);
     border: 2px solid #060b10;
     margin-top: -5px;
-    box-shadow: 0 0 8px rgba(0, 212, 255, 0.6);
     cursor: pointer;
+    animation: sliderPulse 2.5s ease-in-out infinite;
+    transition: transform 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.25);
 }
 
 input[type="range"]::-moz-range-thumb {
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: #00d4ff;
+    background: radial-gradient(circle, #00eeff 0%, #0099cc 100%);
     border: 2px solid #060b10;
-    box-shadow: 0 0 8px rgba(0, 212, 255, 0.6);
     cursor: pointer;
 }
 
@@ -223,10 +304,10 @@ small {
     display: block;
     margin-top: 1px;
     line-height: 1.2;
-    color: #5a8898;
+    color: #4a7080;
 }
 
-/* ── LONG / SHORT Tab Buttons ─────────────────────────────── */
+/* ── LONG / SHORT Buttons ─────────────────────────────────── */
 .button-row {
     display: flex;
     gap: 4px;
@@ -242,143 +323,178 @@ small {
     cursor: pointer;
     font-size: 0.8em;
     height: 26px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(14, 28, 40, 0.8);
-    color: #8aaabb;
-    transition: all 0.2s ease;
-    letter-spacing: 0.06em;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(14,28,40,0.75);
+    color: #607a88;
+    transition: all 0.25s ease;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
+    position: relative;
+    overflow: hidden;
 }
+
+.tab::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 100%);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.tab:hover::before { opacity: 1; }
 
 .tab:hover {
-    color: #fff;
-    border-color: rgba(0, 212, 255, 0.3);
+    color: #c0d8e8;
+    border-color: rgba(0,212,255,0.25);
+    transform: translateY(-1px);
 }
 
-/* LONG active */
-.tab.active[data-testid="long-button"],
-.tab[onclick*="LONG"].active,
+.tab.active:first-child,
 .button-row .tab:first-child.active {
-    background: linear-gradient(135deg, #007a38 0%, #00c853 100%);
+    background: linear-gradient(135deg, #006630 0%, #00c853 100%);
     color: #fff;
     border-color: #00e57a;
-    box-shadow: 0 0 16px rgba(0, 200, 83, 0.35), inset 0 1px 0 rgba(255,255,255,0.15);
-    text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    animation: tabGlow 2s ease-in-out infinite;
+    text-shadow: 0 0 8px rgba(0,255,136,0.6);
+    transform: translateY(-1px);
 }
 
-/* SHORT active */
-.tab.active[data-testid="short-button"],
-.tab[onclick*="SHORT"].active,
+.tab.active:last-child,
 .button-row .tab:last-child.active {
-    background: linear-gradient(135deg, #8b0000 0%, #e53935 100%);
+    background: linear-gradient(135deg, #7a0000 0%, #e53935 100%);
     color: #fff;
     border-color: #ff5252;
-    box-shadow: 0 0 16px rgba(229, 57, 53, 0.35), inset 0 1px 0 rgba(255,255,255,0.1);
-    text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    animation: tabGlowRed 2s ease-in-out infinite;
+    text-shadow: 0 0 8px rgba(255,80,80,0.6);
+    transform: translateY(-1px);
 }
 
 /* ── Status Box ───────────────────────────────────────────── */
 .status {
-    background: rgba(10, 22, 30, 0.8);
+    background: rgba(8,18,26,0.75);
     padding: 5px 7px;
     border-radius: 6px;
-    border: 1px solid rgba(0, 212, 255, 0.12);
-    border-left: 2px solid rgba(0, 212, 255, 0.5);
-    color: #7aff99;
+    border: 1px solid rgba(0,212,255,0.1);
+    border-left: 2px solid rgba(0,212,255,0.45);
+    color: #5adf99;
     margin: 4px 0;
     font-size: 0.85em;
+    transition: border-color 0.3s ease;
 }
+
+.status:hover { border-left-color: rgba(0,212,255,0.85); }
 
 /* ── Buttons ──────────────────────────────────────────────── */
 .reset {
     flex: 1;
     padding: 5px;
-    background: rgba(40, 40, 50, 0.7);
-    color: #aaa;
-    border: 1px solid rgba(100, 100, 120, 0.35);
+    background: rgba(35,40,50,0.7);
+    color: #909aa8;
+    border: 1px solid rgba(90,100,120,0.3);
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.8em;
     height: 22px;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
 }
 
 .reset:hover {
-    background: rgba(60, 60, 75, 0.9);
-    color: #ddd;
-    border-color: rgba(150,150,180,0.5);
+    background: rgba(55,62,78,0.85);
+    color: #ccd6e0;
+    border-color: rgba(140,160,185,0.45);
+    transform: translateY(-1px);
 }
 
 .place {
     flex: 2;
     padding: 5px 8px;
-    background: linear-gradient(135deg, #005fa3 0%, #0099ff 100%);
+    background: linear-gradient(135deg, #004d8a 0%, #0077cc 60%, #00aaff 100%);
     color: #fff;
     border-radius: 6px;
-    border: 1px solid rgba(0, 180, 255, 0.5);
+    border: 1px solid rgba(0,180,255,0.45);
     font-weight: bold;
     cursor: pointer;
     font-size: 0.9em;
     height: 26px;
-    transition: all 0.2s;
-    box-shadow: 0 0 12px rgba(0, 153, 255, 0.25);
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.25s ease;
+    box-shadow: 0 0 14px rgba(0,150,255,0.3), inset 0 1px 0 rgba(255,255,255,0.12);
 }
 
+.place::after {
+    content: '';
+    position: absolute;
+    top: -50%; left: -75%;
+    width: 50%; height: 200%;
+    background: rgba(255,255,255,0.12);
+    transform: skewX(-20deg);
+    transition: left 0.4s ease;
+}
+
+.place:hover::after { left: 130%; }
+
 .place:hover {
-    background: linear-gradient(135deg, #006fbf 0%, #00b0ff 100%);
-    box-shadow: 0 0 18px rgba(0, 180, 255, 0.4);
+    background: linear-gradient(135deg, #005ea3 0%, #0090e0 60%, #00c0ff 100%);
+    box-shadow: 0 0 22px rgba(0,180,255,0.5), inset 0 1px 0 rgba(255,255,255,0.16);
     transform: translateY(-1px);
 }
 
+.place:active { transform: translateY(0); }
+
 .place:disabled {
-    background: rgba(50, 50, 60, 0.7);
-    border-color: rgba(80,80,100,0.4);
-    color: #666;
+    background: rgba(40,44,52,0.7);
+    border-color: rgba(70,80,100,0.35);
+    color: #555;
     cursor: not-allowed;
     box-shadow: none;
     transform: none;
 }
 
-/* ── Close All Positions Button ───────────────────────────── */
+.place:disabled::after { display: none; }
+
+/* ── Close All / CSV ──────────────────────────────────────── */
 .close-all-btn {
-    background: rgba(100, 20, 20, 0.5);
+    background: rgba(90,15,15,0.5);
     color: #ff6b6b;
-    border: 1px solid rgba(255, 77, 77, 0.45);
+    border: 1px solid rgba(255,80,80,0.35);
     padding: 3px 10px;
     border-radius: 5px;
     font-size: 11px;
     font-weight: bold;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.22s ease;
     margin-left: 8px;
 }
 
 .close-all-btn:hover {
-    background: #e53935;
+    background: #c62828;
     color: #fff;
-    box-shadow: 0 0 10px rgba(229, 57, 53, 0.4);
+    box-shadow: 0 0 12px rgba(229,57,53,0.45);
+    transform: scale(1.04);
 }
 
-/* ── CSV Download Button ──────────────────────────────────── */
 .csv-download-btn {
-    background: rgba(0, 80, 40, 0.4);
+    background: rgba(0,70,35,0.4);
     color: #00ff88;
-    border: 1px solid rgba(0, 255, 136, 0.35);
+    border: 1px solid rgba(0,255,136,0.3);
     padding: 3px 10px;
     border-radius: 5px;
     font-size: 11px;
     font-weight: bold;
     text-decoration: none;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.22s ease;
     margin-left: 8px;
 }
 
 .csv-download-btn:hover {
-    background: #00c853;
+    background: #00b248;
     color: #000;
-    box-shadow: 0 0 10px rgba(0, 200, 83, 0.4);
+    box-shadow: 0 0 12px rgba(0,200,83,0.4);
+    transform: scale(1.04);
 }
 
 /* ── Chart Box ────────────────────────────────────────────── */
@@ -390,19 +506,21 @@ small {
     height: 200px;
     min-height: 140px;
     overflow: hidden;
-    border: 1px solid rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0,212,255,0.1);
+    transition: border-color 0.3s ease;
 }
 
-/* ── Trade Log Section ────────────────────────────────────── */
+/* ── Trade Log ────────────────────────────────────────────── */
 .trade-log-section {
     overflow: hidden;
     flex: 1 1 auto;
     padding-top: 4px;
     max-height: 140px;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 
 .trade-log-section::-webkit-scrollbar { display: none; }
-.trade-log-section { -ms-overflow-style: none; scrollbar-width: none; }
 
 /* ── Tables ───────────────────────────────────────────────── */
 table {
@@ -412,106 +530,101 @@ table {
 }
 
 table th {
-    background: rgba(8, 60, 85, 0.8);
-    color: #a0e0f0;
+    background: rgba(6,50,72,0.85);
+    color: #88d8ee;
     padding: 4px;
-    border: 1px solid rgba(12, 167, 212, 0.25);
+    border: 1px solid rgba(12,167,212,0.22);
     font-size: 10px;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
 }
 
 table td {
     padding: 3px;
-    border: 1px solid rgba(30, 60, 80, 0.6);
+    border: 1px solid rgba(28,55,72,0.55);
     font-size: 10px;
+    transition: background 0.2s;
 }
 
-table tr:nth-child(even) td {
-    background: rgba(0, 212, 255, 0.02);
-}
+table tr { transition: background 0.2s ease; }
+table tr:hover td { background: rgba(0,212,255,0.04); }
+table tr:nth-child(even) td { background: rgba(0,212,255,0.02); }
 
-.long { color: #00ff99; font-weight: bold; }
+.long  { color: #00ff99; font-weight: bold; }
 .short { color: #ff5757; font-weight: bold; }
 
-/* ── Scrollbars (custom where shown) ─────────────────────── */
+/* ── Scrollbars ───────────────────────────────────────────── */
 #live_positions::-webkit-scrollbar,
-#trade_history::-webkit-scrollbar {
-    width: 3px;
-}
-
-#live_positions::-webkit-scrollbar-track,
-#trade_history::-webkit-scrollbar-track {
-    background: rgba(6, 12, 18, 0.6);
-    border-radius: 3px;
-}
-
-#live_positions::-webkit-scrollbar-thumb,
-#trade_history::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #0ca7d4, #00d4ff);
-    border-radius: 3px;
-}
-
-#live_positions::-webkit-scrollbar-thumb:hover,
-#trade_history::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, #00d4ff, #00ff88);
-}
-
-/* ── Positions & Trade History Box ───────────────────────── */
+#trade_history::-webkit-scrollbar,
 .positions-scroll::-webkit-scrollbar,
 .trade-history-box::-webkit-scrollbar {
     width: 3px;
 }
 
+#live_positions::-webkit-scrollbar-track,
+#trade_history::-webkit-scrollbar-track,
 .positions-scroll::-webkit-scrollbar-track,
 .trade-history-box::-webkit-scrollbar-track {
-    background: rgba(6, 12, 18, 0.8);
+    background: rgba(6,12,18,0.7);
     border-radius: 3px;
 }
 
+#live_positions::-webkit-scrollbar-thumb,
+#trade_history::-webkit-scrollbar-thumb,
 .positions-scroll::-webkit-scrollbar-thumb,
 .trade-history-box::-webkit-scrollbar-thumb {
     background: linear-gradient(180deg, #0ca7d4, #00d4ff);
     border-radius: 3px;
 }
 
-/* ── Dashboard Card Buttons ───────────────────────────────── */
-.dashboard-card button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 10px rgba(0, 212, 255, 0.25);
+/* ── Dashboard Cards ──────────────────────────────────────── */
+.dashboard-card button {
     transition: all 0.2s ease;
 }
 
-.dashboard-card button:active {
-    transform: translateY(0);
+.dashboard-card button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 12px rgba(0,212,255,0.28);
 }
 
-/* ── no-trades placeholder ────────────────────────────────── */
+.dashboard-card button:active { transform: translateY(0); }
+
+/* ── Misc ─────────────────────────────────────────────────── */
 .no-trades {
     padding: 5px;
-    opacity: 0.6;
-    color: #4a7080;
+    opacity: 0.55;
+    color: #3a6070;
+    animation: fadeSlideIn 0.4s ease both;
 }
 
-/* ── Neon Dividers (utility class) ───────────────────────── */
 .neon-divider {
     border: none;
-    border-top: 1px solid rgba(0, 188, 212, 0.15);
+    border-top: 1px solid rgba(0,188,212,0.14);
     margin: 5px 0;
 }
 
-/* ── Risk Preview Box ─────────────────────────────────────── */
 .risk-preview {
-    background: rgba(0, 100, 140, 0.12);
-    border: 1px solid rgba(0, 212, 255, 0.15);
+    background: rgba(0,90,130,0.1);
+    border: 1px solid rgba(0,212,255,0.12);
     border-radius: 5px;
     padding: 4px 6px;
-    color: #8dd8e8;
+    color: #7ac8d8;
+    animation: fadeSlideIn 0.3s ease both;
 }
 
-/* ── Limit Bar ────────────────────────────────────────────── */
+.risk-control {
+    background: rgba(8,18,28,0.6);
+    border: 1px solid rgba(0,212,255,0.1);
+    border-radius: 6px;
+    padding: 5px 7px;
+    margin-bottom: 4px;
+    transition: border-color 0.3s ease;
+}
+
+.risk-control:hover { border-color: rgba(0,212,255,0.22); }
+
 .limit-bar {
-    background: rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.05);
     border-radius: 2px;
     overflow: hidden;
     height: 4px;
@@ -521,41 +634,31 @@ table tr:nth-child(even) td {
     background: linear-gradient(90deg, #00c853, #69f0ae);
     height: 100%;
     border-radius: 2px;
-    transition: width 0.4s ease;
+    transition: width 0.5s ease;
+    box-shadow: 0 0 6px rgba(0,200,83,0.35);
 }
 
 .limit-red {
-    background: linear-gradient(90deg, #c62828, #ff5252);
+    background: linear-gradient(90deg, #b71c1c, #ff5252);
     height: 100%;
     border-radius: 2px;
+    box-shadow: 0 0 6px rgba(229,57,53,0.35);
 }
 
-/* ── Risk Control Container ───────────────────────────────── */
-.risk-control {
-    background: rgba(8, 20, 30, 0.6);
-    border: 1px solid rgba(0, 212, 255, 0.1);
-    border-radius: 6px;
-    padding: 5px 7px;
-    margin-bottom: 4px;
-}
-
-/* ── Left Panel Scroll ────────────────────────────────────── */
 .left-panel-scroll {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding-right: 0;
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
 
 .left-panel-scroll::-webkit-scrollbar { display: none; }
 
-/* ── Trade History Box ────────────────────────────────────── */
 .trade-history-box {
-    background: rgba(4, 10, 16, 0.9);
-    border: 1px solid rgba(0, 212, 255, 0.1);
+    background: rgba(4,9,14,0.9);
+    border: 1px solid rgba(0,212,255,0.09);
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
@@ -563,25 +666,26 @@ table tr:nth-child(even) td {
     border-radius: 6px;
     font-size: 8px;
     font-family: monospace;
+    transition: border-color 0.3s ease;
 }
 
-/* ── Dashboard Right Panel (in <style> block, enhanced) ───── */
+.trade-history-box:hover { border-color: rgba(0,212,255,0.2); }
 
-/* Wallet display badge glow */
-#wallet-status span {
-    border-radius: 6px;
-    padding: 1px 5px;
-    font-size: 8px;
-    font-weight: bold;
-}
+.live-badge { animation: pulse 2s infinite; }
 
-/* ── Misc Utility ─────────────────────────────────────────── */
 details > summary {
     cursor: pointer;
     user-select: none;
+    transition: color 0.2s;
 }
 
+details > summary:hover { color: #00d4ff; }
 details > summary::-webkit-details-marker { color: #0ca7d4; }
+
+button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid rgba(0,212,255,0.45);
+    outline-offset: 1px;
+}
 
 /* ── Responsive ───────────────────────────────────────────── */
 @media (max-width: 900px) {
@@ -598,13 +702,5 @@ details > summary::-webkit-details-marker { color: #0ca7d4; }
         flex: none;
         width: auto;
     }
-    html, body {
-        overflow: auto;
-    }
-}
-
-/* ── Focus rings (accessibility) ─────────────────────────── */
-button:focus-visible, input:focus-visible, select:focus-visible {
-    outline: 2px solid rgba(0, 212, 255, 0.5);
-    outline-offset: 1px;
+    html, body { overflow: auto; }
 }
