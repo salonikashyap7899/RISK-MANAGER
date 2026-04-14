@@ -859,6 +859,12 @@
                             </div>
                         </div>
                         
+                        <!-- TP/SL Info Section (fetched from DB) -->
+                        <div id="tp_sl_info_${pos.symbol}" style="background: rgba(0, 212, 255, 0.05); padding: 8px; border-radius: 4px; margin-bottom: 8px; border-left: 2px solid #00d4ff; font-size: 9px;">
+                            <div style="color: #00d4ff; font-weight: bold; margin-bottom: 4px;">📍 TP/SL Levels:</div>
+                            <div id="tp_sl_details_${pos.symbol}" style="color: #aaa; font-size: 8px;">Loading TP/SL data...</div>
+                        </div>
+                        
                         <!-- Action Buttons -->
                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px;">
                             <button onclick="closePosition('${pos.symbol}')" style="background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%); color: white; border: none; padding: 5px 6px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold;">❌ Close</button>
@@ -875,6 +881,51 @@
             header.textContent = '📍 LIVE POSITIONS (0)';
             container.innerHTML = '<div style="text-align: center; color: #666; padding: 24px 12px; font-size: 10px; line-height: 1.5;">No open positions yet<br><small style="color: #555; font-size: 9px;">Place a trade to see live position details</small></div>';
         }
+        
+        // Fetch and display TP/SL data from database
+        fetchAndDisplayTPSLData();
+    }
+    
+    // Fetch TP/SL data from database and display it
+    function fetchAndDisplayTPSLData() {
+        fetch('/get_user_trade_positions')
+        .then(r => r.json())
+        .then(data => {
+            if (data.positions && data.positions.length > 0) {
+                data.positions.forEach(pos => {
+                    const tpSlElement = document.getElementById(`tp_sl_details_${pos.symbol}`);
+                    if (tpSlElement) {
+                        let tpSlHtml = '';
+                        tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #ff6464;">🛑 SL:</strong> $${pos.sl_price.toFixed(4)}</div>`;
+                        if (pos.current_sl && pos.current_sl !== pos.sl_price) {
+                            tpSlHtml += `<div style="margin-bottom: 3px; font-size: 8px; color: #ffaa00;"><strong>Current SL:</strong> $${pos.current_sl.toFixed(4)}</div>`;
+                        }
+                        if (pos.tp1_price > 0) {
+                            tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #00ff88;">🎯 TP1:</strong> $${pos.tp1_price.toFixed(4)} (${pos.tp1_qty_pct}%)</div>`;
+                        }
+                        if (pos.tp2_price > 0) {
+                            tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #00ff88;">🎯 TP2:</strong> $${pos.tp2_price.toFixed(4)} (Remainder)</div>`;
+                        }
+                        if (!tpSlHtml) {
+                            tpSlHtml = '<div style="color: #666;">No TP/SL set</div>';
+                        }
+                        tpSlElement.innerHTML = tpSlHtml;
+                    }
+                });
+            }
+        })
+        .catch(err => {
+            console.log('Error fetching TP/SL data:', err);
+            // Gracefully hide TP/SL sections if fetch fails
+            const allPositions = Object.keys(currentPositions);
+            allPositions.forEach(symbol => {
+                const tpSlElement = document.getElementById(`tp_sl_details_${symbol}`);
+                if (tpSlElement) {
+                    tpSlElement.innerHTML = '<div style="color: #666; font-size: 8px;">TP/SL data unavailable</div>';
+                }
+            });
+        });
+    }
     }
 
     function updateTradeHistory() {

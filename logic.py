@@ -1221,6 +1221,46 @@ def get_trade_history(user_id=None):
     except Exception: 
         return []
 
+def get_user_trade_positions_with_tp_sl(user_id=None):
+    """
+    Fetch user's active and recent trade positions from database with TP/SL levels.
+    Returns formatted data for dashboard display.
+    """
+    from models import TradePosition
+    try:
+        if not user_id:
+            return []
+        
+        # Get all positions (open and recent closed)
+        positions = TradePosition.query.filter_by(user_id=user_id).order_by(
+            TradePosition.status.desc(),  # Open first
+            TradePosition.updated_at.desc()  # Most recent
+        ).limit(100).all()
+        
+        formatted_positions = []
+        for pos in positions:
+            formatted_positions.append({
+                'id': pos.id,
+                'symbol': pos.symbol,
+                'side': pos.side,
+                'entry_price': round(pos.entry_price, 2),
+                'initial_qty': round(pos.initial_qty, 6),
+                'sl_price': round(pos.sl_price, 2) if pos.sl_price else 0,
+                'current_sl': round(pos.current_sl, 2) if pos.current_sl else 0,
+                'tp1_price': round(pos.tp1_price, 2) if pos.tp1_price else 0,
+                'tp1_qty_pct': pos.tp1_qty_pct,
+                'tp2_price': round(pos.tp2_price, 2) if pos.tp2_price else 0,
+                'unrealized_pnl': round(pos.unrealized_pnl, 2) if pos.unrealized_pnl else 0,
+                'status': pos.status,
+                'created_at': pos.created_at.strftime("%Y-%m-%d %H:%M:%S") if pos.created_at else "",
+                'updated_at': pos.updated_at.strftime("%Y-%m-%d %H:%M:%S") if pos.updated_at else ""
+            })
+        
+        return formatted_positions
+    except Exception as e:
+        print(f"Error fetching trade positions with TP/SL: {e}")
+        return []
+
 def log_trade_event(event_type, message, user_id=None, pnl=0.0):
     """Log a trade event for live monitoring - DB + Session"""
     if user_id:

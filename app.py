@@ -716,6 +716,14 @@ def get_trade_history_api():
     trades = logic.get_trade_history(current_user.id)
     return jsonify({"trades": trades})
 
+@app.route("/get_user_trade_positions")
+@login_required
+@subscription_required
+def get_user_trade_positions_api():
+    """Fetch user's trade positions with TP/SL levels from database"""
+    positions = logic.get_user_trade_positions_with_tp_sl(current_user.id)
+    return jsonify({"positions": positions})
+
 @app.route("/api/wallet")
 @login_required
 @subscription_required
