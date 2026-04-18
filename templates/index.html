@@ -1382,6 +1382,32 @@
     let priceWs = null;
 
     // ✅ DYNAMIC SYMBOL SWITCHING — updates chart, price, and all panels without page reload
+    function isValidSymbol(symbol) {
+        // Validate symbol format for Binance Futures
+        if (!symbol || typeof symbol !== 'string') return false;
+        symbol = symbol.trim().toUpperCase();
+        
+        // Must end with USDT
+        if (!symbol.endsWith('USDT')) {
+            console.warn(`⚠️ Symbol validation failed: ${symbol} doesn't end with USDT`);
+            return false;
+        }
+        
+        // Must be reasonable length (typically 6-15 chars for normal symbols)
+        if (symbol.length < 6 || symbol.length > 20) {
+            console.warn(`⚠️ Symbol validation failed: ${symbol} has invalid length ${symbol.length}`);
+            return false;
+        }
+        
+        // Must be alphanumeric only
+        if (!/^[A-Z0-9]+$/.test(symbol)) {
+            console.warn(`⚠️ Symbol validation failed: ${symbol} contains invalid characters`);
+            return false;
+        }
+        
+        return true;
+    }
+    
     function changeSymbolDynamic(event) {
         // Prevent any default form submission or browser behavior
         if (event) {
@@ -1398,6 +1424,14 @@
         }
 
         const cleanSymbol = symbol.trim().toUpperCase();
+        
+        // ✅ Validate symbol format before proceeding
+        if (!isValidSymbol(cleanSymbol)) {
+            console.error(`❌ [VALIDATION] Invalid symbol format: ${cleanSymbol}`);
+            alert(`⚠️ Invalid symbol: "${cleanSymbol}"\n\nPlease select a valid Binance Futures symbol like BTCUSDT, ETHUSDT, etc.`);
+            return false;
+        }
+        
         console.log(`🔄 [DYNAMIC SWITCH] Starting for: ${cleanSymbol}`);
 
         // Set the global currentChartSymbol variable

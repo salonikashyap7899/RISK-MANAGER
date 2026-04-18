@@ -870,6 +870,34 @@ def clear_trade_events_api():
         session.modified = True
     return jsonify({"success": True})
 
+@app.route("/api/trade_logs")
+@login_required
+@subscription_required
+def api_trade_logs():
+    """Returns trade events for live log display"""
+    try:
+        # Get trade events from session or database
+        events = session.get("trade_events", [])
+        
+        # If no session events, fetch from database
+        if not events:
+            trades = logic.get_trade_history(current_user.id)
+            if trades:
+                events = [
+                    {
+                        "type": "TRADE_CLOSE" if trade.get("realized_pnl") else "TRADE_OPEN",
+                        "symbol": trade.get("symbol", ""),
+                        "timestamp": str(trade.get("time", "")),
+                        "pnl": float(trade.get("realized_pnl", 0))
+                    }
+                    for trade in trades[:10]  # Last 10 trades
+                ]
+        
+        return jsonify({"success": True, "events": events})
+    except Exception as e:
+        print(f"❌ Error fetching trade logs: {e}")
+        return jsonify({"success": False, "error": str(e), "events": []}), 500
+
 @app.route("/close_position/<symbol>", methods=["POST"])
 @login_required
 @subscription_required

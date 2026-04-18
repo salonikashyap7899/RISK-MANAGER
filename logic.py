@@ -231,25 +231,32 @@ def get_all_exchange_symbols(user_id=None):
         
         info = client.futures_exchange_info()
         
+        # ✅ FIXED: Validate symbols more strictly
         symbols = sorted([
             s['symbol'] for s in info.get('symbols', []) 
             if s['status'] == 'TRADING' 
             and s['quoteAsset'] == 'USDT'
             and s['contractType'] == 'PERPETUAL'
+            and len(s['symbol']) <= 20  # Binance symbols are reasonably short
+            and s['symbol'].endswith('USDT')  # Must end with USDT
+            and s['symbol'].upper() == s['symbol']  # Must be uppercase
         ])
         
         if len(symbols) > 0:
             _symbol_cache = symbols
             _symbol_cache_time = now
+            print(f"✅ Loaded {len(symbols)} valid Binance Futures symbols")
             return symbols
             
     except Exception as e:
         print(f"⚠️ Symbol Fetch Error: {e}")
         # Use cached symbols if available, otherwise return fallback
         if _symbol_cache:
+            print(f"✅ Using cached symbols: {len(_symbol_cache)} symbols")
             return _symbol_cache
         
     # Fallback: return minimal symbol set
+    print(f"⚠️ Using fallback symbols")
     return ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"]
 def validate_symbol(client, symbol):
     try:
