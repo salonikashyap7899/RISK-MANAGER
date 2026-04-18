@@ -1381,7 +1381,7 @@
     // ✅ Global variable for Binance WebSocket connection
     let priceWs = null;
 
-    // ✅ DYNAMIC SYMBOL SWITCHING — updates chart, price, and all panels without page reload
+    // ✅ HYBRID APPROACH: Form reload for chart (reliable) + dynamic updates for data (fast)
     function isValidSymbol(symbol) {
         // Validate symbol format for Binance Futures
         if (!symbol || typeof symbol !== 'string') return false;
@@ -1409,7 +1409,7 @@
     }
     
     function changeSymbolDynamic(event) {
-        // Prevent any default form submission or browser behavior
+        // Prevent default only to validate first
         if (event) {
             event.preventDefault();
             event.stopPropagation();
@@ -1432,69 +1432,53 @@
             return false;
         }
         
-        console.log(`🔄 [DYNAMIC SWITCH] Starting for: ${cleanSymbol}`);
-
-        // Set the global currentChartSymbol variable
-        currentChartSymbol = cleanSymbol;
+        console.log(`🔄 [SYMBOL CHANGE] Switching to: ${cleanSymbol}`);
         
-        try {
-            // 1️⃣ Force chart reload using the main initialization function
-            console.log(`🔄 [DYNAMIC SWITCH] Calling initializeTradingViewChart(${cleanSymbol})`);
-            initializeTradingViewChart(cleanSymbol);
+        // ✅ HYBRID APPROACH:
+        // 1. Immediately update dynamic data (price, positions, analysis) without reload
+        console.log(`🔄 [HYBRID] Starting dynamic updates...`);
+        
+        setTimeout(() => {
+            console.log(`🔄 [HYBRID-1] Fetching live price for: ${cleanSymbol}`);
+            fetchLivePrice(cleanSymbol);
+        }, 50);
 
-            // 2️⃣ Update ALL symbol labels on the page (with a small delay)
-            setTimeout(() => {
-                console.log(`🔄 [DYNAMIC SWITCH] Updating symbol labels to: ${cleanSymbol}`);
-                document.querySelectorAll('#embed-modal-symbol').forEach(el => {
-                    el.textContent = cleanSymbol;
-                });
-                const symbolTradeLabel = document.getElementById('symbol_trades_label');
-                if (symbolTradeLabel) {
-                    symbolTradeLabel.textContent = cleanSymbol;
-                }
-            }, 50);
+        setTimeout(() => {
+            console.log(`🔄 [HYBRID-2] Updating coin analysis for: ${cleanSymbol}`);
+            updateEmbeddedCoinDetails(cleanSymbol);
+        }, 100);
 
-            // 3️⃣ Fetch live price for new symbol
-            setTimeout(() => {
-                console.log(`🔄 [DYNAMIC SWITCH] Fetching live price for: ${cleanSymbol}`);
-                fetchLivePrice(cleanSymbol);
-            }, 100);
+        setTimeout(() => {
+            console.log(`🔄 [HYBRID-3] Fetching coin details for: ${cleanSymbol}`);
+            fetchCoinDetails(cleanSymbol);
+        }, 150);
 
-            // 4️⃣ Update coin analysis panel
-            setTimeout(() => {
-                console.log(`🔄 [DYNAMIC SWITCH] Updating coin analysis for: ${cleanSymbol}`);
-                updateEmbeddedCoinDetails(cleanSymbol);
-            }, 150);
+        setTimeout(() => {
+            console.log(`🔄 [HYBRID-4] Updating positions for: ${cleanSymbol}`);
+            updateLivePositions(cleanSymbol);
+        }, 200);
 
-            // 5️⃣ Fetch coin details (leverage, etc)
-            setTimeout(() => {
-                console.log(`🔄 [DYNAMIC SWITCH] Fetching coin details for: ${cleanSymbol}`);
-                fetchCoinDetails(cleanSymbol);
-            }, 200);
+        setTimeout(() => {
+            console.log(`🔄 [HYBRID-5] Calculating sizing for: ${cleanSymbol}`);
+            updatePositionSizing(cleanSymbol);
+        }, 250);
 
-            // 6️⃣ Update live positions
-            setTimeout(() => {
-                console.log(`🔄 [DYNAMIC SWITCH] Updating positions for: ${cleanSymbol}`);
-                updateLivePositions(cleanSymbol);
-            }, 250);
-
-            // 7️⃣ Recalculate position sizing
-            setTimeout(() => {
-                console.log(`🔄 [DYNAMIC SWITCH] Calculating sizing for: ${cleanSymbol}`);
-                updatePositionSizing(cleanSymbol);
-            }, 300);
-
-            console.log(`✅ [DYNAMIC SWITCH] Complete - symbol is now: ${cleanSymbol}`);
-        } catch (err) {
-            console.error(`❌ [DYNAMIC SWITCH] Error during dynamic update:`, err);
-            console.log(`🔄 [FALLBACK] Falling back to form submission (page reload)`);
-            
-            // Fallback: submit the form to reload with new symbol
+        // 2. Update symbol labels immediately
+        document.querySelectorAll('#embed-modal-symbol').forEach(el => el.textContent = cleanSymbol);
+        const symbolTradeLabel = document.getElementById('symbol_trades_label');
+        if (symbolTradeLabel) symbolTradeLabel.textContent = cleanSymbol;
+        
+        console.log(`✅ [HYBRID] Dynamic updates complete. Now reloading page for fresh chart...`);
+        
+        // 3. After 500ms, submit the form to reload page with new chart
+        // This ensures chart loads fresh from server (most reliable)
+        setTimeout(() => {
+            console.log(`🔄 [HYBRID-RELOAD] Submitting form to reload page...`);
             const form = symbolSelect.closest('form');
             if (form) {
                 form.submit();
             }
-        }
+        }, 500);
         
         return false;
     }
