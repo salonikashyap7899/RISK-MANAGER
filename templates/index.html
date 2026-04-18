@@ -402,7 +402,7 @@
             <div class="row">
                 <div class="col" style="flex: 1.2;">
                     <label>Symbol</label>
-                    <select name="symbol" onchange="changeSymbolDynamic(this.value)" id="symbol_select" style="font-size: 10px;">
+                    <select name="symbol" onchange="changeSymbolDynamic(event)" id="symbol_select" style="font-size: 10px;">
         {% for sym in symbols %}
         <option value="{{sym}}" {{ 'selected' if sym == selected_symbol }}>{{sym}}</option>
         {% endfor %}
@@ -1377,62 +1377,55 @@
         setTimeout(validateFormInputs, 500);
     });
 
-    // ✅ DYNAMIC SYMBOL SWITCHING — updates chart, price, and all panels without page reload
-   // Global variable for Binance WebSocket connection
+    
+    // ✅ Global variable for Binance WebSocket connection
     let priceWs = null;
 
     // ✅ DYNAMIC SYMBOL SWITCHING — updates chart, price, and all panels without page reload
-    function changeSymbolDynamic(symbol) {
+    function changeSymbolDynamic(event) {
+        // Prevent any default form submission or browser behavior
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+
+        const symbol = event && event.target ? event.target.value : null;
+        
         if (!symbol || symbol.trim() === '') {
             console.warn('⚠️ Invalid symbol for change:', symbol);
-            return;
+            return false;
         }
-        symbol = symbol.trim().toUpperCase();
-        console.log(`🔄 SWITCHING SYMBOL TO: ${symbol}`);
 
-        // 1️⃣ Rebuild TradingView chart (Forced clean reload)
-        const chartContainer = document.getElementById('tv_chart');
-        if (chartContainer) {
-            chartContainer.innerHTML = ''; // Nuke the old cached chart instance
-        }
-        setTimeout(() => {
-            new TradingView.widget({
-                "autosize": true,
-                "symbol": "BINANCE:" + symbol, // Forces TradingView to load the new coin
-                "interval": "5",
-                "timezone": "Etc/UTC",
-                "theme": "dark",
-                "style": "1",
-                "locale": "en",
-                "toolbar_bg": "#f1f3f6",
-                "enable_publishing": false,
-                "hide_top_toolbar": window.matchMedia('(max-width: 900px)').matches,
-                "save_image": false,
-                "container_id": "tv_chart"
-            });
-        }, 100); // 100ms delay ensures the DOM is clear before rebuilding
+        const cleanSymbol = symbol.trim().toUpperCase();
+        console.log(`🔄 SWITCHING SYMBOL TO: ${cleanSymbol}`);
+
+        // 1️⃣ Update the chart using the proper initialization function
+        // This ensures proper cleanup and widget management
+        initializeTradingViewChart(cleanSymbol);
 
         // 2️⃣ Update ALL symbol labels on the page
-        document.querySelectorAll('#embed-modal-symbol').forEach(el => el.textContent = symbol);
+        document.querySelectorAll('#embed-modal-symbol').forEach(el => el.textContent = cleanSymbol);
         const symbolTradeLabel = document.getElementById('symbol_trades_label');
-        if (symbolTradeLabel) symbolTradeLabel.textContent = symbol;
+        if (symbolTradeLabel) symbolTradeLabel.textContent = cleanSymbol;
 
         // 3️⃣ Immediately fetch and update live price for new symbol using WebSocket
-        fetchLivePrice(symbol);
+        fetchLivePrice(cleanSymbol);
 
         // 4️⃣ Update coin analysis panel (PnL, ROI, etc.) [PRESERVED FEATURE]
-        updateEmbeddedCoinDetails(symbol);
+        updateEmbeddedCoinDetails(cleanSymbol);
 
         // 5️⃣ Fetch coin details (max leverage, recommendations) [PRESERVED FEATURE]
-        fetchCoinDetails(symbol);
+        fetchCoinDetails(cleanSymbol);
 
         // 6️⃣ Update live positions for new symbol [PRESERVED FEATURE]
-        updateLivePositions(symbol);
+        updateLivePositions(cleanSymbol);
 
         // 7️⃣ Recalculate position sizing for new symbol [PRESERVED FEATURE]
-        updatePositionSizing(symbol);
+        updatePositionSizing(cleanSymbol);
 
-        console.log(`✅ Symbol switched to ${symbol} — all data updating`);
+        console.log(`✅ Symbol switched to ${cleanSymbol} — all data updating dynamically`);
+        
+        return false; // Prevent any form submission
     }
 
     // ✅ FETCH LIVE PRICE (Now utilizing WebSocket for instant, lag-free updates)
