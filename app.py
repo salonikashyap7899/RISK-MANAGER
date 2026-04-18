@@ -1143,6 +1143,8 @@ def index():
     # ✅ CRITICAL FIX: Get symbol from URL query params and form data, use first symbol as default
     default_first_symbol = symbols[0] if symbols and len(symbols) > 0 else "BTCUSDT"
     selected_symbol = (request.args.get("symbol") or request.form.get("symbol") or default_first_symbol or "").strip().upper()
+    previous_symbol = (request.form.get("prev_symbol") or "").strip().upper()
+    symbol_changed = request.method == "POST" and bool(previous_symbol) and previous_symbol != selected_symbol
     
     # ✅ CRITICAL: Validate selected_symbol exists in available symbols or fallback
     if selected_symbol not in symbols and symbols:
@@ -1163,7 +1165,16 @@ def index():
     margin_mode = request.form.get("margin_mode", "ISOLATED")
 
     # ✅ CRITICAL FIX: Use the live price we just fetched
-    entry = float(request.form.get("entry") or live_price or 0)
+    submitted_entry = request.form.get("entry")
+    entry_source = live_price if symbol_changed else (submitted_entry or live_price or 0)
+    try:
+        entry = float(entry_source or 0)
+    except (TypeError, ValueError):
+        entry = float(live_price or 0)
+
+    if symbol_changed:
+        print(f"🔄 Symbol changed {previous_symbol} → {selected_symbol}; using fresh live price ${entry}")
+
     sl_type = request.form.get("sl_type", "SL % Movement")
     sl_val = float(request.form.get("sl_value") or 0)
 

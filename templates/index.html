@@ -556,6 +556,11 @@
           let tvWidget = null;
           // ✅ FIXED: currentChartSymbol tracks the ACTIVE symbol for the chart
           let currentChartSymbol = "{{ selected_symbol or 'BTCUSDT' }}";
+
+          function getTradingViewSymbol(symbol) {
+            const cleanSymbol = (symbol || currentChartSymbol || 'BTCUSDT').trim().toUpperCase();
+            return `BINANCE:${cleanSymbol}.P`;
+          }
           
           // ✅ FIXED: Accept symbol parameter so chart updates on symbol change
           function initializeTradingViewChart(symbol) {
@@ -592,10 +597,7 @@
                 
                 // ✅ CRITICAL FIX: Format symbol correctly for TradingView Futures
                 // TradingView expects futures symbols in specific formats
-                let tvSymbol = currentChartSymbol;
-                
-                // TradingView will auto-detect the correct futures contract
-                const fullTvSymbol = "BINANCE:" + tvSymbol;
+                const fullTvSymbol = getTradingViewSymbol(currentChartSymbol);
                 console.log(`📊 TradingView formatted symbol: ${fullTvSymbol}`);
                 
                 tvWidget = new TradingView.widget({
@@ -714,18 +716,26 @@
 <script>
     // Store positions data for real-time updates
     let currentPositions = {};
+
+    function getSelectedSymbol() {
+        const symbolElem = document.querySelector('select[name="symbol"]');
+        return symbolElem ? (symbolElem.value || '').trim().toUpperCase() : '';
+    }
+
+    function getCurrentSide() {
+        const sideElem = document.getElementById('side_hidden');
+        return sideElem ? (sideElem.value || 'LONG').trim().toUpperCase() : 'LONG';
+    }
     
     // Auto-populate embedded coin details with selected symbol
     function updateEmbeddedCoinDetails(symbol) {
-        const symbolElem = document.querySelector('select[name="symbol"]');
         // Use passed symbol, then dropdown, then fallback
-        const activeSymbol = symbol || (symbolElem ? symbolElem.value : 'BTCUSDT');
+        const activeSymbol = (symbol || getSelectedSymbol() || 'BTCUSDT').trim().toUpperCase();
         const sl_typeElem = document.querySelector('select[name="sl_type"]');
         const sl_type = sl_typeElem ? sl_typeElem.value : 'SL % Movement';
         const sl_valueElem = document.querySelector('input[name="sl_value"]');
         const sl_value = (sl_valueElem && sl_valueElem.value) ? sl_valueElem.value : '1.5';
-        const sideElem = document.querySelector('select[name="side"]');
-        const side = sideElem ? sideElem.value : 'LONG';
+        const side = getCurrentSide();
         
         if (!activeSymbol) return;
         
@@ -745,6 +755,11 @@
         fetch(fetchUrl)
             .then(r => r.json())
             .then(data => {
+                if (getSelectedSymbol() && getSelectedSymbol() !== activeSymbol) {
+                    console.log(`ℹ️ Ignoring stale embedded details for ${activeSymbol}`);
+                    return;
+                }
+
                 if (data && data.success) {
                     const pos = data.position;
                     
@@ -1433,6 +1448,9 @@
         }
         
         console.log(`🔄 [SYMBOL CHANGE] Switching to: ${cleanSymbol}`);
+
+        currentChartSymbol = cleanSymbol;
+        initializeTradingViewChart(cleanSymbol);
         
         // ✅ HYBRID APPROACH:
         // 1. Immediately update dynamic data (price, positions, analysis) without reload
@@ -1485,11 +1503,10 @@
 
     // ✅ FETCH LIVE PRICE (Now utilizing WebSocket for instant, lag-free updates)
     function fetchLivePrice(symbol = null) {
-        const symbolSelect = document.querySelector('select[name="symbol"]');
         const entryInput = document.getElementById('entry_input');
         const indicator = document.getElementById('reset-live-btn');
         
-        const targetSymbol = symbol || (symbolSelect ? symbolSelect.value : 'BTCUSDT');
+        const targetSymbol = (symbol || getSelectedSymbol() || 'BTCUSDT').trim().toUpperCase();
         
         console.log(`📡 [fetchLivePrice] Starting for symbol: ${targetSymbol}`);
         
@@ -1601,9 +1618,15 @@
         fetch(`/get_live_price/${encodeURIComponent(symbol)}`)
             .then(r => r.json())
             .then(data => {
+                if (getSelectedSymbol() && getSelectedSymbol() !== symbol.toUpperCase()) {
+                    console.log(`ℹ️ [fetchLivePriceViaREST] Ignoring stale price for ${symbol}`);
+                    return;
+                }
+
                 if (data.price && data.price > 0) {
                     console.log(`✅ [fetchLivePriceViaREST] Got price: ${data.price}`);
                     entryInput.value = data.price.toFixed(8);
+                    entryInput.dataset.liveSymbol = symbol.toUpperCase();
                     entryInput.style.color = '#00d4ff';
                     
                     if (indicator) {
@@ -1633,8 +1656,7 @@
 
     // ✅ FETCH COIN DETAILS FOR SELECTED SYMBOL
     function fetchCoinDetails(symbol = null) {
-        const symbolSelect = document.querySelector('select[name="symbol"]');
-        const targetSymbol = symbol || (symbolSelect ? symbolSelect.value : '{{ selected_symbol or "BTCUSDT" }}');
+        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
         
         if (!targetSymbol) return;
         
@@ -1643,6 +1665,11 @@
         fetch(`/api/coin-details/${encodeURIComponent(targetSymbol)}`)
         .then(r => r.json())
         .then(data => {
+            if (getSelectedSymbol() && getSelectedSymbol() !== targetSymbol) {
+                console.log(`ℹ️ Ignoring stale coin details for ${targetSymbol}`);
+                return;
+            }
+
             if (data.success) {
                 // Update max leverage badge
                 const maxLev = data.max_leverage || 125;
@@ -1671,8 +1698,7 @@
 
     // ✅ UPDATE POSITION SIZING
     function updatePositionSizing(symbol = null) {
-        const symbolSelect = document.querySelector('select[name="symbol"]');
-        const targetSymbol = symbol || (symbolSelect ? symbolSelect.value : '{{ selected_symbol or "BTCUSDT" }}');
+        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
         
         if (!targetSymbol) return;
         
@@ -1680,9 +1706,11 @@
         
         const entryInput = document.getElementById('entry_input');
         const entryPrice = entryInput ? parseFloat(entryInput.value) || 0 : 0;
-        const slType = document.getElementById('sl_type') ? document.getElementById('sl_type').value : 'SL % Movement';
-        const slValue = document.getElementById('sl_value_input') ? parseFloat(document.getElementById('sl_value_input').value) || 1.5 : 1.5;
-        const side = document.getElementById('side_select') ? document.getElementById('side_select').value : 'LONG';
+        const slTypeElem = document.querySelector('select[name="sl_type"]');
+        const slValueElem = document.querySelector('input[name="sl_value"]');
+        const slType = slTypeElem ? slTypeElem.value : 'SL % Movement';
+        const slValue = slValueElem ? parseFloat(slValueElem.value) || 1.5 : 1.5;
+        const side = getCurrentSide();
         
         if (entryPrice <= 0) return;
         
@@ -1703,9 +1731,8 @@
 
     // ✅ UPDATED: updateLivePositions NOW ACCEPTS OPTIONAL SYMBOL PARAMETER
     function updateLivePositions(symbol = null) {
-        const symbolSelect = document.querySelector('select[name="symbol"]');
-        const targetSymbol = symbol || (symbolSelect ? symbolSelect.value : '{{ selected_symbol or "BTCUSDT" }}');
-        const container = document.getElementById('positions_container');
+        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
+        const container = document.getElementById('live_positions');
         
         if (!container) return;
         
@@ -1756,8 +1783,7 @@
         console.log('🔍 showCoinDetails() called');
         try {
             // Safely get form values with fallbacks
-            const symbolElem = document.querySelector('select[name="symbol"]');
-            const symbol = symbolElem ? symbolElem.value : 'BTCUSDT';
+            const symbol = getSelectedSymbol() || 'BTCUSDT';
             
             const sl_typeElem = document.querySelector('select[name="sl_type"]');
             const sl_type = sl_typeElem ? sl_typeElem.value : 'SL % Movement';
@@ -1765,8 +1791,7 @@
             const sl_valueElem = document.querySelector('input[name="sl_value"]');
             const sl_value = (sl_valueElem && sl_valueElem.value) ? sl_valueElem.value : '1.5';
             
-            const sideElem = document.querySelector('select[name="side"]');
-            const side = sideElem ? sideElem.value : 'LONG';
+            const side = getCurrentSide();
             
             console.log('📊 Form values:', {symbol, sl_type, sl_value, side});
             
