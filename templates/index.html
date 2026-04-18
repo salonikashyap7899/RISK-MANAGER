@@ -1157,9 +1157,9 @@
         return confirm(message);
     }
 
-    function updateLivePrice() {
+    function updateLivePrice(symbolOverride = null, forceRestart = false) {
         const symbolSelect = document.querySelector('select[name="symbol"]');
-        const symbol = symbolSelect ? (symbolSelect.value || '').trim().toUpperCase() : '';
+        const symbol = (symbolOverride || (symbolSelect ? symbolSelect.value : '') || '').trim().toUpperCase();
         
         // ✅ DEFENSIVE: Never switch to another coin automatically
         if (!symbol || symbol === '') {
@@ -1226,6 +1226,37 @@
         });
     }
 
+
+    updateLivePrice = function(symbolOverride = null, forceRestart = false) {
+        const symbolSelect = document.querySelector('select[name="symbol"]');
+        const symbol = (symbolOverride || (symbolSelect ? symbolSelect.value : '') || '').trim().toUpperCase();
+
+        if (!symbol) {
+            return;
+        }
+
+        const resetBtn = document.getElementById('reset-live-btn');
+        const indicator = document.getElementById('live-indicator');
+        const socketState = priceWs ? priceWs.readyState : WebSocket.CLOSED;
+        const sameSymbol = priceWsSymbol === symbol;
+        const hasRecentTick = lastPriceMessageAt > 0 && (Date.now() - lastPriceMessageAt) < 6000;
+        const socketActive = socketState === WebSocket.OPEN || socketState === WebSocket.CONNECTING;
+
+        if (!forceRestart && sameSymbol && socketActive && (hasRecentTick || socketState === WebSocket.CONNECTING)) {
+            console.log(`Live feed already active for ${symbol}`);
+            return;
+        }
+
+        console.log(`Ensuring live price stream for ${symbol}`);
+        fetchLivePrice(symbol);
+
+        if (indicator) {
+            indicator.style.display = 'inline-block';
+        }
+        if (resetBtn) {
+            resetBtn.textContent = 'Live';
+        }
+    };
 
     function closePosition(symbol) {
         if(confirm(`Close ${symbol}?`)) {
@@ -1395,6 +1426,8 @@
     
     // ✅ Global variable for Binance WebSocket connection
     let priceWs = null;
+    let priceWsSymbol = '';
+    let lastPriceMessageAt = 0;
 
     // ✅ HYBRID APPROACH: Form reload for chart (reliable) + dynamic updates for data (fast)
     function isValidSymbol(symbol) {
@@ -1528,21 +1561,22 @@
         
         console.log(`🔄 [fetchLivePrice] Opening WebSocket for: ${targetSymbol}`);
 
-        // Connect to Binance Futures WebSocket so every perpetual futures symbol uses the same market as the backend
+        // Use the Binance Futures mark-price stream for dependable updates on every contract
         const wsSymbol = targetSymbol.toLowerCase();
-        const wsUrl = `wss://fstream.binance.com/ws/${wsSymbol}@ticker`;
+        const wsUrl = `wss://fstream.binance.com/ws/${wsSymbol}@markPrice@1s`;
         console.log(`📡 [fetchLivePrice] WebSocket URL: ${wsUrl}`);
         
         let wsTimeout = null;
         let wsOpened = false;
         let wsReceivedData = false;
+        priceWsSymbol = targetSymbol;
         
         priceWs = new WebSocket(wsUrl);
 
         priceWs.onopen = () => {
             wsOpened = true;
             console.log(`✅ [fetchLivePrice] WebSocket connected for ${targetSymbol}`);
-            // If the socket opens but no ticker arrives, fall back to REST instead of hanging forever.
+            // If the socket opens but no mark price arrives, fall back to REST instead of hanging forever.
             wsTimeout = setTimeout(() => {
                 if (!wsReceivedData) {
                     console.warn(`⏱️ [fetchLivePrice] No futures ticker received for ${targetSymbol} - trying REST API`);
@@ -1555,10 +1589,11 @@
         priceWs.onmessage = (event) => {
             try {
                 wsReceivedData = true;
+                lastPriceMessageAt = Date.now();
                 if (wsTimeout) clearTimeout(wsTimeout);
                 
                 const data = JSON.parse(event.data);
-                const parsedPrice = parseFloat(data.c);
+                const parsedPrice = parseFloat(data.p ?? data.c);
                 if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
                     console.warn(`⚠️ [fetchLivePrice] Invalid futures ticker payload for ${targetSymbol}:`, data);
                     return;
@@ -1600,6 +1635,9 @@
 
         priceWs.onerror = (err) => {
             wsOpened = false;
+            if (priceWsSymbol === targetSymbol) {
+                priceWsSymbol = '';
+            }
             if (wsTimeout) clearTimeout(wsTimeout);
             console.error(`❌ [fetchLivePrice] WebSocket error for ${targetSymbol}:`, err);
             
@@ -1639,6 +1677,8 @@
                     console.log(`✅ [fetchLivePriceViaREST] Got price: ${data.price}`);
                     entryInput.value = data.price.toFixed(8);
                     entryInput.dataset.liveSymbol = symbol.toUpperCase();
+                    lastPriceMessageAt = Date.now();
+                    priceWsSymbol = symbol.toUpperCase();
                     entryInput.style.color = '#00d4ff';
                     
                     if (indicator) {
@@ -2028,12 +2068,12 @@
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
             console.log('✅ Page loaded, initializing dynamic functions');
-            fetchLivePrice();
+            updateLivePrice(null, true);
             fetchCoinDetails();
             updateLivePositions();
         });
     } else {
-        fetchLivePrice();
+        updateLivePrice(null, true);
         fetchCoinDetails();
         updateLivePositions();
     }
@@ -2044,9 +2084,9 @@
         updateLivePositions();
     }, 5000);
 
-    // Refresh price every 10 seconds
+    // Refresh price every 10 seconds only if the current feed has gone stale
     setInterval(() => {
-        fetchLivePrice();
+        updateLivePrice();
     }, 10000);
 
     // Refresh coin details (leverage, etc) every 30 seconds

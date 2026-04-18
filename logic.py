@@ -442,7 +442,7 @@ def get_live_price(symbol, user_id=None):
     # ✅ Check cache with per-symbol expiration (10 second TTL)
     if cache_key in _price_cache and cache_key in _price_cache_time:
         cache_age = current_time - _price_cache_time[cache_key]
-        if cache_age < 10:
+        if cache_age < 2:
             cached_price = _price_cache[cache_key]
             print(f"✓ PRICE CACHE HIT [{cache_age:.1f}s old]: {symbol} = ${cached_price}")
             return cached_price
