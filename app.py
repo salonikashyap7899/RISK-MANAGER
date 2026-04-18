@@ -812,6 +812,15 @@ def today_stats_api():
 def coin_details_api(symbol):
     """Get real-time coin details including live position data with calculation breakdowns"""
     try:
+        # ✅ CRITICAL FIX: Validate and normalize symbol
+        symbol = (symbol or '').strip().upper()
+        if not symbol or len(symbol) < 6:
+            return jsonify({
+                "success": False,
+                "symbol": symbol,
+                "message": "Invalid symbol format"
+            }), 400
+        
         # Get actual SL from form (passed as query params for real-time calculation)
         sl_type = request.args.get('sl_type', 'SL % Movement')
         sl_value = float(request.args.get('sl_value', 1.5))  # Default to 1.5% if not provided
@@ -824,7 +833,7 @@ def coin_details_api(symbol):
         if sl_type == "SL % Movement":
             sl_percent = sl_value
         else:
-            # For SL Points, get current price
+            # For SL Points, get current price - ✅ PASS SYMBOL CORRECTLY
             current_price = logic.get_live_price(symbol, current_user.id) or 0
             if current_price > 0 and sl_value > 0:
                 sl_distance = abs(float(sl_value) - float(current_price))
@@ -991,24 +1000,30 @@ def index():
     today_stats = logic.get_today_stats(current_user.id)
     
     # -------------------------------------
-    # FIXED: Get symbol from URL query params and form data, use first symbol as default
+    # ✅ CRITICAL FIX: Get symbol from URL query params and form data, use first symbol as default
     default_first_symbol = symbols[0] if symbols and len(symbols) > 0 else "BTCUSDT"
     selected_symbol = (request.args.get("symbol") or request.form.get("symbol") or default_first_symbol or "").strip().upper()
     
-    # ✅ DEFENSIVE: Validate selected_symbol exists in available symbols or fallback
+    # ✅ CRITICAL: Validate selected_symbol exists in available symbols or fallback
     if selected_symbol not in symbols and symbols:
-        print(f"⚠️ Selected symbol '{selected_symbol}' not in available symbols, using first symbol")
+        print(f"⚠️ Selected symbol '{selected_symbol}' not in available symbols, using first symbol: {symbols[0]}")
         selected_symbol = symbols[0]
     
     if not selected_symbol:
         selected_symbol = default_first_symbol
     
     print(f"✓ Index page loaded with symbol: {selected_symbol}")
+    
+    # ✅ CRITICAL FIX: Get live price for the SELECTED SYMBOL ONLY
+    live_price = logic.get_live_price(selected_symbol, current_user.id)
+    print(f"🔴 FETCHING PRICE FOR: {selected_symbol} = ${live_price}")
+    
     side = request.form.get("side", "LONG")
     order_type = request.form.get("order_type", "MARKET")
     margin_mode = request.form.get("margin_mode", "ISOLATED")
 
-    entry = float(request.form.get("entry") or logic.get_live_price(selected_symbol, current_user.id) or 0)
+    # ✅ CRITICAL FIX: Use the live price we just fetched
+    entry = float(request.form.get("entry") or live_price or 0)
     sl_type = request.form.get("sl_type", "SL % Movement")
     sl_val = float(request.form.get("sl_value") or 0)
 

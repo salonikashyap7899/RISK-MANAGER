@@ -409,40 +409,52 @@ def get_live_balance(user_id=None):
         return None, None
 
 def get_live_price(symbol, user_id=None):
-    """Bulletproof price fetch securely converting string -> float"""
+    """
+    ✅ FIXED: Bulletproof price fetch with per-symbol caching.
+    CRITICAL: No cross-symbol fallback - only fetch the EXACT symbol requested.
+    """
     global _price_cache, _price_cache_time
     current_time = time.time()
     
-    # ✅ DEFENSIVE: Strip whitespace and validate symbol format
+    # ✅ CRITICAL: Strip whitespace and validate symbol format
     symbol = (symbol or '').strip().upper()
     if not symbol or len(symbol) < 6 or not symbol.isalnum():
-        print(f"⚠️ Invalid symbol format: '{symbol}' - refusing cross-symbol fallback")
+        print(f"⚠️ INVALID SYMBOL FORMAT: '{symbol}' - returning 0 (NO FALLBACK)")
         return 0.0
     
+    # ✅ CRITICAL: Per-symbol, per-user cache key to prevent symbol mixing
     cache_key = f"{symbol}_{user_id or 'public'}"
     
-    # Check cache with per-symbol expiration
+    # ✅ Check cache with per-symbol expiration (10 second TTL)
     if cache_key in _price_cache and cache_key in _price_cache_time:
-        if (current_time - _price_cache_time[cache_key]) < 10:
+        cache_age = current_time - _price_cache_time[cache_key]
+        if cache_age < 10:
             cached_price = _price_cache[cache_key]
-            print(f"✓ Price cache HIT for {symbol}: ${cached_price}")
+            print(f"✓ PRICE CACHE HIT [{cache_age:.1f}s old]: {symbol} = ${cached_price}")
             return cached_price
+        else:
+            print(f"🔄 PRICE CACHE EXPIRED [{cache_age:.1f}s]: {symbol} - fetching fresh...")
+    else:
+        print(f"🔄 PRICE CACHE MISS: {symbol} - fetching fresh...")
     
-    print(f"🔄 Price cache MISS for {symbol} - fetching fresh...")
-    
+    # ✅ ATTEMPT 1: Try client API (if user has connected exchange)
     try:
         client = get_client(user_id)
         if client:
+            print(f"   → Trying client API for {symbol}...")
             ticker = client.futures_symbol_ticker(symbol=symbol)
             price = float(ticker.get('price', 0))
             if price > 0:
                 _price_cache[cache_key] = price
                 _price_cache_time[cache_key] = current_time
-                print(f"✅ Got price from client API: {symbol} = ${price}")
+                print(f"✅ GOT PRICE FROM CLIENT API: {symbol} = ${price}")
                 return price
+            else:
+                print(f"   ⚠️ Client API returned invalid price for {symbol}")
     except Exception as e:
-        print(f"⚠️ Client price fetch failed for {symbol}: {e}")
+        print(f"   ⚠️ Client API failed for {symbol}: {type(e).__name__}: {e}")
     
+    # ✅ ATTEMPT 2: Try public Binance API endpoints
     public_endpoints = [
         f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={symbol}",
         f"https://fapi.binance.com/fapi/v2/ticker/price?symbol={symbol}"
@@ -450,30 +462,44 @@ def get_live_price(symbol, user_id=None):
     proxies = {}
     if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
         proxies = {'https': config.PROXY_URL, 'http': config.PROXY_URL}
+        print(f"   → Using proxy: {config.PROXY_URL}")
     
     for url in public_endpoints:
         try:
+            print(f"   → Trying public API: {url}")
             resp = requests.get(url, timeout=2, proxies=proxies)
             if resp.status_code == 200:
                 data = resp.json()
-                price_key = data.get('price') if isinstance(data, dict) else None
-                if price_key:
-                    price = float(price_key)
-                    if price > 0:
-                        _price_cache[cache_key] = price
-                        _price_cache_time[cache_key] = current_time
-                        print(f"✅ Got price from public API: {symbol} = ${price}")
-                        return price
+                if isinstance(data, dict):
+                    price_key = data.get('price')
+                    if price_key:
+                        price = float(price_key)
+                        if price > 0:
+                            _price_cache[cache_key] = price
+                            _price_cache_time[cache_key] = current_time
+                            print(f"✅ GOT PRICE FROM PUBLIC API: {symbol} = ${price}")
+                            return price
+                        else:
+                            print(f"   ⚠️ Public API returned invalid price for {symbol}")
+                    else:
+                        print(f"   ⚠️ No 'price' field in response for {symbol}")
+                else:
+                    print(f"   ⚠️ Unexpected response format for {symbol}")
+            else:
+                print(f"   ⚠️ HTTP {resp.status_code} for {symbol}")
         except Exception as e:
-            print(f"⚠️ Public API fetch failed ({url}): {e}")
+            print(f"   ⚠️ Public API request failed for {symbol}: {type(e).__name__}: {e}")
             continue
     
+    # ✅ LAST RESORT: Use stale cache if available (but only for this symbol)
     if cache_key in _price_cache:
         stale_price = _price_cache[cache_key]
-        print(f"⚠️ Using STALE cached price for {symbol}: ${stale_price}")
+        stale_age = current_time - _price_cache_time.get(cache_key, 0)
+        print(f"⚠️ NO FRESH PRICE AVAILABLE: Using STALE cache [{stale_age:.1f}s old] for {symbol} = ${stale_price}")
         return stale_price
-
-    print(f"⚠️ No live price available for {symbol}; returning 0")
+    
+    # ✅ FINAL FALLBACK: Return 0 (NOT a wrong symbol price)
+    print(f"❌ CRITICAL: NO PRICE AVAILABLE FOR {symbol} (not in cache, API failed) - returning 0")
     return 0.0
 
 def get_symbol_filters(symbol, user_id=None):
