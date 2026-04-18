@@ -1491,7 +1491,7 @@
         
         setTimeout(() => {
             console.log(`🔄 [HYBRID-1] Fetching live price for: ${cleanSymbol}`);
-            fetchLivePrice(cleanSymbol);
+            updateLivePrice(cleanSymbol, true);
         }, 50);
 
         setTimeout(() => {
@@ -1563,7 +1563,7 @@
 
         // Use the Binance Futures mark-price stream for dependable updates on every contract
         const wsSymbol = targetSymbol.toLowerCase();
-        const wsUrl = `wss://fstream.binance.com/ws/${wsSymbol}@markPrice@1s`;
+        const wsUrl = `wss://fstream.binance.com/stream?streams=${wsSymbol}@bookTicker/${wsSymbol}@markPrice@1s`;
         console.log(`📡 [fetchLivePrice] WebSocket URL: ${wsUrl}`);
         
         let wsTimeout = null;
@@ -1592,8 +1592,17 @@
                 lastPriceMessageAt = Date.now();
                 if (wsTimeout) clearTimeout(wsTimeout);
                 
-                const data = JSON.parse(event.data);
-                const parsedPrice = parseFloat(data.p ?? data.c);
+                const payload = JSON.parse(event.data);
+                const data = payload.data || payload;
+                let parsedPrice = NaN;
+                const bid = parseFloat(data.b);
+                const ask = parseFloat(data.a);
+                if (Number.isFinite(bid) && bid > 0 && Number.isFinite(ask) && ask > 0) {
+                    parsedPrice = (bid + ask) / 2;
+                }
+                if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+                    parsedPrice = parseFloat(data.p ?? data.c);
+                }
                 if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
                     console.warn(`⚠️ [fetchLivePrice] Invalid futures ticker payload for ${targetSymbol}:`, data);
                     return;
@@ -1649,6 +1658,9 @@
         priceWs.onclose = () => {
             const shouldFallback = wsOpened && !wsReceivedData && entryInput.dataset.liveSymbol === targetSymbol.toUpperCase();
             wsOpened = false;
+            if (priceWsSymbol === targetSymbol) {
+                priceWsSymbol = '';
+            }
             if (wsTimeout) clearTimeout(wsTimeout);
             console.log(`🔄 [fetchLivePrice] WebSocket closed for ${targetSymbol}`);
 
