@@ -1378,6 +1378,10 @@
     });
 
     // ✅ DYNAMIC SYMBOL SWITCHING — updates chart, price, and all panels without page reload
+   // Global variable for Binance WebSocket connection
+    let priceWs = null;
+
+    // ✅ DYNAMIC SYMBOL SWITCHING — updates chart, price, and all panels without page reload
     function changeSymbolDynamic(symbol) {
         if (!symbol || symbol.trim() === '') {
             console.warn('⚠️ Invalid symbol for change:', symbol);
@@ -1386,148 +1390,109 @@
         symbol = symbol.trim().toUpperCase();
         console.log(`🔄 SWITCHING SYMBOL TO: ${symbol}`);
 
-        // 1️⃣ Rebuild TradingView chart with new symbol
-        try {
-            initializeTradingViewChart(symbol);
-            console.log(`📊 Chart switching to: ${symbol}`);
-        } catch (e) {
-            console.error(`❌ Chart switch failed for ${symbol}:`, e);
-            // Show error but continue - other features might still work
-            const chartDiv = document.getElementById('tv_chart');
-            if (chartDiv) {
-                chartDiv.innerHTML = 
-                    '<div style="padding: 20px; text-align: center; color: #ffaa00;">' +
-                    `⚠️ Chart update failed for ${symbol}. Price data and trading still available.` +
-                    '</div>';
-            }
+        // 1️⃣ Rebuild TradingView chart (Forced clean reload)
+        const chartContainer = document.getElementById('tv_chart');
+        if (chartContainer) {
+            chartContainer.innerHTML = ''; // Nuke the old cached chart instance
         }
+        setTimeout(() => {
+            new TradingView.widget({
+                "autosize": true,
+                "symbol": "BINANCE:" + symbol, // Forces TradingView to load the new coin
+                "interval": "5",
+                "timezone": "Etc/UTC",
+                "theme": "dark",
+                "style": "1",
+                "locale": "en",
+                "toolbar_bg": "#f1f3f6",
+                "enable_publishing": false,
+                "hide_top_toolbar": window.matchMedia('(max-width: 900px)').matches,
+                "save_image": false,
+                "container_id": "tv_chart"
+            });
+        }, 100); // 100ms delay ensures the DOM is clear before rebuilding
 
         // 2️⃣ Update ALL symbol labels on the page
         document.querySelectorAll('#embed-modal-symbol').forEach(el => el.textContent = symbol);
         const symbolTradeLabel = document.getElementById('symbol_trades_label');
         if (symbolTradeLabel) symbolTradeLabel.textContent = symbol;
 
-        // 3️⃣ Immediately fetch and update live price for new symbol
-        // Force update by resetting dataset so guard clauses don't skip it
-        const entryInput = document.getElementById('entry_input');
-        if (entryInput) {
-            entryInput.dataset.liveSymbol = '';  // Reset to force fresh fetch
-            // Clear old value to show we're fetching new price
-            const oldValue = entryInput.value;
-            entryInput.value = 'Loading...';
-            entryInput.style.color = '#ffaa00';
-        }
+        // 3️⃣ Immediately fetch and update live price for new symbol using WebSocket
         fetchLivePrice(symbol);
 
-        // 4️⃣ Update coin analysis panel (PnL, ROI, etc.)
+        // 4️⃣ Update coin analysis panel (PnL, ROI, etc.) [PRESERVED FEATURE]
         updateEmbeddedCoinDetails(symbol);
 
-        // 5️⃣ Fetch coin details (max leverage, recommendations)
+        // 5️⃣ Fetch coin details (max leverage, recommendations) [PRESERVED FEATURE]
         fetchCoinDetails(symbol);
 
-        // 6️⃣ Update live positions for new symbol
+        // 6️⃣ Update live positions for new symbol [PRESERVED FEATURE]
         updateLivePositions(symbol);
 
-        // 7️⃣ Recalculate position sizing for new symbol
+        // 7️⃣ Recalculate position sizing for new symbol [PRESERVED FEATURE]
         updatePositionSizing(symbol);
 
         console.log(`✅ Symbol switched to ${symbol} — all data updating`);
     }
 
-    // ✅ FETCH LIVE PRICE FOR SELECTED SYMBOL
+    // ✅ FETCH LIVE PRICE (Now utilizing WebSocket for instant, lag-free updates)
     function fetchLivePrice(symbol = null) {
         const symbolSelect = document.querySelector('select[name="symbol"]');
         const entryInput = document.getElementById('entry_input');
         const indicator = document.getElementById('reset-live-btn');
         
-        const targetSymbol = symbol || (symbolSelect ? symbolSelect.value : '{{ selected_symbol or "BTCUSDT" }}');
+        const targetSymbol = symbol || (symbolSelect ? symbolSelect.value : 'BTCUSDT');
         
-        if (!targetSymbol || !entryInput) {
-            console.warn('⚠️ Cannot fetch price: missing symbol or entry input');
-            return;
-        }
-        
-        console.log(`📡 Fetching live price for: ${targetSymbol}`);
-        
-        fetch(`/get_live_price/${encodeURIComponent(targetSymbol)}`)
-        .then(r => r.json())
-        .then(data => {
-            if (data.price && data.price > 0) {
-                const activeSymbol = symbolSelect ? (symbolSelect.value || '').trim().toUpperCase() : '';
-                if (activeSymbol !== targetSymbol.toUpperCase()) {
-                    console.log(`ℹ️ Ignoring stale price response for ${targetSymbol}; active symbol is ${activeSymbol}`);
-                    return;
-                }
+        if (!targetSymbol || !entryInput) return;
 
-                const oldValue = parseFloat(entryInput.value) || 0;
-                const lastPriceSymbol = (entryInput.dataset.liveSymbol || '').trim().toUpperCase();
-                const symbolChanged = lastPriceSymbol !== targetSymbol.toUpperCase();
+        // Close any existing WebSocket to prevent old coins from fighting new coins for the input box
+        if (priceWs) {
+            priceWs.close();
+        }
+
+        // Set UI loading state
+        entryInput.dataset.liveSymbol = targetSymbol.toUpperCase();
+        entryInput.value = "Loading...";
+        entryInput.style.color = '#ffaa00';
+
+        // Connect directly to Binance WebSocket for literal real-time stream
+        const wsSymbol = targetSymbol.toLowerCase();
+        priceWs = new WebSocket(`wss://stream.binance.com:9443/ws/${wsSymbol}@ticker`);
+
+        priceWs.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            const currentPrice = parseFloat(data.c).toFixed(8);
+            
+            // Only update if the user hasn't switched coins again mid-stream
+            if (entryInput.dataset.liveSymbol === targetSymbol.toUpperCase()) {
+                entryInput.value = currentPrice;
                 
-                // Only update if price is different or symbol changed
-                if (symbolChanged || Math.abs(oldValue - data.price) / Math.max(oldValue, data.price) > 0.01 || oldValue === 0) {
-                    entryInput.value = data.price.toFixed(8);
-                    entryInput.dataset.liveSymbol = targetSymbol.toUpperCase();
-                    
-                    // Visual feedback - restore color
-                    if (entryInput.style) {
-                        entryInput.style.color = '';  // Reset to normal color
-                        entryInput.style.background = '#1a1a2e';
-                        entryInput.style.transition = 'background 0.3s';
+                // Optional: Flash text to indicate active live feed
+                entryInput.style.color = '#00ff88'; 
+                setTimeout(() => { 
+                    if(entryInput.dataset.liveSymbol === targetSymbol.toUpperCase()){
+                        entryInput.style.color = ''; 
                     }
-                    
-                    if (indicator) {
-                        indicator.style.background = '#00ff88';
-                        indicator.style.color = '#000';
-                        indicator.textContent = '✅ Updated';
-                    }
-                    
-                    setTimeout(() => {
-                        if (indicator) {
-                            indicator.style.background = '';
-                            indicator.style.color = '';
-                            indicator.textContent = '🔄 Live Price';
-                        }
-                        if (entryInput.style) entryInput.style.background = '';
-                    }, 2000);
-                    
-                    console.log(`✅ Live price updated: ${targetSymbol} ${oldValue.toFixed(8)} → ${data.price.toFixed(8)}`);
-                } else {
-                    entryInput.dataset.liveSymbol = targetSymbol.toUpperCase();
-                    // Still restore color even if value didn't change
-                    if (entryInput.style) {
-                        entryInput.style.color = '';
-                    }
-                }
-            } else {
-                console.warn(`⚠️ Invalid price received for ${targetSymbol}: ${data.price}`);
-                if (entryInput) {
-                    entryInput.value = '0.00';
-                    entryInput.style.color = '#ff4444';
-                }
+                }, 300); 
+                
                 if (indicator) {
-                    indicator.textContent = '⚠️ No Price';
-                    indicator.style.color = '#ff4444';
+                    indicator.style.background = '#00ff88';
+                    indicator.style.color = '#000';
+                    indicator.textContent = '✅ Live';
                     setTimeout(() => {
-                        indicator.textContent = '🔄 Live Price';
+                        indicator.style.background = '';
                         indicator.style.color = '';
-                    }, 3000);
+                        indicator.textContent = '🔄 Live Price';
+                    }, 2000);
                 }
             }
-        }).catch(err => {
-            console.error(`❌ Live price fetch failed for ${targetSymbol}:`, err);
-            if (entryInput) {
-                entryInput.value = 'Error';
-                entryInput.style.color = '#ff4444';
-            }
-            if (indicator) {
-                indicator.textContent = '❌ Failed';
-                indicator.style.color = '#ff4444';
-                setTimeout(() => {
-                    indicator.textContent = '🔄 Live Price';
-                    indicator.style.color = '';
-                }, 3000);
-            }
-        });
+        };
+
+        priceWs.onerror = (err) => {
+            console.error(`❌ WebSocket error for ${targetSymbol}:`, err);
+            entryInput.value = 'Error';
+            entryInput.style.color = '#ff4444';
+        };
     }
 
     // ✅ FETCH COIN DETAILS FOR SELECTED SYMBOL
