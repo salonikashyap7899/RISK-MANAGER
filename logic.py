@@ -251,6 +251,13 @@ def get_all_exchange_symbols(user_id=None):
         
     # Fallback: return minimal symbol set
     return ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"]
+def validate_symbol(client, symbol):
+    try:
+        # Check if it's in the exchange info
+        info = client.get_symbol_info(symbol.upper())
+        return info is not None
+    except:
+        return False
 
 def get_wallet_balances(user_id=None):
     """
