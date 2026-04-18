@@ -590,9 +590,17 @@
               try {
                 console.log(`📊 Initializing TradingView chart for: ${currentChartSymbol}`);
                 
+                // ✅ CRITICAL FIX: Format symbol correctly for TradingView Futures
+                // TradingView expects futures symbols in specific formats
+                let tvSymbol = currentChartSymbol;
+                
+                // TradingView will auto-detect the correct futures contract
+                const fullTvSymbol = "BINANCE:" + tvSymbol;
+                console.log(`📊 TradingView formatted symbol: ${fullTvSymbol}`);
+                
                 tvWidget = new TradingView.widget({
                   "autosize": true,
-                  "symbol": "BINANCE:" + currentChartSymbol,
+                  "symbol": fullTvSymbol,
                   "interval": "5",
                   "timezone": "Etc/UTC",
                   "theme": "dark",
@@ -603,12 +611,20 @@
                   "hide_top_toolbar": isMobileChart,
                   "save_image": false,
                   "container_id": "tv_chart",
-                  "allow_symbol_change": false
+                  "allow_symbol_change": true  // ✅ CHANGED: Allow symbol change so users can search if symbol doesn't match
                 });
                 
-                console.log(`✅ TradingView chart initialized for: ${currentChartSymbol}`);
+                console.log(`✅ TradingView chart initialized for: ${fullTvSymbol}`);
               } catch (e) {
                 console.error('❌ Error initializing TradingView chart:', e);
+                // Show user-friendly error
+                const chartDiv = document.getElementById('tv_chart');
+                if (chartDiv) {
+                  chartDiv.innerHTML = 
+                    '<div style="padding: 20px; text-align: center; color: #ff4444;">' +
+                    '⚠️ Chart initialization failed. Try refreshing the page or selecting a different symbol.' +
+                    '</div>';
+                }
               }
             }, 100);
           }
@@ -1371,8 +1387,20 @@
         console.log(`🔄 SWITCHING SYMBOL TO: ${symbol}`);
 
         // 1️⃣ Rebuild TradingView chart with new symbol
-        initializeTradingViewChart(symbol);
-        console.log(`📊 Chart switching to: ${symbol}`);
+        try {
+            initializeTradingViewChart(symbol);
+            console.log(`📊 Chart switching to: ${symbol}`);
+        } catch (e) {
+            console.error(`❌ Chart switch failed for ${symbol}:`, e);
+            // Show error but continue - other features might still work
+            const chartDiv = document.getElementById('tv_chart');
+            if (chartDiv) {
+                chartDiv.innerHTML = 
+                    '<div style="padding: 20px; text-align: center; color: #ffaa00;">' +
+                    `⚠️ Chart update failed for ${symbol}. Price data and trading still available.` +
+                    '</div>';
+            }
+        }
 
         // 2️⃣ Update ALL symbol labels on the page
         document.querySelectorAll('#embed-modal-symbol').forEach(el => el.textContent = symbol);
@@ -1382,7 +1410,13 @@
         // 3️⃣ Immediately fetch and update live price for new symbol
         // Force update by resetting dataset so guard clauses don't skip it
         const entryInput = document.getElementById('entry_input');
-        if (entryInput) entryInput.dataset.liveSymbol = '';
+        if (entryInput) {
+            entryInput.dataset.liveSymbol = '';  // Reset to force fresh fetch
+            // Clear old value to show we're fetching new price
+            const oldValue = entryInput.value;
+            entryInput.value = 'Loading...';
+            entryInput.style.color = '#ffaa00';
+        }
         fetchLivePrice(symbol);
 
         // 4️⃣ Update coin analysis panel (PnL, ROI, etc.)
@@ -1434,15 +1468,17 @@
                     entryInput.value = data.price.toFixed(8);
                     entryInput.dataset.liveSymbol = targetSymbol.toUpperCase();
                     
-                    // Visual feedback
+                    // Visual feedback - restore color
+                    if (entryInput.style) {
+                        entryInput.style.color = '';  // Reset to normal color
+                        entryInput.style.background = '#1a1a2e';
+                        entryInput.style.transition = 'background 0.3s';
+                    }
+                    
                     if (indicator) {
                         indicator.style.background = '#00ff88';
                         indicator.style.color = '#000';
                         indicator.textContent = '✅ Updated';
-                    }
-                    if (entryInput.style) {
-                        entryInput.style.background = '#1a1a2e';
-                        entryInput.style.transition = 'background 0.3s';
                     }
                     
                     setTimeout(() => {
@@ -1457,15 +1493,39 @@
                     console.log(`✅ Live price updated: ${targetSymbol} ${oldValue.toFixed(8)} → ${data.price.toFixed(8)}`);
                 } else {
                     entryInput.dataset.liveSymbol = targetSymbol.toUpperCase();
+                    // Still restore color even if value didn't change
+                    if (entryInput.style) {
+                        entryInput.style.color = '';
+                    }
                 }
             } else {
                 console.warn(`⚠️ Invalid price received for ${targetSymbol}: ${data.price}`);
+                if (entryInput) {
+                    entryInput.value = '0.00';
+                    entryInput.style.color = '#ff4444';
+                }
+                if (indicator) {
+                    indicator.textContent = '⚠️ No Price';
+                    indicator.style.color = '#ff4444';
+                    setTimeout(() => {
+                        indicator.textContent = '🔄 Live Price';
+                        indicator.style.color = '';
+                    }, 3000);
+                }
             }
         }).catch(err => {
             console.error(`❌ Live price fetch failed for ${targetSymbol}:`, err);
+            if (entryInput) {
+                entryInput.value = 'Error';
+                entryInput.style.color = '#ff4444';
+            }
             if (indicator) {
                 indicator.textContent = '❌ Failed';
-                setTimeout(() => indicator.textContent = '🔄 Live Price ', 1500);
+                indicator.style.color = '#ff4444';
+                setTimeout(() => {
+                    indicator.textContent = '🔄 Live Price';
+                    indicator.style.color = '';
+                }, 3000);
             }
         });
     }

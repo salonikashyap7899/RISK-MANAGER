@@ -675,8 +675,47 @@ def get_exchange_status():
 @app.route("/get_live_price/<symbol>")
 @login_required
 def live_price_api(symbol):
+    """Get live price for a symbol"""
     price = logic.get_live_price(symbol, current_user.id)
-    return jsonify({"price": price if price else 0})
+    return jsonify({"price": price if price else 0, "symbol": symbol})
+
+@app.route("/validate_symbol/<symbol>")
+@login_required
+def validate_symbol_api(symbol):
+    """
+    ✅ NEW: Validate if a symbol exists and is tradeable
+    Returns symbol validity, price, and availability info
+    """
+    try:
+        symbol = symbol.strip().upper()
+        symbols = logic.get_all_exchange_symbols(current_user.id)
+        
+        if symbol in symbols:
+            # Symbol exists - try to get price to double-check it's tradeable
+            price = logic.get_live_price(symbol, current_user.id)
+            return jsonify({
+                "valid": True,
+                "symbol": symbol,
+                "price": price,
+                "tradeable": price > 0,
+                "message": f"✅ {symbol} is valid and tradeable" if price > 0 else f"⚠️ {symbol} exists but price unavailable"
+            })
+        else:
+            return jsonify({
+                "valid": False,
+                "symbol": symbol,
+                "message": f"❌ {symbol} not found in available symbols",
+                "available_count": len(symbols),
+                "suggestion": "Check symbol spelling or try selecting from dropdown"
+            })
+    except Exception as e:
+        print(f"❌ Symbol validation error: {e}")
+        return jsonify({
+            "valid": False,
+            "symbol": symbol,
+            "error": str(e),
+            "message": "Error validating symbol"
+        }), 500
 
 @app.route("/get_open_positions")
 @login_required
