@@ -1498,14 +1498,29 @@
         const wsUrl = `wss://stream.binance.com:9443/ws/${wsSymbol}@ticker`;
         console.log(`📡 [fetchLivePrice] WebSocket URL: ${wsUrl}`);
         
+        let wsTimeout = null;
+        let wsConnected = false;
+        
         priceWs = new WebSocket(wsUrl);
 
         priceWs.onopen = () => {
+            wsConnected = true;
             console.log(`✅ [fetchLivePrice] WebSocket connected for ${targetSymbol}`);
+            // Set a timeout - if we don't get data within 3 seconds, fall back to REST API
+            wsTimeout = setTimeout(() => {
+                if (!wsConnected) {
+                    console.warn(`⏱️ [fetchLivePrice] WebSocket timeout for ${targetSymbol} - trying REST API`);
+                    priceWs.close();
+                    fetchLivePriceViaREST(targetSymbol, entryInput, indicator);
+                }
+            }, 3000);
         };
 
         priceWs.onmessage = (event) => {
             try {
+                wsConnected = true;
+                if (wsTimeout) clearTimeout(wsTimeout);
+                
                 const data = JSON.parse(event.data);
                 const currentPrice = parseFloat(data.c).toFixed(8);
                 
@@ -1543,14 +1558,59 @@
         };
 
         priceWs.onerror = (err) => {
+            wsConnected = false;
+            if (wsTimeout) clearTimeout(wsTimeout);
             console.error(`❌ [fetchLivePrice] WebSocket error for ${targetSymbol}:`, err);
-            entryInput.value = 'Error';
-            entryInput.style.color = '#ff4444';
+            
+            // Try REST API as fallback
+            priceWs.close();
+            fetchLivePriceViaREST(targetSymbol, entryInput, indicator);
         };
 
         priceWs.onclose = () => {
+            wsConnected = false;
+            if (wsTimeout) clearTimeout(wsTimeout);
             console.log(`🔄 [fetchLivePrice] WebSocket closed for ${targetSymbol}`);
         };
+    }
+    
+    // ✅ FALLBACK: Fetch price via REST API when WebSocket fails
+    function fetchLivePriceViaREST(symbol, entryInput, indicator) {
+        if (!symbol || !entryInput) return;
+        
+        console.log(`📡 [fetchLivePriceViaREST] Fetching ${symbol} via REST API...`);
+        
+        fetch(`/get_live_price/${encodeURIComponent(symbol)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.price && data.price > 0) {
+                    console.log(`✅ [fetchLivePriceViaREST] Got price: ${data.price}`);
+                    entryInput.value = data.price.toFixed(8);
+                    entryInput.style.color = '#00d4ff';
+                    
+                    if (indicator) {
+                        indicator.style.background = '#00d4ff';
+                        indicator.style.color = '#000';
+                        indicator.textContent = '🔄 REST';
+                        setTimeout(() => {
+                            indicator.style.background = '';
+                            indicator.style.color = '';
+                            indicator.textContent = '🔄 Live Price';
+                        }, 2000);
+                    }
+                } else {
+                    console.error(`❌ [fetchLivePriceViaREST] Invalid price: ${data.price}`);
+                    entryInput.value = '0';
+                    entryInput.style.color = '#ff4444';
+                    if (indicator) indicator.textContent = '❌ Error';
+                }
+            })
+            .catch(err => {
+                console.error(`❌ [fetchLivePriceViaREST] Failed:`, err);
+                entryInput.value = 'Error';
+                entryInput.style.color = '#ff4444';
+                if (indicator) indicator.textContent = '❌ Error';
+            });
     }
 
     // ✅ FETCH COIN DETAILS FOR SELECTED SYMBOL
