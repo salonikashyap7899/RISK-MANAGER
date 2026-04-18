@@ -573,9 +573,16 @@
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script type="text/javascript">
           let tvWidget = null;
-          const selectedSymbol = "{{ selected_symbol or 'BTCUSDT' }}";
+          // ✅ FIXED: currentChartSymbol tracks the ACTIVE symbol for the chart
+          let currentChartSymbol = "{{ selected_symbol or 'BTCUSDT' }}";
           
-          function initializeTradingViewChart() {
+          // ✅ FIXED: Accept symbol parameter so chart updates on symbol change
+          function initializeTradingViewChart(symbol) {
+            // Use passed symbol, fall back to currentChartSymbol, then server-rendered default
+            if (symbol && symbol.trim() !== '') {
+              currentChartSymbol = symbol.trim().toUpperCase();
+            }
+            
             const isMobileChart = window.matchMedia('(max-width: 900px)').matches;
             const chartContainer = document.getElementById('tv_chart');
             
@@ -583,9 +590,6 @@
               console.error('❌ Chart container not found!');
               return;
             }
-            
-            // ✅ FIX: Clear the container completely before reinitializing
-            chartContainer.innerHTML = '';
             
             // Clear previous widget if it exists
             if (tvWidget) {
@@ -596,15 +600,18 @@
                 console.log('Previous chart cleanup skipped');
               }
             }
+
+            // Clear the container completely before reinitializing
+            chartContainer.innerHTML = '';
             
-            // ✅ FIX: Add small delay to ensure DOM is ready
+            // Add small delay to ensure DOM is ready after clearing
             setTimeout(() => {
               try {
-                console.log(`📊 Initializing TradingView chart for: ${selectedSymbol}`);
+                console.log(`📊 Initializing TradingView chart for: ${currentChartSymbol}`);
                 
                 tvWidget = new TradingView.widget({
                   "autosize": true,
-                  "symbol": "BINANCE:" + selectedSymbol,
+                  "symbol": "BINANCE:" + currentChartSymbol,
                   "interval": "5",
                   "timezone": "Etc/UTC",
                   "theme": "dark",
@@ -615,26 +622,26 @@
                   "hide_top_toolbar": isMobileChart,
                   "save_image": false,
                   "container_id": "tv_chart",
-                  "allow_symbol_change": false  // ✅ FIX: Prevent TradingView from changing symbol internally
+                  "allow_symbol_change": false
                 });
                 
-                console.log(`✅ TradingView chart initialized for: ${selectedSymbol}`);
+                console.log(`✅ TradingView chart initialized for: ${currentChartSymbol}`);
               } catch (e) {
                 console.error('❌ Error initializing TradingView chart:', e);
               }
             }, 100);
           }
           
-          // ✅ FIX: Initialize chart on page load
+          // Initialize chart on page load
           if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
-              setTimeout(initializeTradingViewChart, 500);  // ✅ Add delay for full page load
+              setTimeout(() => initializeTradingViewChart(), 500);
             });
           } else {
-            setTimeout(initializeTradingViewChart, 500);
+            setTimeout(() => initializeTradingViewChart(), 500);
           }
           
-          // ✅ FIX: Also reinitialize on visibility change (when tab comes to focus)
+          // Reinitialize on visibility change (when tab comes back to focus)
           document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
               console.log('📊 Page visible again, reinitializing chart...');
@@ -713,9 +720,10 @@
     let currentPositions = {};
     
     // Auto-populate embedded coin details with selected symbol
-    function updateEmbeddedCoinDetails() {
+    function updateEmbeddedCoinDetails(symbol) {
         const symbolElem = document.querySelector('select[name="symbol"]');
-        const symbol = symbolElem ? symbolElem.value : 'BTCUSDT';
+        // Use passed symbol, then dropdown, then fallback
+        const activeSymbol = symbol || (symbolElem ? symbolElem.value : 'BTCUSDT');
         const sl_typeElem = document.querySelector('select[name="sl_type"]');
         const sl_type = sl_typeElem ? sl_typeElem.value : 'SL % Movement';
         const sl_valueElem = document.querySelector('input[name="sl_value"]');
@@ -723,10 +731,10 @@
         const sideElem = document.querySelector('select[name="side"]');
         const side = sideElem ? sideElem.value : 'LONG';
         
-        if (!symbol) return;
+        if (!activeSymbol) return;
         
         // Update header and loading state
-        document.getElementById('embed-modal-symbol').textContent = symbol;
+        document.getElementById('embed-modal-symbol').textContent = activeSymbol;
         document.getElementById('embed-pnl').textContent = '...';
         document.getElementById('embed-roi').textContent = '...';
         document.getElementById('embed-size').textContent = '...';
@@ -736,7 +744,7 @@
         document.getElementById('embed-mark').textContent = '-';
         document.getElementById('embed-liq').textContent = '-';
         
-        const fetchUrl = `/api/coin-details/${symbol}?sl_type=${encodeURIComponent(sl_type)}&sl_value=${encodeURIComponent(sl_value)}&side=${encodeURIComponent(side)}`;
+        const fetchUrl = `/api/coin-details/${activeSymbol}?sl_type=${encodeURIComponent(sl_type)}&sl_value=${encodeURIComponent(sl_value)}&side=${encodeURIComponent(side)}`;
         
         fetch(fetchUrl)
             .then(r => r.json())
@@ -788,22 +796,8 @@
             });
     }
     
-    // ✅ FIXED: Update embedded coin details AND reload chart when symbol changes
+    // ✅ FIXED: Update embedded coin details AND chart when symbol changes
     document.addEventListener('DOMContentLoaded', () => {
-        const symbolSelect = document.querySelector('select[name="symbol"]');
-        if (symbolSelect) {
-            // ✅ FIX: When symbol changes, reload the entire page with new symbol
-            // This ensures: 1) Chart reloads, 2) Prices refresh, 3) All data updates
-            symbolSelect.addEventListener('change', function() {
-                const newSymbol = this.value;
-                console.log(`✅ Symbol dropdown changed to: ${newSymbol}`);
-                
-                // Call changeSymbol which handles everything: chart cleanup, page reload
-                setTimeout(() => {
-                    changeSymbol(newSymbol);
-                }, 100);
-            });
-        }
         updateEmbeddedCoinDetails();
         setInterval(updateEmbeddedCoinDetails, 5000); // Refresh every 5 seconds
     });
@@ -1394,46 +1388,43 @@
         setTimeout(validateFormInputs, 500);
     });
 
-    // ✅ FIXED: Properly change symbol and refresh page with new symbol
-    // ✅ NEW: DYNAMIC SYMBOL SWITCHING (NO PAGE RELOAD!)
+    // ✅ DYNAMIC SYMBOL SWITCHING — updates chart, price, and all panels without page reload
     function changeSymbolDynamic(symbol) {
-        // Validate symbol
-        if (!symbol || symbol === '') {
+        if (!symbol || symbol.trim() === '') {
             console.warn('⚠️ Invalid symbol for change:', symbol);
             return;
         }
-        
+        symbol = symbol.trim().toUpperCase();
         console.log(`🔄 SWITCHING SYMBOL TO: ${symbol}`);
-        
-        // 1️⃣ Update TradingView chart immediately
-        if (typeof initializeTradingViewChart === 'function') {
-            initializeTradingViewChart(symbol);
-            console.log(`📊 Chart switched to: ${symbol}`);
-        }
-        
-        // 2️⃣ Update the symbol label in coin analysis
-        const symbolLabels = document.querySelectorAll('#embed-modal-symbol');
-        if (symbolLabels.length > 0) {
-            symbolLabels.forEach(label => label.textContent = symbol);
-        }
+
+        // 1️⃣ Rebuild TradingView chart with new symbol
+        initializeTradingViewChart(symbol);
+        console.log(`📊 Chart switching to: ${symbol}`);
+
+        // 2️⃣ Update ALL symbol labels on the page
+        document.querySelectorAll('#embed-modal-symbol').forEach(el => el.textContent = symbol);
         const symbolTradeLabel = document.getElementById('symbol_trades_label');
-        if (symbolTradeLabel) {
-            symbolTradeLabel.textContent = symbol;
-        }
-        
-        // 3️⃣ Fetch and update live price
+        if (symbolTradeLabel) symbolTradeLabel.textContent = symbol;
+
+        // 3️⃣ Immediately fetch and update live price for new symbol
+        // Force update by resetting dataset so guard clauses don't skip it
+        const entryInput = document.getElementById('entry_input');
+        if (entryInput) entryInput.dataset.liveSymbol = '';
         fetchLivePrice(symbol);
-        
-        // 4️⃣ Fetch and update coin details (leverage, recommendations)
+
+        // 4️⃣ Update coin analysis panel (PnL, ROI, etc.)
+        updateEmbeddedCoinDetails(symbol);
+
+        // 5️⃣ Fetch coin details (max leverage, recommendations)
         fetchCoinDetails(symbol);
-        
-        // 5️⃣ Update live positions for this symbol
+
+        // 6️⃣ Update live positions for new symbol
         updateLivePositions(symbol);
-        
-        // 6️⃣ Update position sizing
+
+        // 7️⃣ Recalculate position sizing for new symbol
         updatePositionSizing(symbol);
-        
-        console.log(`✅ Symbol switched to ${symbol} - all data updated`);
+
+        console.log(`✅ Symbol switched to ${symbol} — all data updating`);
     }
 
     // ✅ FETCH LIVE PRICE FOR SELECTED SYMBOL
@@ -1501,7 +1492,7 @@
             console.error(`❌ Live price fetch failed for ${targetSymbol}:`, err);
             if (indicator) {
                 indicator.textContent = '❌ Failed';
-                setTimeout(() => indicator.textContent = '🔄 Live Price', 1500);
+                setTimeout(() => indicator.textContent = '🔄 Live Price 1', 1500);
             }
         });
     }
