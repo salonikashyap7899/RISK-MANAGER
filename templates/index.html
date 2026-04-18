@@ -1389,7 +1389,8 @@
             event.stopPropagation();
         }
 
-        const symbol = event && event.target ? event.target.value : null;
+        const symbolSelect = document.querySelector('select[name="symbol"]');
+        const symbol = symbolSelect ? symbolSelect.value : null;
         
         if (!symbol || symbol.trim() === '') {
             console.warn('⚠️ Invalid symbol for change:', symbol);
@@ -1397,35 +1398,71 @@
         }
 
         const cleanSymbol = symbol.trim().toUpperCase();
-        console.log(`🔄 SWITCHING SYMBOL TO: ${cleanSymbol}`);
+        console.log(`🔄 [DYNAMIC SWITCH] Starting for: ${cleanSymbol}`);
 
-        // 1️⃣ Update the chart using the proper initialization function
-        // This ensures proper cleanup and widget management
-        initializeTradingViewChart(cleanSymbol);
-
-        // 2️⃣ Update ALL symbol labels on the page
-        document.querySelectorAll('#embed-modal-symbol').forEach(el => el.textContent = cleanSymbol);
-        const symbolTradeLabel = document.getElementById('symbol_trades_label');
-        if (symbolTradeLabel) symbolTradeLabel.textContent = cleanSymbol;
-
-        // 3️⃣ Immediately fetch and update live price for new symbol using WebSocket
-        fetchLivePrice(cleanSymbol);
-
-        // 4️⃣ Update coin analysis panel (PnL, ROI, etc.) [PRESERVED FEATURE]
-        updateEmbeddedCoinDetails(cleanSymbol);
-
-        // 5️⃣ Fetch coin details (max leverage, recommendations) [PRESERVED FEATURE]
-        fetchCoinDetails(cleanSymbol);
-
-        // 6️⃣ Update live positions for new symbol [PRESERVED FEATURE]
-        updateLivePositions(cleanSymbol);
-
-        // 7️⃣ Recalculate position sizing for new symbol [PRESERVED FEATURE]
-        updatePositionSizing(cleanSymbol);
-
-        console.log(`✅ Symbol switched to ${cleanSymbol} — all data updating dynamically`);
+        // Set the global currentChartSymbol variable
+        currentChartSymbol = cleanSymbol;
         
-        return false; // Prevent any form submission
+        try {
+            // 1️⃣ Force chart reload using the main initialization function
+            console.log(`🔄 [DYNAMIC SWITCH] Calling initializeTradingViewChart(${cleanSymbol})`);
+            initializeTradingViewChart(cleanSymbol);
+
+            // 2️⃣ Update ALL symbol labels on the page (with a small delay)
+            setTimeout(() => {
+                console.log(`🔄 [DYNAMIC SWITCH] Updating symbol labels to: ${cleanSymbol}`);
+                document.querySelectorAll('#embed-modal-symbol').forEach(el => {
+                    el.textContent = cleanSymbol;
+                });
+                const symbolTradeLabel = document.getElementById('symbol_trades_label');
+                if (symbolTradeLabel) {
+                    symbolTradeLabel.textContent = cleanSymbol;
+                }
+            }, 50);
+
+            // 3️⃣ Fetch live price for new symbol
+            setTimeout(() => {
+                console.log(`🔄 [DYNAMIC SWITCH] Fetching live price for: ${cleanSymbol}`);
+                fetchLivePrice(cleanSymbol);
+            }, 100);
+
+            // 4️⃣ Update coin analysis panel
+            setTimeout(() => {
+                console.log(`🔄 [DYNAMIC SWITCH] Updating coin analysis for: ${cleanSymbol}`);
+                updateEmbeddedCoinDetails(cleanSymbol);
+            }, 150);
+
+            // 5️⃣ Fetch coin details (leverage, etc)
+            setTimeout(() => {
+                console.log(`🔄 [DYNAMIC SWITCH] Fetching coin details for: ${cleanSymbol}`);
+                fetchCoinDetails(cleanSymbol);
+            }, 200);
+
+            // 6️⃣ Update live positions
+            setTimeout(() => {
+                console.log(`🔄 [DYNAMIC SWITCH] Updating positions for: ${cleanSymbol}`);
+                updateLivePositions(cleanSymbol);
+            }, 250);
+
+            // 7️⃣ Recalculate position sizing
+            setTimeout(() => {
+                console.log(`🔄 [DYNAMIC SWITCH] Calculating sizing for: ${cleanSymbol}`);
+                updatePositionSizing(cleanSymbol);
+            }, 300);
+
+            console.log(`✅ [DYNAMIC SWITCH] Complete - symbol is now: ${cleanSymbol}`);
+        } catch (err) {
+            console.error(`❌ [DYNAMIC SWITCH] Error during dynamic update:`, err);
+            console.log(`🔄 [FALLBACK] Falling back to form submission (page reload)`);
+            
+            // Fallback: submit the form to reload with new symbol
+            const form = symbolSelect.closest('form');
+            if (form) {
+                form.submit();
+            }
+        }
+        
+        return false;
     }
 
     // ✅ FETCH LIVE PRICE (Now utilizing WebSocket for instant, lag-free updates)
@@ -1436,10 +1473,16 @@
         
         const targetSymbol = symbol || (symbolSelect ? symbolSelect.value : 'BTCUSDT');
         
-        if (!targetSymbol || !entryInput) return;
+        console.log(`📡 [fetchLivePrice] Starting for symbol: ${targetSymbol}`);
+        
+        if (!targetSymbol || !entryInput) {
+            console.error(`❌ [fetchLivePrice] Missing targetSymbol or entryInput`);
+            return;
+        }
 
         // Close any existing WebSocket to prevent old coins from fighting new coins for the input box
         if (priceWs) {
+            console.log(`🔄 [fetchLivePrice] Closing old WebSocket...`);
             priceWs.close();
         }
 
@@ -1447,44 +1490,66 @@
         entryInput.dataset.liveSymbol = targetSymbol.toUpperCase();
         entryInput.value = "Loading...";
         entryInput.style.color = '#ffaa00';
+        
+        console.log(`🔄 [fetchLivePrice] Opening WebSocket for: ${targetSymbol}`);
 
         // Connect directly to Binance WebSocket for literal real-time stream
         const wsSymbol = targetSymbol.toLowerCase();
-        priceWs = new WebSocket(`wss://stream.binance.com:9443/ws/${wsSymbol}@ticker`);
+        const wsUrl = `wss://stream.binance.com:9443/ws/${wsSymbol}@ticker`;
+        console.log(`📡 [fetchLivePrice] WebSocket URL: ${wsUrl}`);
+        
+        priceWs = new WebSocket(wsUrl);
+
+        priceWs.onopen = () => {
+            console.log(`✅ [fetchLivePrice] WebSocket connected for ${targetSymbol}`);
+        };
 
         priceWs.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            const currentPrice = parseFloat(data.c).toFixed(8);
-            
-            // Only update if the user hasn't switched coins again mid-stream
-            if (entryInput.dataset.liveSymbol === targetSymbol.toUpperCase()) {
-                entryInput.value = currentPrice;
+            try {
+                const data = JSON.parse(event.data);
+                const currentPrice = parseFloat(data.c).toFixed(8);
                 
-                // Optional: Flash text to indicate active live feed
-                entryInput.style.color = '#00ff88'; 
-                setTimeout(() => { 
-                    if(entryInput.dataset.liveSymbol === targetSymbol.toUpperCase()){
-                        entryInput.style.color = ''; 
+                console.log(`📊 [fetchLivePrice] Got price for ${targetSymbol}: ${currentPrice}`);
+                
+                // Only update if the user hasn't switched coins again mid-stream
+                if (entryInput.dataset.liveSymbol === targetSymbol.toUpperCase()) {
+                    entryInput.value = currentPrice;
+                    console.log(`✅ [fetchLivePrice] Updated entry field to: ${currentPrice}`);
+                    
+                    // Optional: Flash text to indicate active live feed
+                    entryInput.style.color = '#00ff88'; 
+                    setTimeout(() => { 
+                        if(entryInput.dataset.liveSymbol === targetSymbol.toUpperCase()){
+                            entryInput.style.color = ''; 
+                        }
+                    }, 300); 
+                    
+                    if (indicator) {
+                        indicator.style.background = '#00ff88';
+                        indicator.style.color = '#000';
+                        indicator.textContent = '✅ Live';
+                        setTimeout(() => {
+                            indicator.style.background = '';
+                            indicator.style.color = '';
+                            indicator.textContent = '🔄 Live Price';
+                        }, 2000);
                     }
-                }, 300); 
-                
-                if (indicator) {
-                    indicator.style.background = '#00ff88';
-                    indicator.style.color = '#000';
-                    indicator.textContent = '✅ Live';
-                    setTimeout(() => {
-                        indicator.style.background = '';
-                        indicator.style.color = '';
-                        indicator.textContent = '🔄 Live Price';
-                    }, 2000);
+                } else {
+                    console.log(`ℹ️ [fetchLivePrice] Ignoring price update - symbol changed to ${entryInput.dataset.liveSymbol}`);
                 }
+            } catch (err) {
+                console.error(`❌ [fetchLivePrice] Error parsing message:`, err);
             }
         };
 
         priceWs.onerror = (err) => {
-            console.error(`❌ WebSocket error for ${targetSymbol}:`, err);
+            console.error(`❌ [fetchLivePrice] WebSocket error for ${targetSymbol}:`, err);
             entryInput.value = 'Error';
             entryInput.style.color = '#ff4444';
+        };
+
+        priceWs.onclose = () => {
+            console.log(`🔄 [fetchLivePrice] WebSocket closed for ${targetSymbol}`);
         };
     }
 
