@@ -754,18 +754,7 @@ def get_open_positions(user_id=None):
     except Exception as e:
         print(f"Error getting open positions: {e}")
         return []
-# Before (likely causing the crash)
-symbol_info = [s for s in exchange_info['symbols'] if s['symbol'] == symbol][0]
 
-# After (Safe Version)
-exchange_info = client.futures_exchange_info()
-symbol_data = [s for s in exchange_info['symbols'] if s['symbol'] == symbol]
-
-if not symbol_data:
-    return {"error": f"Symbol {symbol} not found on Binance Futures."}
-
-symbol_info = symbol_data[0]
-# Proceed with logic...
 
 def get_open_positions_live(user_id=None):
     """
