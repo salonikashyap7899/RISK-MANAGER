@@ -1114,6 +1114,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         return {"success": False, "message": f"❌ {str(e)}"}
 
 def partial_close_position(symbol, close_percent=None, close_qty=None, user_id=None):
+    from models import TradePosition, db
     try:
         client = get_client(user_id)
         if client is None: 
@@ -1132,6 +1133,17 @@ def partial_close_position(symbol, close_percent=None, close_qty=None, user_id=N
         side = Client.SIDE_SELL if amt > 0 else Client.SIDE_BUY
         
         order = client.futures_create_order(symbol=symbol, side=side, type="MARKET", quantity=q)
+
+        pos_db = TradePosition.query.filter_by(user_id=user_id, symbol=symbol, status='open').order_by(TradePosition.updated_at.desc()).first()
+        if pos_db:
+            base_qty = abs(float(pos_db.initial_qty or 0)) or abs(amt)
+            closed_pct = (abs(q) / base_qty * 100) if base_qty else 0
+            pos_db.remain_qty_pct = max(0.0, float(pos_db.remain_qty_pct or 100.0) - closed_pct)
+            if pos_db.remain_qty_pct <= 0.01:
+                pos_db.remain_qty_pct = 0.0
+                pos_db.status = 'closed'
+            db.session.commit()
+
         log_trade_event("PARTIAL_CLOSE", f"Closed {q} units of {symbol}, PnL: ${order.get('realizedPnl', 0):.2f}", user_id)
         # Invalidate caches after partial close
         cache_key_positions = f"positions_{user_id or 'public'}"
@@ -1143,9 +1155,11 @@ def partial_close_position(symbol, close_percent=None, close_qty=None, user_id=N
         return {"success": True, "message": f"Closed {q} units", "order": order}
     
     except Exception as e:
+        db.session.rollback()
         return {"success": False, "message": str(e)}
 
 def close_position(symbol, user_id=None):
+    from models import TradePosition, db
     try:
         client = get_client(user_id)
         positions = client.futures_position_information(symbol=symbol)
@@ -1156,6 +1170,13 @@ def close_position(symbol, user_id=None):
         side = Client.SIDE_SELL if float(pos.get('positionAmt', 0)) > 0 else Client.SIDE_BUY
         client.futures_create_order(symbol=symbol, side=side, type="MARKET", quantity=amt)
         client.futures_cancel_all_open_orders(symbol=symbol)
+
+        pos_db = TradePosition.query.filter_by(user_id=user_id, symbol=symbol, status='open').order_by(TradePosition.updated_at.desc()).first()
+        if pos_db:
+            pos_db.status = 'closed'
+            pos_db.remain_qty_pct = 0.0
+            db.session.commit()
+
         log_trade_event("TRADE_CLOSE", f"Closed full position {symbol}", user_id)
         # Invalidate caches after position close
         cache_key_positions = f"positions_{user_id or 'public'}"
@@ -1166,6 +1187,7 @@ def close_position(symbol, user_id=None):
             del _trade_history_cache[cache_key_trades]
         return {"success": True, "message": "Position Closed"}
     except Exception as e: 
+        db.session.rollback()
         return {"success": False, "message": str(e)}
 
 def trail_stop_loss(symbol, user_id=None):
@@ -1280,6 +1302,8 @@ def get_trade_history(user_id=None):
             'commission': float(t.get('commission', 0)), 
             'order_id': t.get('orderId')
         } for t in sorted(trades, key=lambda x: x.get('time', 0), reverse=True)]
+
+        trade_history = attach_trade_levels(trade_history, user_id)
         
         # Cache the results
         _trade_history_cache[cache_key] = trade_history
@@ -1287,6 +1311,65 @@ def get_trade_history(user_id=None):
         return trade_history
     except Exception: 
         return []
+
+def attach_trade_levels(trades, user_id=None):
+    from models import TradePosition
+
+    if not user_id or not trades:
+        return trades
+
+    try:
+        positions = TradePosition.query.filter_by(user_id=user_id).order_by(TradePosition.created_at.desc()).limit(300).all()
+        if not positions:
+            return trades
+
+        def match_position(trade):
+            symbol = trade.get('symbol')
+            trade_time_str = trade.get('time')
+            if not symbol or not trade_time_str:
+                return None
+
+            try:
+                trade_time = datetime.strptime(trade_time_str, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                return None
+
+            best = None
+            best_delta = None
+            for pos in positions:
+                if pos.symbol != symbol or not pos.created_at:
+                    continue
+
+                delta = abs((trade_time - pos.created_at).total_seconds())
+                if best is None or delta < best_delta:
+                    best = pos
+                    best_delta = delta
+
+            # Ignore clearly unrelated historical matches
+            if best is None or best_delta is None or best_delta > 7 * 24 * 3600:
+                return None
+            return best
+
+        enriched = []
+        for trade in trades:
+            pos = match_position(trade)
+            if pos:
+                trade = dict(trade)
+                trade.update({
+                    'sl_price': float(pos.sl_price or 0),
+                    'current_sl': float(pos.current_sl or 0),
+                    'tp1_price': float(pos.tp1_price or 0),
+                    'tp1_qty_pct': float(pos.tp1_qty_pct or 0),
+                    'tp2_price': float(pos.tp2_price or 0),
+                    'remain_qty_pct': float(pos.remain_qty_pct or 0),
+                    'position_status': pos.status or 'open'
+                })
+            enriched.append(trade)
+
+        return enriched
+    except Exception as e:
+        print(f"Error attaching TP/SL to trade history: {e}")
+        return trades
 
 def get_user_trade_positions_with_tp_sl(user_id=None):
     """

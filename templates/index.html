@@ -728,7 +728,7 @@
     }
     
     // Auto-populate embedded coin details with selected symbol
-    function updateEmbeddedCoinDetails(symbol) {
+    function updateEmbeddedCoinDetails(symbol, forceFresh = false) {
         // Use passed symbol, then dropdown, then fallback
         const activeSymbol = (symbol || getSelectedSymbol() || 'BTCUSDT').trim().toUpperCase();
         const sl_typeElem = document.querySelector('select[name="sl_type"]');
@@ -750,7 +750,8 @@
         document.getElementById('embed-mark').textContent = '-';
         document.getElementById('embed-liq').textContent = '-';
         
-        const fetchUrl = `/api/coin-details/${activeSymbol}?sl_type=${encodeURIComponent(sl_type)}&sl_value=${encodeURIComponent(sl_value)}&side=${encodeURIComponent(side)}`;
+        const freshQuery = forceFresh ? '&fresh=1' : '';
+        const fetchUrl = `/api/coin-details/${activeSymbol}?sl_type=${encodeURIComponent(sl_type)}&sl_value=${encodeURIComponent(sl_value)}&side=${encodeURIComponent(side)}${freshQuery}`;
         
         fetch(fetchUrl)
             .then(r => r.json())
@@ -793,12 +794,16 @@
                             console.error('Error parsing position data:', err);
                         }
                     } else {
-                        // No position - show loading state
+                        const currentPrice = parseFloat(data.current_price || 0).toFixed(8);
+                        // No position - still show live symbol snapshot
                         document.getElementById('embed-pnl').textContent = '0.00';
                         document.getElementById('embed-roi').textContent = '0.00%';
                         document.getElementById('embed-size').textContent = '0.00';
                         document.getElementById('embed-margin').textContent = '0.00';
                         document.getElementById('embed-margin-ratio').textContent = '0.00%';
+                        document.getElementById('embed-entry').textContent = currentPrice !== '0.00000000' ? currentPrice : '-';
+                        document.getElementById('embed-mark').textContent = currentPrice !== '0.00000000' ? currentPrice : '-';
+                        document.getElementById('embed-liq').textContent = '-';
                     }
                 }
             })
@@ -990,23 +995,45 @@
         });
     }
 
-    function updateTradeHistory() {
-        fetch('/get_trade_history')
+    function updateTradeHistory(symbol = null) {
+        const activeSymbol = (symbol || getSelectedSymbol() || '').trim().toUpperCase();
+        const container = document.getElementById('trade_history');
+        if (!container) return;
+
+        container.innerHTML = '<div style="text-align: center; color: #666; padding: 18px 0; font-size: 8px;">Loading trades...</div>';
+
+        const url = activeSymbol ? `/get_trade_history?symbol=${encodeURIComponent(activeSymbol)}` : '/get_trade_history';
+        fetch(url)
         .then(r => r.json())
         .then(data => {
-            const container = document.getElementById('trade_history');
-            if (data.trades && data.trades.length > 0) {
+            if (activeSymbol && getSelectedSymbol() !== activeSymbol) {
+                return;
+            }
+
+            const trades = Array.isArray(data.trades) ? data.trades : [];
+            if (trades.length > 0) {
                 let html = '';
-                data.trades.slice(0, 10).forEach(trade => {
+                trades.slice(0, 10).forEach(trade => {
                     const pnlColor = trade.realized_pnl >= 0 ? '#00ff88' : '#ff4444';
+                    const hasLevels = (trade.sl_price && trade.sl_price > 0) || (trade.tp1_price && trade.tp1_price > 0) || (trade.tp2_price && trade.tp2_price > 0);
+                    const levelsLine = hasLevels
+                        ? `<div style="color: #81b8c5; font-size: 10px;">SL: ${trade.sl_price || '-'} | TP1: ${trade.tp1_price || '-'}${trade.tp1_qty_pct ? ` (${trade.tp1_qty_pct}%)` : ''} | TP2: ${trade.tp2_price || '-'} | Status: ${trade.position_status || 'open'}</div>`
+                        : '';
                     html += `<div style="padding: 6px 0; border-bottom: 1px solid #333; font-size: 11px; line-height: 1.4;">
                         <div><strong>${trade.time}</strong> | ${trade.side} ${trade.symbol}</div>
                         <div>Price: $${trade.price.toFixed(4)} | Qty: ${trade.qty} | PnL: <span style="color: ${pnlColor};">${trade.realized_pnl.toFixed(3)}</span></div>
+                        ${levelsLine}
                         <div style="color: #888; font-size: 10px;">Order: ${trade.order_id}</div>
                     </div>`;
                 });
                 container.innerHTML = html;
+            } else {
+                container.innerHTML = `<div style="text-align: center; color: #666; padding: 18px 0; font-size: 8px;">No recent trades${activeSymbol ? ` for ${activeSymbol}` : ''}</div>`;
             }
+        })
+        .catch(err => {
+            console.error('Error fetching trade history:', err);
+            container.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 18px 0; font-size: 8px;">Trade history unavailable</div>';
         });
     }
 
@@ -2070,6 +2097,122 @@
         }
     }
 
+    function refreshSelectedSymbolPanels(symbol, forceFresh = false) {
+        const activeSymbol = (symbol || getSelectedSymbol() || '').trim().toUpperCase();
+        if (!activeSymbol) return;
+
+        const positionsContainer = document.getElementById('live_positions');
+        const tradesContainer = document.getElementById('trade_history');
+        const header = document.getElementById('embed-modal-symbol');
+        const prevSymbolInput = document.querySelector('input[name="prev_symbol"]');
+
+        if (prevSymbolInput) {
+            prevSymbolInput.value = activeSymbol;
+        }
+        if (header) {
+            header.textContent = activeSymbol;
+        }
+        if (positionsContainer) {
+            positionsContainer.innerHTML = `<div style="text-align: center; color: #666; padding: 20px 12px; font-size: 9px;">Loading positions for ${activeSymbol}...</div>`;
+        }
+        if (tradesContainer) {
+            tradesContainer.innerHTML = `<div style="text-align: center; color: #666; padding: 18px 0; font-size: 8px;">Loading ${activeSymbol} trades...</div>`;
+        }
+
+        updateLivePrice(activeSymbol, true);
+        updateEmbeddedCoinDetails(activeSymbol, forceFresh);
+        fetchCoinDetails(activeSymbol);
+        updatePositionSizing(activeSymbol);
+        updateLivePositions(activeSymbol, forceFresh);
+        updateTradeHistory(activeSymbol);
+        updateTradeLimits();
+    }
+
+    updateLivePositions = function(symbol = null, forceFresh = false) {
+        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
+        const container = document.getElementById('live_positions');
+        const headerEl = document.getElementById('position_header');
+
+        if (!container) return;
+
+        let url = '/get_open_positions';
+        const params = [];
+        if (targetSymbol) params.push(`symbol=${encodeURIComponent(targetSymbol)}`);
+        if (forceFresh) params.push('fresh=1');
+        if (params.length > 0) url += `?${params.join('&')}`;
+
+        fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (targetSymbol && getSelectedSymbol() !== targetSymbol) {
+                return;
+            }
+
+            const positions = Array.isArray(data.positions) ? data.positions : [];
+            currentPositions = {};
+
+            positions.forEach(pos => {
+                currentPositions[pos.symbol] = {
+                    symbol: pos.symbol,
+                    side: pos.side,
+                    amount: parseFloat(pos.amount ?? pos.quantity ?? pos.positionAmt ?? 0),
+                    size_usdt: parseFloat(pos.size_usdt ?? pos.notional ?? 0),
+                    margin_usdt: parseFloat(pos.margin_usdt ?? pos.initialMargin ?? 0),
+                    margin_ratio: parseFloat(pos.margin_ratio ?? 0),
+                    dashboard_margin_ratio: parseFloat(pos.dashboard_margin_ratio ?? pos.margin_ratio ?? 0),
+                    entry_price: parseFloat(pos.entry_price ?? pos.entryPrice ?? 0),
+                    mark_price: parseFloat(pos.mark_price ?? pos.markPrice ?? 0),
+                    unrealized_pnl: parseFloat(pos.unrealized_pnl ?? pos.unrealizedPnL ?? 0),
+                    roi_percent: parseFloat(pos.roi_percent ?? 0),
+                    dashboard_roi_percent: parseFloat(pos.dashboard_roi_percent ?? pos.roi_percent ?? 0),
+                    leverage: parseFloat(pos.leverage ?? 1),
+                    liquidation_price: parseFloat(pos.liquidation_price ?? pos.liquidationPrice ?? 0),
+                    open_orders: Array.isArray(pos.open_orders) ? pos.open_orders : [],
+                    timestamp: pos.timestamp || ''
+                };
+            });
+
+            if (positions.length > 0) {
+                renderPositions();
+                updateLiveDataOnly();
+            } else {
+                currentPositions = {};
+                if (headerEl) {
+                    headerEl.textContent = 'LIVE POSITIONS (0)';
+                }
+                container.innerHTML = `<div style="text-align: center; color: #81b8c5; padding: 20px 12px; font-size: 9px;">No open positions for ${targetSymbol}</div>`;
+            }
+        }).catch(err => {
+            console.error('Failed to fetch positions:', err);
+            currentPositions = {};
+            if (headerEl) {
+                headerEl.textContent = 'LIVE POSITIONS (0)';
+            }
+            container.innerHTML = '<div style="color: #ff6b6b; font-size: 9px; text-align: center; padding: 20px 12px;">Error loading positions</div>';
+        });
+    };
+
+    changeSymbolDynamic = function(event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+
+        const symbolSelect = document.querySelector('select[name="symbol"]');
+        const cleanSymbol = ((symbolSelect ? symbolSelect.value : '') || '').trim().toUpperCase();
+
+        if (!isValidSymbol(cleanSymbol)) {
+            alert(`Invalid symbol: ${cleanSymbol}`);
+            return false;
+        }
+
+        currentChartSymbol = cleanSymbol;
+        initializeTradingViewChart(cleanSymbol);
+        window.history.replaceState({}, '', `/index?symbol=${encodeURIComponent(cleanSymbol)}`);
+        refreshSelectedSymbolPanels(cleanSymbol, true);
+        return false;
+    };
+
     // ✅ CLOSE COIN DETAILS MODAL
     function closeCoinModal() {
         document.getElementById('coin-details-modal').style.display = 'none';
@@ -2080,14 +2223,10 @@
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
             console.log('✅ Page loaded, initializing dynamic functions');
-            updateLivePrice(null, true);
-            fetchCoinDetails();
-            updateLivePositions();
+            refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
         });
     } else {
-        updateLivePrice(null, true);
-        fetchCoinDetails();
-        updateLivePositions();
+        refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
     }
 
     // ✅ AUTO-REFRESH TIMERS (Background updates while user trades)
@@ -2104,6 +2243,8 @@
     // Refresh coin details (leverage, etc) every 30 seconds
     setInterval(() => {
         fetchCoinDetails();
+        updateEmbeddedCoinDetails();
+        updateTradeHistory();
     }, 30000);
 
     window.onclick = function(event) {

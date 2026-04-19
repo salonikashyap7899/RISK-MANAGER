@@ -726,7 +726,8 @@ def get_open_positions_api():
     This allows dynamic symbol switching to fetch relevant positions only
     """
     symbol_filter = request.args.get('symbol', '').strip().upper()
-    all_positions = logic.get_open_positions(current_user.id)
+    fresh = request.args.get('fresh', '').strip() in {'1', 'true', 'yes'}
+    all_positions = logic.get_open_positions_live(current_user.id) if fresh else logic.get_open_positions(current_user.id)
     
     # Filter by symbol if provided
     if symbol_filter:
@@ -764,6 +765,9 @@ def get_liquidation_prices_api():
 @subscription_required
 def get_trade_history_api():
     trades = logic.get_trade_history(current_user.id)
+    symbol_filter = request.args.get('symbol', '').strip().upper()
+    if symbol_filter:
+        trades = [t for t in trades if isinstance(t, dict) and t.get('symbol') == symbol_filter]
     return jsonify({"trades": trades})
 
 @app.route("/api/calculate-sizing")
@@ -989,7 +993,8 @@ def coin_details_api(symbol):
         position = None
         calculation_breakdown = None
         try:
-            positions_data = logic.get_open_positions(current_user.id)
+            fresh = request.args.get('fresh', '').strip() in {'1', 'true', 'yes'}
+            positions_data = logic.get_open_positions_live(current_user.id) if fresh else logic.get_open_positions(current_user.id)
             
             # Handle different response formats
             if isinstance(positions_data, dict) and positions_data.get("success"):
@@ -1091,11 +1096,15 @@ def download_trades():
     trades = logic.get_trade_history(current_user.id)
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Time (UTC)', 'Symbol', 'Side', 'Quantity', 'Price', 'Realized PnL', 'Commission', 'Order ID'])
+    writer.writerow(['Time (UTC)', 'Symbol', 'Side', 'Quantity', 'Price', 'Realized PnL', 'Commission', 'Order ID', 'SL', 'Current SL', 'TP1', 'TP1 Qty %', 'TP2', 'Remaining Qty %', 'Position Status'])
     for trade in trades:
         writer.writerow([trade.get('time', ''), trade.get('symbol', ''), trade.get('side', ''), 
                         trade.get('qty', ''), trade.get('price', ''), trade.get('realized_pnl', ''), 
-                        trade.get('commission', ''), trade.get('order_id', '')])
+                        trade.get('commission', ''), trade.get('order_id', ''),
+                        trade.get('sl_price', ''), trade.get('current_sl', ''),
+                        trade.get('tp1_price', ''), trade.get('tp1_qty_pct', ''),
+                        trade.get('tp2_price', ''), trade.get('remain_qty_pct', ''),
+                        trade.get('position_status', '')])
     output.seek(0)
     return Response(output.getvalue(), mimetype='text/csv', 
                    headers={'Content-Disposition': f'attachment; filename=trade_history_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'})
