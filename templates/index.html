@@ -466,10 +466,22 @@
 
             <div class="row">
                 <div class="col" style="flex: 1.2;">
-                    <label for="entry_input" style="font-size: 10px;">Entry Price</label>
+                    <label for="entry_input" style="font-size: 10px;">
+                        Entry Price
+                        <span id="live-price-indicator"
+                              title="Current live market price (Δ vs. entry)"
+                              style="margin-left:6px; padding:1px 5px; border-radius:3px; background:#0b2030; border:1px solid #0ca7d4; color:#9fdcff; font-size:9px; font-weight:600; vertical-align:middle; display:inline-flex; align-items:center; gap:4px;">
+                            <span id="live-price-value">--</span>
+                            <span id="live-price-delta" style="color:#9fdcff;">Δ --</span>
+                        </span>
+                    </label>
                     <div style="display: flex; align-items: center; gap: 3px;">
-                        <input type="number" name="entry" id="entry_input" value="{{default_entry}}" step="any" title="Entry price" aria-label="Entry price" style="flex: 1; font-size: 10px;">
-                        <button type="button" id="reset-live-btn" onclick="updateLivePrice()" style="background: #0d6efd; color: white; border: none; padding: 3px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; white-space: nowrap;">Live</button>
+                        <input type="number" name="entry" id="entry_input" value="{{default_entry}}" step="any" title="Entry price" aria-label="Entry price"
+                               oninput="this.dataset.userEntry=this.value; if(typeof refreshLivePriceIndicator==='function') refreshLivePriceIndicator();"
+                               style="flex: 1; font-size: 10px;">
+                        <button type="button" id="reset-live-btn"
+                                onclick="(function(){var e=document.getElementById('entry_input'); if(e){ e.dataset.snapToLive='1'; } updateLivePrice();})()"
+                                style="background: #0d6efd; color: white; border: none; padding: 3px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; white-space: nowrap;">Live</button>
                     </div>
                 </div>
                 <div class="col" style="flex: 0.8;">
@@ -1712,22 +1724,35 @@
                     return;
                 }
                 const currentPrice = parsedPrice.toFixed(8);
-                
+
                 console.log(`📊 [fetchLivePrice] Got price for ${targetSymbol}: ${currentPrice}`);
-                
+
                 // Only update if the user hasn't switched coins again mid-stream
                 if (entryInput.dataset.liveSymbol === targetSymbol.toUpperCase()) {
-                    entryInput.value = currentPrice;
-                    console.log(`✅ [fetchLivePrice] Updated entry field to: ${currentPrice}`);
-                    
-                    // Optional: Flash text to indicate active live feed
-                    entryInput.style.color = '#00ff88'; 
-                    setTimeout(() => { 
-                        if(entryInput.dataset.liveSymbol === targetSymbol.toUpperCase()){
-                            entryInput.style.color = ''; 
-                        }
-                    }, 300); 
-                    
+                    // Always remember the latest market price so the indicator can show Δ
+                    entryInput.dataset.livePrice = String(parsedPrice);
+
+                    // Snap entry field to the live price ONLY on first tick or when user clicked "Live"
+                    const shouldSnap = entryInput.dataset.snapToLive === '1'
+                        || !entryInput.dataset.userEntry
+                        || parseFloat(entryInput.dataset.userEntry) <= 0;
+                    if (shouldSnap) {
+                        entryInput.value = currentPrice;
+                        entryInput.dataset.userEntry = currentPrice;
+                        entryInput.dataset.snapToLive = '0';
+                        entryInput.style.color = '#00ff88';
+                        setTimeout(() => {
+                            if (entryInput.dataset.liveSymbol === targetSymbol.toUpperCase()) {
+                                entryInput.style.color = '';
+                            }
+                        }, 300);
+                    }
+
+                    // Update the small live-price indicator + delta next to the field
+                    if (typeof refreshLivePriceIndicator === 'function') {
+                        refreshLivePriceIndicator(parsedPrice);
+                    }
+
                     if (indicator) {
                         indicator.style.background = '#00ff88';
                         indicator.style.color = '#000';
@@ -1804,12 +1829,26 @@
 
                 if (data.price && data.price > 0) {
                     console.log(`✅ [fetchLivePriceViaREST] Got price: ${data.price}`);
-                    entryInput.value = data.price.toFixed(8);
+                    const livePx = parseFloat(data.price);
+                    entryInput.dataset.livePrice = String(livePx);
                     entryInput.dataset.liveSymbol = symbol.toUpperCase();
                     lastPriceMessageAt = Date.now();
                     priceWsSymbol = symbol.toUpperCase();
-                    entryInput.style.color = '#00d4ff';
-                    
+
+                    const shouldSnap = entryInput.dataset.snapToLive === '1'
+                        || !entryInput.dataset.userEntry
+                        || parseFloat(entryInput.dataset.userEntry) <= 0;
+                    if (shouldSnap) {
+                        entryInput.value = livePx.toFixed(8);
+                        entryInput.dataset.userEntry = entryInput.value;
+                        entryInput.dataset.snapToLive = '0';
+                        entryInput.style.color = '#00d4ff';
+                    }
+
+                    if (typeof refreshLivePriceIndicator === 'function') {
+                        refreshLivePriceIndicator(livePx);
+                    }
+
                     if (indicator) {
                         indicator.style.background = '#00d4ff';
                         indicator.style.color = '#000';
@@ -1822,8 +1861,6 @@
                     }
                 } else {
                     console.error(`❌ [fetchLivePriceViaREST] Invalid price: ${data.price}`);
-                    entryInput.value = '0';
-                    entryInput.style.color = '#ff4444';
                     if (indicator) indicator.textContent = '❌ Error';
                 }
             })
@@ -1833,6 +1870,45 @@
                 entryInput.style.color = '#ff4444';
                 if (indicator) indicator.textContent = '❌ Error';
             });
+    }
+
+    // ✅ Update the small live-price indicator (price + Δ vs. entry) next to Entry Price
+    function refreshLivePriceIndicator(livePxArg) {
+        try {
+            const entryInput = document.getElementById('entry_input');
+            const valEl = document.getElementById('live-price-value');
+            const deltaEl = document.getElementById('live-price-delta');
+            if (!entryInput || !valEl || !deltaEl) return;
+
+            const livePx = (livePxArg !== undefined && livePxArg !== null)
+                ? parseFloat(livePxArg)
+                : parseFloat(entryInput.dataset.livePrice || '0');
+            const entryPx = parseFloat(entryInput.value) || parseFloat(entryInput.dataset.userEntry || '0') || 0;
+
+            if (!Number.isFinite(livePx) || livePx <= 0) {
+                valEl.textContent = '--';
+                deltaEl.textContent = 'Δ --';
+                deltaEl.style.color = '#9fdcff';
+                return;
+            }
+
+            // Adaptive precision so small-priced coins still show meaningful digits
+            const decimals = livePx >= 100 ? 2 : livePx >= 1 ? 4 : 6;
+            valEl.textContent = livePx.toFixed(decimals);
+
+            if (entryPx > 0) {
+                const diff = livePx - entryPx;
+                const pct = (diff / entryPx) * 100;
+                const sign = diff > 0 ? '+' : '';
+                deltaEl.textContent = `Δ ${sign}${diff.toFixed(decimals)} (${sign}${pct.toFixed(2)}%)`;
+                deltaEl.style.color = diff > 0 ? '#00ff88' : diff < 0 ? '#ff5577' : '#9fdcff';
+            } else {
+                deltaEl.textContent = 'Δ --';
+                deltaEl.style.color = '#9fdcff';
+            }
+        } catch (e) {
+            console.warn('refreshLivePriceIndicator failed:', e);
+        }
     }
 
     // ✅ FETCH COIN DETAILS FOR SELECTED SYMBOL
