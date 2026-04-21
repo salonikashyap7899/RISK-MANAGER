@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from functools import wraps
 from models import db, User, ExchangeConnection, SubscriptionHistory, TradeDailyStats, TradeLog
+from flask import jsonify, request, session
+from logic import select_symbol
 import logic
 import config
 import os
@@ -244,6 +246,26 @@ def login():
 @app.route('/login/google')
 def google_login():
     return google.authorize_redirect(url_for('google_authorize', _external=True))
+
+
+@app.route("/api/select_symbol", methods=["POST"])
+@login_required
+def api_select_symbol():
+    # Prefer Flask-Login user, fall back to session user_id
+    user_id = current_user.id if current_user.is_authenticated else session.get("user_id")
+    data = request.get_json(silent=True) or {}
+    symbol = (data.get("symbol") or "").upper().strip()
+
+    if not user_id or not symbol:
+        return jsonify({"error": "missing user or symbol"}), 400
+
+    try:
+        payload = select_symbol(user_id, symbol)
+        return jsonify(payload)
+    except Exception as e:
+        print(f"[/api/select_symbol] error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/authorize/google')
 def google_authorize():

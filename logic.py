@@ -47,6 +47,67 @@ KNOWN_LEVERAGE_MAP = {
     'DEFAULT': 125,
 }
 
+# logic.py — symbol selector (uses real existing functions, invalidates caches)
+
+_trades_cache = {}
+_trades_cache_time = {}
+_analysis_cache = {}
+
+def select_symbol(user_id, symbol):
+    """
+    Called when the user picks a new symbol in the UI.
+    Invalidates per-user caches and synchronously fetches fresh
+    positions, recent trades, and coin analysis so the frontend
+    receives everything in ONE response (no second-click delay).
+    """
+    # 1. Invalidate the REAL position cache used by get_open_positions()
+    cache_key = f"positions_{user_id or 'public'}"
+    _positions_cache.pop(cache_key, None)
+    _positions_cache_time.pop(cache_key, None)
+
+    # Invalidate trade-history + analysis caches for this user/symbol
+    _trades_cache.pop(user_id, None)
+    _trades_cache_time.pop(user_id, None)
+    _analysis_cache.pop(symbol, None)
+
+    # 2. Remember the user's currently selected symbol (best-effort)
+    try:
+        session['selected_symbol'] = symbol
+    except Exception:
+        pass  # session may not be available outside a request context
+
+    # 3. Fetch everything fresh, synchronously
+    try:
+        positions = get_open_positions(user_id) or []
+    except Exception as e:
+        print(f"[select_symbol] positions error: {e}")
+        positions = []
+
+    try:
+        all_trades = get_trade_history(user_id, force_refresh=True) or []
+        trades = [t for t in all_trades if t.get('symbol') == symbol][:50]
+    except Exception as e:
+        print(f"[select_symbol] trades error: {e}")
+        trades = []
+
+    # Coin analysis — empty here; your existing /api/analysis route still
+    # populates that box. If you have a real analysis function, plug it in.
+    analysis = {}
+
+    # 4. Re-populate caches with the fresh data
+    _trades_cache[user_id] = {"symbol": symbol, "data": trades}
+    _trades_cache_time[user_id] = time.time()
+    _analysis_cache[symbol] = analysis
+
+    return {
+        "symbol": symbol,
+        "positions": positions,
+        "recent_trades": trades,
+        "coin_analysis": analysis,
+    }
+
+
+
 # User-specific client storage
 _user_clients = {}
 

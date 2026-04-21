@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1774,6 +1774,19 @@
             }
         };
     }
+
+
+
+    // NOTE: The broken onSymbolChange / #symbol-select listener that lived
+    // here has been removed. It referenced element IDs that do not exist in
+    // this template (positions-box, trades-box, analysis-box, symbol-select)
+    // and threw a JS error on every symbol change, which prevented the real
+    // changeSymbolDynamic() chain (positions / trades / analysis) from
+    // running until the 5s/30s background setInterval timers ticked.
+    // The working flow lives in changeSymbolDynamic() above and its
+    // override near the bottom of this file.
+
+
     
     // ✅ FALLBACK: Fetch price via REST API when WebSocket fails
     function fetchLivePriceViaREST(symbol, entryInput, indicator) {
