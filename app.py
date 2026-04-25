@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, session, jsonify, redirect, url_for, Response, flash
+﻿from flask import Flask, render_template, request, session, jsonify, redirect, url_for, Response, flash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from authlib.integrations.flask_client import OAuth
@@ -80,15 +80,15 @@ def subscription_required(f):
         except Exception:
             return redirect(url_for('login'))
         
-        # ✅ PRIORITY 1: Admin bypass (uses is_admin field from models.py)
+        # ? PRIORITY 1: Admin bypass (uses is_admin field from models.py)
         if getattr(current_user, 'is_admin', False):
-            print(f"✅ Admin {current_user.username} ({current_user.id}) bypassing subscription check")
+            print(f"? Admin {current_user.username} ({current_user.id}) bypassing subscription check")
             return f(*args, **kwargs)
         
-        # ✅ PRIORITY 2: Hardcoded admin emails (fallback)
+        # ? PRIORITY 2: Hardcoded admin emails (fallback)
         ADMIN_EMAILS = ['admin@mindriskcontrol.com', 'test@test.com']
         if current_user.email.lower() in [email.lower() for email in ADMIN_EMAILS]:
-            print(f"✅ Admin email {current_user.email} bypassing subscription check")
+            print(f"? Admin email {current_user.email} bypassing subscription check")
             return f(*args, **kwargs)
         
         # FIXED: More robust subscription check for regular users
@@ -706,7 +706,7 @@ def live_price_api(symbol):
 @login_required
 def validate_symbol_api(symbol):
     """
-    ✅ NEW: Validate if a symbol exists and is tradeable
+    ? NEW: Validate if a symbol exists and is tradeable
     Returns symbol validity, price, and availability info
     """
     try:
@@ -721,18 +721,18 @@ def validate_symbol_api(symbol):
                 "symbol": symbol,
                 "price": price,
                 "tradeable": price > 0,
-                "message": f"✅ {symbol} is valid and tradeable" if price > 0 else f"⚠️ {symbol} exists but price unavailable"
+                "message": f"? {symbol} is valid and tradeable" if price > 0 else f"?? {symbol} exists but price unavailable"
             })
         else:
             return jsonify({
                 "valid": False,
                 "symbol": symbol,
-                "message": f"❌ {symbol} not found in available symbols",
+                "message": f"? {symbol} not found in available symbols",
                 "available_count": len(symbols),
                 "suggestion": "Check symbol spelling or try selecting from dropdown"
             })
     except Exception as e:
-        print(f"❌ Symbol validation error: {e}")
+        print(f"? Symbol validation error: {e}")
         return jsonify({
             "valid": False,
             "symbol": symbol,
@@ -745,7 +745,7 @@ def validate_symbol_api(symbol):
 @subscription_required
 def get_open_positions_api():
     """
-    ✅ FIXED: Now supports filtering by symbol via ?symbol=BTCUSDT query parameter
+    ? FIXED: Now supports filtering by symbol via ?symbol=BTCUSDT query parameter
     This allows dynamic symbol switching to fetch relevant positions only
     """
     symbol_filter = request.args.get('symbol', '').strip().upper()
@@ -799,7 +799,7 @@ def get_trade_history_api():
 @subscription_required
 def calculate_sizing_api():
     """
-    ✅ NEW: Calculate position sizing for dynamic symbol changes
+    ? NEW: Calculate position sizing for dynamic symbol changes
     Allows real-time sizing updates when user switches symbols
     """
     try:
@@ -851,7 +851,7 @@ def calculate_sizing_api():
             "liquidation_price": sizing.get('liquidation_price', 0)
         })
     except Exception as e:
-        print(f"❌ Sizing calculation error: {e}")
+        print(f"? Sizing calculation error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
@@ -886,7 +886,7 @@ def get_wallet_api():
         'last_verified': connection.last_verified.isoformat() if connection and connection.last_verified else None
     }
     
-    print(f"🌐 /api/wallet response: success={wallet_data.get('success')}, assets={wallet_data.get('total_assets',0)}")
+    print(f"?? /api/wallet response: success={wallet_data.get('success')}, assets={wallet_data.get('total_assets',0)}")
     return jsonify(wallet_data)
 
 @app.route("/clear_trade_events", methods=["POST"])
@@ -923,7 +923,7 @@ def api_trade_logs():
         
         return jsonify({"success": True, "events": events})
     except Exception as e:
-        print(f"❌ Error fetching trade logs: {e}")
+        print(f"? Error fetching trade logs: {e}")
         return jsonify({"success": False, "error": str(e), "events": []}), 500
 
 @app.route("/close_position/<symbol>", methods=["POST"])
@@ -978,9 +978,7 @@ def today_stats_api():
 @login_required
 @subscription_required
 def reset_today_stats_api():
-    """Reset only today's per-user trade counters for testing."""
-    if not getattr(config, "TESTING_MODE", False) and not getattr(current_user, "is_admin", False):
-        return jsonify({"success": False, "message": "Not allowed"}), 403
+    """Reset today's per-user trade counters for the logged-in user."""
     result = logic.reset_today_stats(current_user.id)
     return jsonify(result)
 
@@ -1000,7 +998,7 @@ def debug_flags_api():
 def coin_details_api(symbol):
     """Get real-time coin details including live position data with calculation breakdowns"""
     try:
-        # ✅ CRITICAL FIX: Validate and normalize symbol
+        # ? CRITICAL FIX: Validate and normalize symbol
         symbol = (symbol or '').strip().upper()
         if not symbol or len(symbol) < 6:
             return jsonify({
@@ -1021,7 +1019,7 @@ def coin_details_api(symbol):
         if sl_type == "SL % Movement":
             sl_percent = sl_value
         else:
-            # For SL Points, get current price - ✅ PASS SYMBOL CORRECTLY
+            # For SL Points, get current price - ? PASS SYMBOL CORRECTLY
             current_price = logic.get_live_price(symbol, current_user.id) or 0
             if current_price > 0 and sl_value > 0:
                 sl_distance = abs(float(sl_value) - float(current_price))
@@ -1056,7 +1054,7 @@ def coin_details_api(symbol):
                         position = pos
                         break
             
-            # ✅ CALCULATE BREAKDOWN if position exists
+            # ? CALCULATE BREAKDOWN if position exists
             if position and isinstance(position, dict):
                 leverage = position.get('leverage', 1)
                 
@@ -1159,7 +1157,7 @@ def download_trades():
 def index():
     logic.initialize_session()
     symbols = logic.get_all_exchange_symbols(current_user.id)
-    print(f"🌟 DEBUG /index: Loaded {len(symbols)} symbols for user {current_user.id}")
+    print(f"?? DEBUG /index: Loaded {len(symbols)} symbols for user {current_user.id}")
     
     symbols_len = len(symbols)
     # FIXED: Enhanced diagnostics + wallet status
@@ -1187,37 +1185,37 @@ def index():
         'needs_connection': not wallet_response.get('success') and 'client' in str(wallet_response.get('error', '')).lower()
     }
     
-    print(f"📊 /index wallet_debug: {wallet_debug}")
+    print(f"?? /index wallet_debug: {wallet_debug}")
     
     # FIXED: Add missing today_stats computation
     today_stats = logic.get_today_stats(current_user.id)
     
     # -------------------------------------
-    # ✅ CRITICAL FIX: Get symbol from URL query params and form data, use first symbol as default
+    # ? CRITICAL FIX: Get symbol from URL query params and form data, use first symbol as default
     default_first_symbol = symbols[0] if symbols and len(symbols) > 0 else "BTCUSDT"
     selected_symbol = (request.args.get("symbol") or request.form.get("symbol") or default_first_symbol or "").strip().upper()
     previous_symbol = (request.form.get("prev_symbol") or "").strip().upper()
     symbol_changed = request.method == "POST" and bool(previous_symbol) and previous_symbol != selected_symbol
     
-    # ✅ CRITICAL: Validate selected_symbol exists in available symbols or fallback
+    # ? CRITICAL: Validate selected_symbol exists in available symbols or fallback
     if selected_symbol not in symbols and symbols:
-        print(f"⚠️ Selected symbol '{selected_symbol}' not in available symbols, using first symbol: {symbols[0]}")
+        print(f"?? Selected symbol '{selected_symbol}' not in available symbols, using first symbol: {symbols[0]}")
         selected_symbol = symbols[0]
     
     if not selected_symbol:
         selected_symbol = default_first_symbol
     
-    print(f"✓ Index page loaded with symbol: {selected_symbol}")
+    print(f"? Index page loaded with symbol: {selected_symbol}")
     
-    # ✅ CRITICAL FIX: Get live price for the SELECTED SYMBOL ONLY
+    # ? CRITICAL FIX: Get live price for the SELECTED SYMBOL ONLY
     live_price = logic.get_live_price(selected_symbol, current_user.id)
-    print(f"🔴 FETCHING PRICE FOR: {selected_symbol} = ${live_price}")
+    print(f"?? FETCHING PRICE FOR: {selected_symbol} = ${live_price}")
     
     side = request.form.get("side", "LONG")
     order_type = request.form.get("order_type", "MARKET")
     margin_mode = request.form.get("margin_mode", "ISOLATED")
 
-    # ✅ CRITICAL FIX: Use the live price we just fetched
+    # ? CRITICAL FIX: Use the live price we just fetched
     submitted_entry = request.form.get("entry")
     entry_source = live_price if symbol_changed else (submitted_entry or live_price or 0)
     try:
@@ -1226,7 +1224,7 @@ def index():
         entry = float(live_price or 0)
 
     if symbol_changed:
-        print(f"🔄 Symbol changed {previous_symbol} → {selected_symbol}; using fresh live price ${entry}")
+        print(f"?? Symbol changed {previous_symbol} ? {selected_symbol}; using fresh live price ${entry}")
 
     sl_type = request.form.get("sl_type", "SL % Movement")
     sl_val = float(request.form.get("sl_value") or 0)
@@ -1244,7 +1242,7 @@ def index():
     sizing = logic.calculate_position_sizing(unutilized, entry, sl_type, sl_val, side, user_id=current_user.id, symbol=selected_symbol)
     trade_status = session.pop("trade_status", None)
 
-    # ✅ EXECUTE TRADE if place_order button was clicked
+    # ? EXECUTE TRADE if place_order button was clicked
     if "place_order" in request.form:
         user_units = float(request.form.get("user_units") or 0) or sizing.get("suggested_units", 0)
         user_lev = float(request.form.get("user_lev") or 0) or sizing.get("suggested_leverage", 1)
@@ -1323,7 +1321,7 @@ def not_found_error(error):
 @app.errorhandler(500)
 def internal_error(error):
     db.session.rollback()  # Rollback any failed database transactions
-    print(f"❌ Internal Server Error: {error}")
+    print(f"? Internal Server Error: {error}")
     return render_template('home.html'), 500
 
 @app.errorhandler(Exception)
@@ -1333,7 +1331,7 @@ def handle_exception(error):
         return error
     
     # Handle all other exceptions
-    print(f"❌ Unhandled Exception: {error}")
+    print(f"? Unhandled Exception: {error}")
     import traceback
     traceback.print_exc()
     return render_template('home.html'), 500
@@ -1345,7 +1343,7 @@ def debug_wallet():
     """DEBUG: Test wallet for specific user_id"""
     user_id = request.args.get('user_id')
     if not user_id or not user_id.isdigit():
-        return "❌ Provide ?user_id=1 (your user ID)", 400
+        return "? Provide ?user_id=1 (your user ID)", 400
     
     user_id = int(user_id)
     
@@ -1391,16 +1389,17 @@ def test_binance():
             'symbol_count': len(symbols),
             'sample_symbols': symbols,
             'proxy_status': proxy_status,
-            'message': '✅ Binance connection OK!' if client else '⚠️ No connection - add your exchange keys'
+            'message': '? Binance connection OK!' if client else '?? No connection - add your exchange keys'
         }
         return jsonify(test_result)
     except Exception as e:
         return jsonify({
             'status': 'error',
             'error': str(e),
-            'message': '❌ Test failed - check VPN/proxy if geo-restricted'
+            'message': '? Test failed - check VPN/proxy if geo-restricted'
         }), 500
 
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)
+

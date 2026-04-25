@@ -434,7 +434,7 @@
                 <strong style="font-size: 9px;">📊 Daily Limits:</strong>
                 <span style="font-size: 8px;">Total: <span id="total_trades_display">{{today_stats.total_trades}}/{{today_stats.max_trades}}</span> | <span id="symbol_trades_label">{{selected_symbol}}</span>: <span id="symbol_trades_display">{{ today_stats.symbol_trades.get(selected_symbol, 0) if today_stats.symbol_trades else 0 }}/{{today_stats.max_per_symbol}}</span></span>
                 <progress id="daily_limit_progress" class="daily-limit-progress{% if today_stats.total_trades >= today_stats.max_trades %} limit-over{% endif %}" value="{{ today_stats.total_trades }}" max="{{ today_stats.max_trades or 1 }}" aria-label="Daily total trades used versus limit"></progress>
-                <div id="reset-today-limits-wrap" style="margin-top: 4px; display: {% if testing_mode or (user and user.is_admin) %}block{% else %}none{% endif %};">
+                <div id="reset-today-limits-wrap" style="margin-top: 4px; display: block;">
                     <button type="button" onclick="resetTodayLimits()" style="font-size: 8px; padding: 2px 6px; border-radius: 3px; border: 1px solid #0ca7d4; background: #0b2030; color: #9fdcff; cursor: pointer;">
                         Reset Today Limits
                     </button>
@@ -876,27 +876,6 @@
         setInterval(updateEmbeddedCoinDetails, 5000); // Refresh every 5 seconds
     });
     
-    // Live Updates - Enhanced with real-time liquidation prices
-    function updateLivePositions() {
-        // Fetch main positions data (5-second cache)
-        fetch('/get_open_positions')
-        .then(r => r.json())
-        .then(data => {
-            if (data.positions && data.positions.length > 0) {
-                currentPositions = {};
-                data.positions.forEach(pos => {
-                    currentPositions[pos.symbol] = pos;
-                });
-                
-                // Also fetch LIVE liquidation prices (no cache) every 2 seconds for real-time updates
-                updateLiveDataOnly();
-            }
-            renderPositions();
-        }).catch(() => {
-            document.getElementById('live_positions').innerHTML = '<div style="text-align: center; color: #ff4444; padding: 24px 12px; font-size: 10px;">Connection Error</div>';
-        });
-    }
-    
     // Fetch ONLY liquidation prices live (NO cache) - run more frequently
     function updateLiveDataOnly() {
         fetch('/api/liquidation_prices')
@@ -1114,10 +1093,13 @@
     }
 
     function updateLiveTradeLog() {
+        const container = document.getElementById('live_trade_log');
+        if (!container) {
+            return;
+        }
         fetch('/api/trade_logs')
         .then(r => r.json())
         .then(data => {
-            const container = document.getElementById('live_trade_log');
             if (data.events && data.events.length > 0) {
                 let html = '';
                 data.events.forEach(event => {
@@ -1147,9 +1129,13 @@
     }
 
     function clearTradeLog() {
+        const container = document.getElementById('live_trade_log');
+        if (!container) {
+            return;
+        }
         fetch('/clear_trade_events', {method: 'POST'})
         .then(() => {
-            document.getElementById('live_trade_log').innerHTML = '<div style="text-align: center; color: #888; padding-top: 60px;">Log cleared...</div>';
+            container.innerHTML = '<div style="text-align: center; color: #888; padding-top: 60px;">Log cleared...</div>';
         });
     }
 
@@ -1281,76 +1267,6 @@
         return confirm(message);
     }
 
-    function updateLivePrice(symbolOverride = null, forceRestart = false) {
-        const symbolSelect = document.querySelector('select[name="symbol"]');
-        const symbol = (symbolOverride || (symbolSelect ? symbolSelect.value : '') || '').trim().toUpperCase();
-        
-        // ✅ DEFENSIVE: Never switch to another coin automatically
-        if (!symbol || symbol === '') {
-            console.warn('⚠️ No symbol found in dropdown, skipping live price refresh');
-            return;
-        }
-        
-        const entryInput = document.getElementById('entry_input');
-        const indicator = document.getElementById('live-indicator');
-        const resetBtn = document.getElementById('reset-live-btn');
-        
-        if (!entryInput) {
-            console.error('❌ Entry input element not found');
-            return;
-        }
-        
-        console.log(`📡 Fetching live price for: ${symbol}`);
-        
-        fetch(`/get_live_price/${encodeURIComponent(symbol)}`)
-        .then(r => r.json())
-        .then(data => {
-            if (data.price && data.price > 0) {
-                const activeSymbol = symbolSelect ? (symbolSelect.value || '').trim().toUpperCase() : '';
-                if (activeSymbol !== symbol) {
-                    console.log(`ℹ️ Ignoring stale price response for ${symbol}; active symbol is ${activeSymbol}`);
-                    return;
-                }
-
-                const oldValue = parseFloat(entryInput.value) || 0;
-                const lastPriceSymbol = (entryInput.dataset.liveSymbol || '').trim().toUpperCase();
-                const symbolChanged = lastPriceSymbol !== symbol;
-                // ✅ Only update if price is different (avoid unnecessary updates)
-                if (symbolChanged || Math.abs(oldValue - data.price) / Math.max(oldValue, data.price) > 0.01 || oldValue === 0) {
-                    entryInput.value = data.price;
-                    entryInput.dataset.liveSymbol = symbol;
-                    
-                    // Visual feedback
-                    if (indicator) {
-                        indicator.style.display = 'inline-block';
-                    }
-                    if (entryInput.style) {
-                        entryInput.style.background = '#1a1a2e';
-                        entryInput.style.transition = 'background 0.3s';
-                    }
-                    
-                    setTimeout(() => {
-                        if (indicator) indicator.style.display = 'none';
-                        if (entryInput.style) entryInput.style.background = '';
-                    }, 2000);
-                    
-                    console.log(`✅ Live price updated: ${symbol} ${oldValue.toFixed(4)} → ${data.price.toFixed(4)}`);
-                } else {
-                    entryInput.dataset.liveSymbol = symbol;
-                }
-            } else {
-                console.warn(`⚠️ Invalid price received for ${symbol}: ${data.price}`);
-            }
-        }).catch(err => {
-            console.error(`❌ Live price fetch failed for ${symbol}:`, err);
-            if (resetBtn) {
-                resetBtn.textContent = '❌';
-                setTimeout(() => resetBtn.textContent = '🔄 Live', 1000);
-            }
-        });
-    }
-
-
     updateLivePrice = function(symbolOverride = null, forceRestart = false) {
         const symbolSelect = document.querySelector('select[name="symbol"]');
         const symbol = (symbolOverride || (symbolSelect ? symbolSelect.value : '') || '').trim().toUpperCase();
@@ -1360,7 +1276,7 @@
         }
 
         const resetBtn = document.getElementById('reset-live-btn');
-        const indicator = document.getElementById('live-indicator');
+        const indicator = document.getElementById('live-price-indicator');
         const socketState = priceWs ? priceWs.readyState : WebSocket.CLOSED;
         const sameSymbol = priceWsSymbol === symbol;
         const hasRecentTick = lastPriceMessageAt > 0 && (Date.now() - lastPriceMessageAt) < 6000;
@@ -1482,24 +1398,6 @@
             });
     }
 
-    function syncResetTodayButton() {
-        const resetWrap = document.getElementById('reset-today-limits-wrap');
-        if (!resetWrap) {
-            return;
-        }
-        fetch('/api/debug_flags')
-            .then(r => r.ok ? r.json() : null)
-            .then(data => {
-                if (!data) {
-                    return;
-                }
-                resetWrap.style.display = (data.testing_mode || data.is_admin) ? 'block' : 'none';
-            })
-            .catch(() => {
-                // Leave the server-rendered state as-is if debug flags are unavailable.
-            });
-    }
-
     function updateRiskSizing() {
         const slider = document.getElementById('risk_slider');
         const pct = parseFloat(slider.value);
@@ -1556,7 +1454,6 @@
             updateLivePositions();
             updateTradeHistory();
             updateTradeLimits();
-            syncResetTodayButton();
             updateLiveTradeLog();
         }, 200);
     });
@@ -2053,66 +1950,12 @@
         });
     }
 
-    // ✅ UPDATED: updateLivePositions NOW ACCEPTS OPTIONAL SYMBOL PARAMETER
-    function updateLivePositions(symbol = null, forceFresh = false) {
-        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
-        const container = document.getElementById('live_positions');
-        
-        if (!container) return;
-        
-        console.log(`📍 Fetching positions for: ${targetSymbol || 'all'}`);
-        
-        // Construct URL with optional symbol filter
-        let url = '/get_open_positions';
-        if (targetSymbol) {
-            url += `?symbol=${encodeURIComponent(targetSymbol)}`;
-            if (forceFresh) url += '&fresh=1';
-        } else if (forceFresh) {
-            url += '?fresh=1';
-        }
-        // Always bust browser cache
-        url += (url.includes('?') ? '&' : '?') + `_t=${Date.now()}`;
-        
-        fetch(url)
-        .then(r => r.json())
-        .then(data => {
-            const positions = data.positions || [];
-            if (positions && positions.length > 0) {
-                let html = '';
-                positions.forEach(pos => {
-                    const pnlColor = parseFloat(pos.unrealizedPnL || pos.unrealized_pnl || 0) >= 0 ? '#00ff88' : '#ff6b6b';
-                    const pnlAmount = parseFloat(pos.unrealizedPnL || pos.unrealized_pnl || 0);
-                    html += `
-                        <div style="padding: 6px; background: rgba(0,212,255,0.05); border: 1px solid rgba(0,212,255,0.2); border-radius: 4px; margin-bottom: 4px; cursor: pointer;" onclick="showCoinDetails('${pos.symbol}')">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="color: #00ffcc; font-weight: bold; font-size: 10px;">${pos.symbol}</span>
-                                <span style="color: ${pnlColor}; font-size: 10px; font-weight: bold;">$${pnlAmount.toFixed(2)}</span>
-                            </div>
-                            <div style="font-size: 8px; color: #81b8c5; margin-top: 2px;">
-                                ${pos.side} | ${pos.quantity} @ ${pos.entryPrice}
-                            </div>
-                        </div>
-                    `;
-                });
-                container.innerHTML = html;
-            } else {
-                container.innerHTML = '<div style="color: #81b8c5; font-size: 9px; text-align: center; padding: 20px;">✅ No open positions' + (targetSymbol ? ' for ' + targetSymbol : '') + '</div>';
-            }
-        }).catch(err => {
-            console.error(`❌ Failed to fetch positions:`, err);
-            if (container) {
-                container.innerHTML = '<div style="color: #ff6b6b; font-size: 9px;">❌ Error loading positions</div>';
-            }
-        });
-    }
-
-
     // ✅ SHOW COIN DETAILS IN MODAL (WITH REAL-TIME DATA)
-    function showCoinDetails() {
+    function showCoinDetails(symbolArg = null) {
         console.log('🔍 showCoinDetails() called');
         try {
             // Safely get form values with fallbacks
-            const symbol = getSelectedSymbol() || 'BTCUSDT';
+            const symbol = (symbolArg || getSelectedSymbol() || 'BTCUSDT').trim().toUpperCase();
             
             const sl_typeElem = document.querySelector('select[name="sl_type"]');
             const sl_type = sl_typeElem ? sl_typeElem.value : 'SL % Movement';
@@ -2460,27 +2303,6 @@
         });
     };
 
-    changeSymbolDynamic = function(event) {
-        if (event) {
-            event.preventDefault();
-            event.stopPropagation();
-        }
-
-        const symbolSelect = document.querySelector('select[name="symbol"]');
-        const cleanSymbol = ((symbolSelect ? symbolSelect.value : '') || '').trim().toUpperCase();
-
-        if (!isValidSymbol(cleanSymbol)) {
-            alert(`Invalid symbol: ${cleanSymbol}`);
-            return false;
-        }
-
-        currentChartSymbol = cleanSymbol;
-        initializeTradingViewChart(cleanSymbol);
-        window.history.replaceState({}, '', `/index?symbol=${encodeURIComponent(cleanSymbol)}`);
-        refreshSelectedSymbolPanels(cleanSymbol, true);
-        return false;
-    };
-
     // ✅ CLOSE COIN DETAILS MODAL
     function closeCoinModal() {
         document.getElementById('coin-details-modal').style.display = 'none';
@@ -2498,24 +2320,6 @@
         refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
         startPostTradeSyncBurst();
     }
-
-    // ✅ AUTO-REFRESH TIMERS (Background updates while user trades)
-    // Refresh positions every 5 seconds
-    setInterval(() => {
-        updateLivePositions();
-    }, 5000);
-
-    // Refresh price every 10 seconds only if the current feed has gone stale
-    setInterval(() => {
-        updateLivePrice();
-    }, 10000);
-
-    // Refresh coin details (leverage, etc) every 30 seconds
-    setInterval(() => {
-        fetchCoinDetails();
-        updateEmbeddedCoinDetails();
-        updateTradeHistory();
-    }, 30000);
 
     window.onclick = function(event) {
         const modal = document.getElementById('coin-details-modal');
