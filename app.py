@@ -266,6 +266,13 @@ def api_select_symbol():
         print(f"❌ Error in api_select_symbol: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/get_live_price/<symbol>")
+@login_required
+def get_live_price_route(symbol):
+    """API endpoint to get live price for a symbol"""
+    price = logic.get_live_price(symbol, current_user.id)
+    return jsonify({"price": price})
+
 @app.route("/api/coin-details/<symbol>")
 @login_required
 def api_coin_details(symbol):

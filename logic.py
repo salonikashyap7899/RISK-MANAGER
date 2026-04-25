@@ -1807,3 +1807,21 @@ def round_price(symbol, price, user_id=None):
             precision = abs(int(round(-math.log10(tick))))
             return round(price - (price % tick), precision)
     return round(price, 2)
+
+def get_live_balance(user_id):
+    """
+    Fetch the real-time futures wallet balance and margin used from Binance.
+    Returns a tuple ((balance, margin_used), error_msg).
+    """
+    try:
+        client = get_user_exchange_client(user_id)
+        if not client:
+            return ((0.0, 0.0), "Exchange not connected")
+        
+        acc = client.futures_account(recvWindow=10000)
+        balance = float(acc.get('totalWalletBalance', 0.0))
+        margin_used = float(acc.get('totalInitialMargin', 0.0))
+        return ((balance, margin_used), None)
+    except Exception as e:
+        print(f"❌ Error fetching live balance for user {user_id}: {e}")
+        return ((0.0, 0.0), str(e))
