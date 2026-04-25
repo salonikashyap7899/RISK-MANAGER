@@ -1240,6 +1240,38 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                     continue
             return False, None, " | ".join(errs) if errs else "Unknown order placement error"
 
+        def _submit_algo_order(params):
+            """
+            Submit Binance native conditional order via /fapi/v1/algoOrder.
+            Supports multiple client versions.
+            """
+            # Newer python-binance variants
+            if hasattr(client, "futures_create_algo_order"):
+                return client.futures_create_algo_order(**params)
+            if hasattr(client, "futures_v1_post_algo_order"):
+                return client.futures_v1_post_algo_order(**params)
+
+            # Fallback to low-level request for older clients
+            if hasattr(client, "_request_futures_api"):
+                return client._request_futures_api("post", "algoOrder", True, data=params)
+
+            raise Exception("Algo order endpoint method not available in Binance client")
+
+        def _create_algo_order_with_fallbacks(variants):
+            errs = []
+            for params in variants:
+                try:
+                    resp = _submit_algo_order(params)
+                    if isinstance(resp, dict):
+                        oid = resp.get("algoId") or resp.get("orderId")
+                        if oid is not None:
+                            return True, resp, None
+                    return True, resp, None
+                except Exception as ex:
+                    errs.append(str(ex))
+                    continue
+            return False, None, " | ".join(errs) if errs else "Unknown algo-order placement error"
+
         def _short_error(err_text):
             e = str(err_text or "").strip()
             if not e:
@@ -1332,6 +1364,48 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
             if sl_created and sl_order and sl_order.get("orderId"):
                 sl_created = True
                 print(f"✅ SL order created: {sl_order['orderId']}")
+            # Binance native algo endpoint fallback for -4120 style accounts
+            if not sl_created:
+                sl_algo_variants = [
+                    {
+                        "symbol": symbol,
+                        "algoType": "CONDITIONAL",
+                        "side": x_side,
+                        "type": "STOP_MARKET",
+                        "triggerPrice": sl_p,
+                        "closePosition": "true",
+                        "workingType": "MARK_PRICE",
+                    },
+                    {
+                        "symbol": symbol,
+                        "algoType": "CONDITIONAL",
+                        "side": x_side,
+                        "type": "STOP_MARKET",
+                        "triggerPrice": sl_p,
+                        "quantity": qty,
+                        "reduceOnly": "true",
+                        "workingType": "MARK_PRICE",
+                    },
+                    {
+                        "symbol": symbol,
+                        "algoType": "CONDITIONAL",
+                        "side": x_side,
+                        "type": "STOP",
+                        "triggerPrice": sl_p,
+                        "price": sl_p,
+                        "quantity": qty,
+                        "reduceOnly": "true",
+                        "timeInForce": "GTC",
+                        "workingType": "MARK_PRICE",
+                    },
+                ]
+                sl_created, sl_algo_order, sl_algo_error = _create_algo_order_with_fallbacks(sl_algo_variants)
+                if sl_created:
+                    sl_order = sl_algo_order
+                    sl_error = None
+                    print(f"✅ SL algo order created: {sl_order}")
+                else:
+                    sl_error = sl_error or sl_algo_error
             time.sleep(0.3)
         except Exception as e:
             sl_error = str(e)
@@ -1406,6 +1480,38 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                     if tp1_created and tp1_order and tp1_order.get("orderId"):
                         tp1_created = True
                         print(f"✅ TP1 order created: {tp1_order['orderId']}")
+                    if not tp1_created:
+                        tp1_algo_variants = [
+                            {
+                                "symbol": symbol,
+                                "algoType": "CONDITIONAL",
+                                "side": x_side,
+                                "type": "TAKE_PROFIT_MARKET",
+                                "triggerPrice": tp1_price,
+                                "quantity": tp1_qty,
+                                "reduceOnly": "true",
+                                "workingType": "MARK_PRICE",
+                            },
+                            {
+                                "symbol": symbol,
+                                "algoType": "CONDITIONAL",
+                                "side": x_side,
+                                "type": "TAKE_PROFIT",
+                                "triggerPrice": tp1_price,
+                                "price": tp1_price,
+                                "quantity": tp1_qty,
+                                "reduceOnly": "true",
+                                "timeInForce": "GTC",
+                                "workingType": "MARK_PRICE",
+                            },
+                        ]
+                        tp1_created, tp1_algo_order, tp1_algo_error = _create_algo_order_with_fallbacks(tp1_algo_variants)
+                        if tp1_created:
+                            tp1_order = tp1_algo_order
+                            tp1_error = None
+                            print(f"✅ TP1 algo order created: {tp1_order}")
+                        else:
+                            tp1_error = tp1_error or tp1_algo_error
                     time.sleep(0.3)
         except Exception as e:
             tp1_error = str(e)
@@ -1479,6 +1585,47 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                     if tp2_created and tp2_order and tp2_order.get("orderId"):
                         tp2_created = True
                         print(f"✅ TP2 order created: {tp2_order['orderId']}")
+                    if not tp2_created:
+                        tp2_algo_variants = [
+                            {
+                                "symbol": symbol,
+                                "algoType": "CONDITIONAL",
+                                "side": x_side,
+                                "type": "TAKE_PROFIT_MARKET",
+                                "triggerPrice": tp2_price,
+                                "closePosition": "true",
+                                "workingType": "MARK_PRICE",
+                            },
+                            {
+                                "symbol": symbol,
+                                "algoType": "CONDITIONAL",
+                                "side": x_side,
+                                "type": "TAKE_PROFIT_MARKET",
+                                "triggerPrice": tp2_price,
+                                "quantity": tp2_qty,
+                                "reduceOnly": "true",
+                                "workingType": "MARK_PRICE",
+                            },
+                            {
+                                "symbol": symbol,
+                                "algoType": "CONDITIONAL",
+                                "side": x_side,
+                                "type": "TAKE_PROFIT",
+                                "triggerPrice": tp2_price,
+                                "price": tp2_price,
+                                "quantity": tp2_qty,
+                                "reduceOnly": "true",
+                                "timeInForce": "GTC",
+                                "workingType": "MARK_PRICE",
+                            },
+                        ]
+                        tp2_created, tp2_algo_order, tp2_algo_error = _create_algo_order_with_fallbacks(tp2_algo_variants)
+                        if tp2_created:
+                            tp2_order = tp2_algo_order
+                            tp2_error = None
+                            print(f"✅ TP2 algo order created: {tp2_order}")
+                        else:
+                            tp2_error = tp2_error or tp2_algo_error
                     time.sleep(0.3)
         except Exception as e:
             tp2_error = str(e)
