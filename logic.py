@@ -1092,6 +1092,11 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
             calculated_sl = sl_value
         sl_p = round_price(symbol, calculated_sl, user_id)
 
+        # If TP1 price is set but TP1% left empty/zero, auto-allocate.
+        # This avoids silent TP1 skips due to zero quantity.
+        if tp1 and tp1 > 0 and (not tp1_pct or tp1_pct <= 0):
+            tp1_pct = 50.0 if (tp2 and tp2 > 0) else 100.0
+
         # MARGIN REQUIREMENT CHECK
         notional_value = float(qty) * float(entry)
         margin_required = notional_value / float(lev)
@@ -1121,13 +1126,44 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         except Exception as e:
             return {"success": False, "message": f"❌ Main order failed: {str(e)}"}
 
+        def _create_order_with_fallbacks(variants):
+            last_err = None
+            for params in variants:
+                try:
+                    resp = client.futures_create_order(**params)
+                    if isinstance(resp, dict) and resp.get("orderId"):
+                        return True, resp, None
+                    return True, resp, None
+                except Exception as ex:
+                    last_err = str(ex)
+                    continue
+            return False, None, last_err or "Unknown order placement error"
+
         # SL ORDER - Create with error tolerance
         sl_created = False
         sl_error = None
         try:
-            sl_order = client.futures_create_order(symbol=symbol, side=x_side, type="STOP_MARKET", 
-                stopPrice=sl_p, reduceOnly=True, workingType="MARK_PRICE")
-            if sl_order and sl_order.get("orderId"):
+            sl_variants = [
+                {
+                    "symbol": symbol,
+                    "side": x_side,
+                    "type": "STOP_MARKET",
+                    "stopPrice": sl_p,
+                    "closePosition": True,
+                    "workingType": "MARK_PRICE",
+                },
+                {
+                    "symbol": symbol,
+                    "side": x_side,
+                    "type": "STOP_MARKET",
+                    "stopPrice": sl_p,
+                    "quantity": qty,
+                    "reduceOnly": True,
+                    "workingType": "MARK_PRICE",
+                },
+            ]
+            sl_created, sl_order, sl_error = _create_order_with_fallbacks(sl_variants)
+            if sl_created and sl_order and sl_order.get("orderId"):
                 sl_created = True
                 print(f"✅ SL order created: {sl_order['orderId']}")
             time.sleep(0.3)
@@ -1144,9 +1180,31 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
             if tp1 > 0 and ((side=="LONG" and tp1>entry) or (side=="SHORT" and tp1<entry)):
                 tp1_qty = round_qty(symbol, qty * (tp1_pct/100), user_id)
                 if tp1_qty > 0:
-                    tp1_order = client.futures_create_order(symbol=symbol, side=x_side, type="TAKE_PROFIT_MARKET",
-                        stopPrice=round_price(symbol, tp1, user_id), quantity=tp1_qty, reduceOnly=True, workingType="MARK_PRICE")
-                    if tp1_order and tp1_order.get("orderId"):
+                    tp1_price = round_price(symbol, tp1, user_id)
+                    tp1_variants = [
+                        {
+                            "symbol": symbol,
+                            "side": x_side,
+                            "type": "TAKE_PROFIT_MARKET",
+                            "stopPrice": tp1_price,
+                            "quantity": tp1_qty,
+                            "reduceOnly": True,
+                            "workingType": "MARK_PRICE",
+                        },
+                        {
+                            "symbol": symbol,
+                            "side": x_side,
+                            "type": "TAKE_PROFIT",
+                            "stopPrice": tp1_price,
+                            "price": tp1_price,
+                            "quantity": tp1_qty,
+                            "reduceOnly": True,
+                            "timeInForce": "GTC",
+                            "workingType": "MARK_PRICE",
+                        },
+                    ]
+                    tp1_created, tp1_order, tp1_error = _create_order_with_fallbacks(tp1_variants)
+                    if tp1_created and tp1_order and tp1_order.get("orderId"):
                         tp1_created = True
                         print(f"✅ TP1 order created: {tp1_order['orderId']}")
                     time.sleep(0.3)
@@ -1162,9 +1220,39 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
             if tp2 > 0 and ((side=="LONG" and tp2>entry) or (side=="SHORT" and tp2<entry)):
                 tp2_qty = round_qty(symbol, qty - tp1_qty, user_id)
                 if tp2_qty > 0:
-                    tp2_order = client.futures_create_order(symbol=symbol, side=x_side, type="TAKE_PROFIT_MARKET",
-                        stopPrice=round_price(symbol, tp2, user_id), quantity=tp2_qty, reduceOnly=True, workingType="MARK_PRICE")
-                    if tp2_order and tp2_order.get("orderId"):
+                    tp2_price = round_price(symbol, tp2, user_id)
+                    tp2_variants = [
+                        {
+                            "symbol": symbol,
+                            "side": x_side,
+                            "type": "TAKE_PROFIT_MARKET",
+                            "stopPrice": tp2_price,
+                            "closePosition": True,
+                            "workingType": "MARK_PRICE",
+                        },
+                        {
+                            "symbol": symbol,
+                            "side": x_side,
+                            "type": "TAKE_PROFIT_MARKET",
+                            "stopPrice": tp2_price,
+                            "quantity": tp2_qty,
+                            "reduceOnly": True,
+                            "workingType": "MARK_PRICE",
+                        },
+                        {
+                            "symbol": symbol,
+                            "side": x_side,
+                            "type": "TAKE_PROFIT",
+                            "stopPrice": tp2_price,
+                            "price": tp2_price,
+                            "quantity": tp2_qty,
+                            "reduceOnly": True,
+                            "timeInForce": "GTC",
+                            "workingType": "MARK_PRICE",
+                        },
+                    ]
+                    tp2_created, tp2_order, tp2_error = _create_order_with_fallbacks(tp2_variants)
+                    if tp2_created and tp2_order and tp2_order.get("orderId"):
                         tp2_created = True
                         print(f"✅ TP2 order created: {tp2_order['orderId']}")
                     time.sleep(0.3)
