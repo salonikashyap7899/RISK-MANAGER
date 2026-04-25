@@ -434,13 +434,11 @@
                 <strong style="font-size: 9px;">📊 Daily Limits:</strong>
                 <span style="font-size: 8px;">Total: <span id="total_trades_display">{{today_stats.total_trades}}/{{today_stats.max_trades}}</span> | <span id="symbol_trades_label">{{selected_symbol}}</span>: <span id="symbol_trades_display">{{ today_stats.symbol_trades.get(selected_symbol, 0) if today_stats.symbol_trades else 0 }}/{{today_stats.max_per_symbol}}</span></span>
                 <progress id="daily_limit_progress" class="daily-limit-progress{% if today_stats.total_trades >= today_stats.max_trades %} limit-over{% endif %}" value="{{ today_stats.total_trades }}" max="{{ today_stats.max_trades or 1 }}" aria-label="Daily total trades used versus limit"></progress>
-                {% if testing_mode or (user and user.is_admin) %}
-                <div style="margin-top: 4px;">
+                <div id="reset-today-limits-wrap" style="margin-top: 4px; display: {% if testing_mode or (user and user.is_admin) %}block{% else %}none{% endif %};">
                     <button type="button" onclick="resetTodayLimits()" style="font-size: 8px; padding: 2px 6px; border-radius: 3px; border: 1px solid #0ca7d4; background: #0b2030; color: #9fdcff; cursor: pointer;">
                         Reset Today Limits
                     </button>
                 </div>
-                {% endif %}
             </div>
 
             <div class="row">
@@ -1484,6 +1482,24 @@
             });
     }
 
+    function syncResetTodayButton() {
+        const resetWrap = document.getElementById('reset-today-limits-wrap');
+        if (!resetWrap) {
+            return;
+        }
+        fetch('/api/debug_flags')
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                if (!data) {
+                    return;
+                }
+                resetWrap.style.display = (data.testing_mode || data.is_admin) ? 'block' : 'none';
+            })
+            .catch(() => {
+                // Leave the server-rendered state as-is if debug flags are unavailable.
+            });
+    }
+
     function updateRiskSizing() {
         const slider = document.getElementById('risk_slider');
         const pct = parseFloat(slider.value);
@@ -1540,6 +1556,7 @@
             updateLivePositions();
             updateTradeHistory();
             updateTradeLimits();
+            syncResetTodayButton();
             updateLiveTradeLog();
         }, 200);
     });

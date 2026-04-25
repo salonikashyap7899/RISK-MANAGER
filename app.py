@@ -5,11 +5,6 @@ from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from functools import wraps
-from models import db, User, ExchangeConnection, SubscriptionHistory, TradeDailyStats, TradeLog
-from flask import jsonify, request, session
-from logic import select_symbol
-import logic
-import config
 import os
 import csv
 import io
@@ -17,8 +12,14 @@ import uuid
 import razorpay
 import time
 
-# Load environment variables
+# Load env before importing config-dependent modules.
 load_dotenv()
+
+from models import db, User, ExchangeConnection, SubscriptionHistory, TradeDailyStats, TradeLog
+from flask import jsonify, request, session
+from logic import select_symbol
+import logic
+import config
 
 app = Flask(__name__)
 
