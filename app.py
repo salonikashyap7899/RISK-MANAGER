@@ -263,490 +263,150 @@ def api_select_symbol():
         payload = select_symbol(user_id, symbol)
         return jsonify(payload)
     except Exception as e:
-        print(f"[/api/select_symbol] error: {e}")
+        print(f"❌ Error in api_select_symbol: {e}")
         return jsonify({"error": str(e)}), 500
 
-
-@app.route('/authorize/google')
-def google_authorize():
-    token = google.authorize_access_token()
-    user_info = token.get('userinfo')
-    
-    # Convert email to lowercase to match registration format
-    email_lower = user_info['email'].lower()
-    user = User.query.filter_by(email=email_lower).first()
-    
-    if not user:
-        user = User(
-            username=user_info['name'], 
-            email=email_lower, 
-            google_id=user_info['sub']
-        )
-        db.session.add(user)
-        db.session.commit()
-    
-    # FIXED: Allow multiple device login - removed restrictive active_session check
-    login_user(user, remember=True)
-    
-    session_id = str(uuid.uuid4())
-    session['session_id'] = session_id
-    session.permanent = True
-    user.active_session = session_id
-    
-    db.session.commit()
-    
-    # FIXED: More robust subscription check on Google login
-    # First check if user has subscription flag
-    if not user.is_subscribed:
-        flash("Please subscribe to access the trading dashboard.", "warning")
-        return redirect(url_for('subscribe'))
-    
-    # Check if subscription has expired - only if subscription_end is set
-    if user.subscription_end:
-        if datetime.utcnow() > user.subscription_end:
-            # Subscription has expired
-            user.is_subscribed = False
-            user.subscription_status = 'expired'
-            db.session.commit()
-            flash("Your subscription has expired. Please renew to access the dashboard.", "warning")
-            return redirect(url_for('subscribe'))
-    
-    # Subscription is valid
-    return redirect(url_for('index'))
-
-@app.route('/logout')
+@app.route("/api/coin-details/<symbol>")
 @login_required
-def logout():
-    current_user.active_session = None
-    db.session.commit()
-    logout_user()
-    session.clear()
-    return redirect(url_for('login'))
-
-# Debug route to clear stuck sessions - use in browser: /clear-session
-@app.route('/clear-session')
-def clear_session_debug():
-    """Debug route to clear all user sessions - for stuck users"""
-    from models import User
-    users = User.query.all()
-    for user in users:
-        user.active_session = None
-    db.session.commit()
-    return "All user sessions cleared! <a href='/login'>Go to Login</a>"
-
-# Debug route to create test admin user - use in browser: /create-admin
-@app.route('/create-admin')
-def create_admin_debug():
-    """Debug route to create a test admin user"""
-    from models import User
-    from werkzeug.security import generate_password_hash
+def api_coin_details(symbol):
+    """
+    Returns live market data, recommendations, and current position details
+    for a specific symbol.
+    """
+    symbol = symbol.upper().strip()
+    sl_type = request.args.get('sl_type', 'SL % Movement')
+    sl_value = float(request.args.get('sl_value', 1.5))
+    side = request.args.get('side', 'LONG')
     
-    # Check if admin already exists
-    admin = User.query.filter_by(email='test@test.com').first()
-    if admin:
-        return "Admin user already exists! <br>Email: test@test.com <br>Password: Test@123 <br><a href='/login'>Go to Login</a>"
-    
-    # Create admin user
-    hashed_pw = generate_password_hash('Test@123')
-    admin = User(
-        username='Admin',
-        email='test@test.com',
-        password=hashed_pw,
-        is_subscribed=True,
-        subscription_status='active',
-        subscription_type='pro'
-    )
-    db.session.add(admin)
-    db.session.commit()
-    
-    return "Admin user created successfully! <br>Email: test@test.com <br>Password: Test@123 <br><a href='/login'>Go to Login</a>"
-
-@app.route('/subscribe')
-@login_required
-def subscribe():
-    return render_template('subscribe.html', key_id=config.RAZORPAY_KEY_ID, user=current_user)
-
-@app.route('/create-subscription', methods=['POST'])
-@login_required
-def create_subscription():
     try:
-        data = request.get_json()
-        plan_type = data.get("plan_type")
-
-        if not plan_type:
-            return jsonify({"success": False, "error": "plan_type is required"}), 400
-
-        if plan_type == "monthly":
-            plan_id = RAZORPAY_MONTHLY_PLAN_ID
-        elif plan_type == "yearly":
-            plan_id = RAZORPAY_YEARLY_PLAN_ID
-        else:
-            return jsonify({"success": False, "error": "Invalid plan type"}), 400
-
-        subscription_data = {
-            "plan_id": plan_id,
-            "total_count": 12 if plan_type == "monthly" else 1,
-            "quantity": 1,
-            "customer_notify": 1,
-            "notes": {
-                "user_id": current_user.id,
-                "email": current_user.email
+        # 1. Get live price
+        current_price = logic.get_live_price(symbol, current_user.id)
+        
+        # 2. Get exchange limits (max leverage)
+        max_lev = logic.get_max_leverage(symbol, current_user.id)
+        
+        # 3. Get position sizing recommendation based on current UI inputs
+        # (This uses the same logic as the main execute form)
+        balance_data = logic.get_live_balance(current_user.id)
+        balance = 0.0
+        margin_used = 0.0
+        if balance_data and isinstance(balance_data, tuple):
+            inner_tuple = balance_data[0]
+            if isinstance(inner_tuple, tuple) and len(inner_tuple) >= 2:
+                balance = float(inner_tuple[0] or 0.0)
+                margin_used = float(inner_tuple[1] or 0.0)
+        
+        unutilized = max(balance - margin_used, 0.0)
+        sizing = logic.calculate_position_sizing(unutilized, current_price, sl_type, sl_value, side, user_id=current_user.id, symbol=symbol)
+        
+        # 4. Get current open position if any
+        all_pos = logic.get_open_positions(current_user.id)
+        current_pos = next((p for p in all_pos if p['symbol'] == symbol), None)
+        
+        # 5. Build calculation breakdown for transparency
+        sl_percent = sizing.get('sl_percent', sl_value)
+        
+        # Add calculation breakdown for ROI/PnL
+        calculation_breakdown = {
+            "roi": {
+                "base_percent": 0.0,
+                "leverage": sizing.get('suggested_leverage', 1),
+                "calculated_percent": 0.0
             }
         }
         
-        subscription = razorpay_client.subscription.create(subscription_data)
-        session["pending_plan_type"] = plan_type
-        
+        if current_pos:
+            entry = current_pos.get('entry_price', 0)
+            mark = current_pos.get('mark_price', 0)
+            if entry > 0:
+                base_move = ((mark - entry) / entry * 100) if current_pos['side'] == 'LONG' else ((entry - mark) / entry * 100)
+                calculation_breakdown["roi"]["base_percent"] = base_move
+                calculation_breakdown["roi"]["calculated_percent"] = base_move * current_pos.get('leverage', 1)
+
         return jsonify({
             "success": True,
-            "subscription_id": subscription["id"]
+            "symbol": symbol,
+            "current_price": current_price,
+            "max_leverage": max_lev,
+            "suggested_leverage": sizing.get('suggested_leverage'),
+            "sl_percent": sl_percent,
+            "position": current_pos,
+            "calculation_breakdown": calculation_breakdown
         })
-
     except Exception as e:
-        print(f"Error creating subscription: {e}")
-        return jsonify({"success": False, "error": str(e)}), 400
+        print(f"❌ Error in api_coin_details: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
 
-@app.route('/verify-subscription', methods=['POST'])
+@app.route("/api/today_stats")
 @login_required
-def verify_subscription():
+def api_today_stats():
+    """Returns today's trade stats for the user"""
     try:
-        data = request.get_json()
-
-        razorpay_client.utility.verify_subscription_payment_signature({
-            "razorpay_payment_id": data.get("razorpay_payment_id"),
-            "razorpay_subscription_id": data.get("razorpay_subscription_id"),
-            "razorpay_signature": data.get("razorpay_signature")
-        })
-
-        plan_type = session.pop("pending_plan_type", "monthly")
-        duration_days = 365 if plan_type == "yearly" else 30
-
-        current_user.is_subscribed = True
-        current_user.subscription_id = data.get("razorpay_subscription_id")
-        current_user.subscription_status = "active"
-        current_user.subscription_type = plan_type
-        current_user.subscription_start = datetime.utcnow()
-        current_user.subscription_end = datetime.utcnow() + timedelta(days=duration_days)
-
-        # FIXED: Create permanent subscription history record
-        subscription_history = SubscriptionHistory(
-            user_id=current_user.id,
-            plan_type=plan_type,
-            start_date=current_user.subscription_start,
-            end_date=current_user.subscription_end,
-            status="active"
-        )
-        db.session.add(subscription_history)
-        
-        db.session.commit()
-
-        return jsonify({
-            "success": True,
-            "plan": plan_type,
-            "valid_till": current_user.subscription_end.strftime("%Y-%m-%d")
-        })
-
+        stats = logic.get_today_stats(current_user.id)
+        return jsonify(stats)
     except Exception as e:
-        db.session.rollback()
-        return jsonify({"success": False, "error": str(e)}), 400
+        print(f"❌ Error fetching today stats: {e}")
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/cancel-subscription', methods=['POST'])
+@app.route("/api/admin/reset_daily_trades", methods=["POST"])
 @login_required
-def cancel_subscription():
-    try:
-        if current_user.subscription_id:
-            try:
-                razorpay_client.subscription.cancel(current_user.subscription_id)
-            except Exception as e:
-                print(f"Razorpay cancellation error: {e}")
-        
-        current_user.is_subscribed = False
-        current_user.subscription_status = "cancelled"
-        current_user.subscription_end = datetime.utcnow()
-        
-        db.session.commit()
-        
-        return jsonify({
-            "success": True,
-            "message": "Subscription cancelled successfully"
-        })
+def admin_reset_daily_trades():
+    """Admin only: Reset daily trade count for the current user"""
+    # Check if admin
+    is_admin = getattr(current_user, 'is_admin', False) or current_user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
     
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 400
-
-@app.route('/check-subscription')
-@login_required
-def check_subscription():
-    if current_user.is_subscribed:
-        if current_user.subscription_end and current_user.subscription_end > datetime.utcnow():
-            days_left = (current_user.subscription_end - datetime.utcnow()).days
-            return jsonify({
-                'subscribed': True,
-                'status': current_user.subscription_status,
-                'type': current_user.subscription_type,
-                'start_date': current_user.subscription_start.strftime('%Y-%m-%d') if current_user.subscription_start else None,
-                'end_date': current_user.subscription_end.strftime('%Y-%m-%d'),
-                'days_left': days_left
-            })
-        else:
-            current_user.subscription_status = 'expired'
-            current_user.is_subscribed = False
+    if not is_admin:
+        return jsonify({"success": False, "message": "Unauthorized"}), 403
+    
+    try:
+        today = datetime.utcnow().date().isoformat()
+        stat = TradeDailyStats.query.filter_by(user_id=current_user.id, trade_date=today).first()
+        if stat:
+            stat.total_trades = 0
+            stat.symbol_trades = '{}'
             db.session.commit()
-            return jsonify({'subscribed': False, 'status': 'expired'})
-    
-    return jsonify({'subscribed': False, 'status': 'inactive'})
-
-
-# EXCHANGE CONNECTION ROUTES
-
-@app.route('/exchange-connections')
-@login_required
-def exchange_connections():
-    connections = ExchangeConnection.query.filter_by(user_id=current_user.id).all()
-    return render_template(
-        'exchange_connections.html',
-        connections=connections,
-        supported_exchanges=config.SUPPORTED_EXCHANGES
-    )
-
-
-@app.route('/add-exchange', methods=['POST'])
-@login_required
-@subscription_required
-def add_exchange():
-    try:
-        data = request.get_json()
-        exchange_type = data.get('exchange_type')
-        api_key = data.get('api_key', '').strip()
-        api_secret = data.get('api_secret', '').strip()
-        connection_name = data.get('connection_name', '').strip()
-        
-        if exchange_type not in config.SUPPORTED_EXCHANGES:
-            return jsonify({'success': False, 'error': 'Invalid exchange type'}), 400
-        
-        required_fields = config.SUPPORTED_EXCHANGES[exchange_type]['api_required']
-        if not api_key or not api_secret:
-            return jsonify({'success': False, 'error': f'Missing required fields: {", ".join(required_fields)}'}), 400
-        
-        existing = ExchangeConnection.query.filter_by(
-            user_id=current_user.id,
-            exchange_type=exchange_type,
-            is_connected=True
-        ).first()
-        
-        if existing:
-            return jsonify({'success': False, 'error': f'You already have a {exchange_type} connection. Please disconnect it first.'}), 400
-        
-        connection = ExchangeConnection(
-            user_id=current_user.id,
-            exchange_type=exchange_type,
-            api_key=api_key,
-            api_secret=api_secret,
-            connection_name=connection_name or f"My {exchange_type} Account",
-            is_connected=False
-        )
-        
-        db.session.add(connection)
-        db.session.commit()
-        
-        if exchange_type == 'binance':
-            from binance.client import Client
-            from binance.exceptions import BinanceAPIException
-            
-            # Basic key validation (now optional - comment shows expected format)
-            # if not (api_key.startswith(('vmPU', 'uD')) and len(api_key) > 20):
-            #     db.session.delete(connection)
-            #     db.session.commit()
-            #     return jsonify({
-            #         'success': False, 
-            #         'error': 'Invalid API key format. Binance keys start with vmPU... or uD... (64+ chars)'
-            #     }), 400
-
-            try:
-                client = Client(api_key, api_secret, {'timeout': 20})
-                client.futures_account(recvWindow=60000)
-                connection.is_connected = True
-                connection.last_verified = datetime.utcnow()
-                db.session.commit()
-                
-                logic.clear_user_client(current_user.id)
-                
-                return jsonify({'success': True, 'message': f'{exchange_type} connected successfully!'})
-            except BinanceAPIException as e:
-                error_info = config.BINANCE_ERROR_CODES.get(e.code)
-                db.session.delete(connection)
-                db.session.commit()
-                return jsonify({
-                    'success': False,
-                    'error_code': getattr(e, 'code', None),
-                    'title': error_info['title'] if error_info else f'Binance Error {e.code}',
-                    'message': error_info['message'] if error_info else str(e),
-                    'raw_error': str(e)
-                }), 400
-            except Exception as e:
-                db.session.delete(connection)
-                db.session.commit()
-                return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 400
-        
-        connection.is_connected = True
-        connection.last_verified = datetime.utcnow()
-        db.session.commit()
-        
-        return jsonify({'success': True, 'message': f'{exchange_type} added successfully!'})
-        
+            return jsonify({"success": True, "message": "Daily trades reset successfully"})
+        return jsonify({"success": True, "message": "No trades found for today"})
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
-
-
-@app.route('/verify-exchange/<int:connection_id>', methods=['POST'])
-@login_required
-@subscription_required
-def verify_exchange(connection_id):
-    connection = ExchangeConnection.query.get_or_404(connection_id)
-    
-    if connection.user_id != current_user.id:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    
-    try:
-        if connection.exchange_type == 'binance':
-            from binance.client import Client
-            from binance.exceptions import BinanceAPIException
-            
-            try:
-                client = Client(connection.api_key, connection.api_secret, {'timeout': 20})
-                client.futures_account(recvWindow=60000)
-                
-                connection.is_connected = True
-                connection.last_verified = datetime.utcnow()
-                db.session.commit()
-                
-                logic.clear_user_client(current_user.id)
-                
-                return jsonify({'success': True, 'message': 'Connection verified successfully!'})
-            except BinanceAPIException as e:
-                error_info = config.BINANCE_ERROR_CODES.get(e.code)
-                connection.is_connected = False
-                db.session.commit()
-                return jsonify({
-                    'success': False,
-                    'error_code': getattr(e, 'code', None),
-                    'title': error_info['title'] if error_info else f'Binance Error {e.code}',
-                    'message': error_info['message'] if error_info else str(e),
-                    'raw_error': str(e)
-                }), 400
-            except Exception as e:
-                connection.is_connected = False
-                db.session.commit()
-                return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 400
-        
-        return jsonify({'success': True, 'message': 'Connection is active'})
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
-
-
-@app.route('/disconnect-exchange/<int:connection_id>', methods=['POST'])
-@login_required
-@subscription_required
-def disconnect_exchange(connection_id):
-    connection = ExchangeConnection.query.get_or_404(connection_id)
-    
-    if connection.user_id != current_user.id:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    
-    try:
-        logic.clear_user_client(current_user.id)
-        
-        db.session.delete(connection)
-        db.session.commit()
-        
-        return jsonify({'success': True, 'message': 'Exchange disconnected successfully'})
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
-
-
-@app.route('/get-exchange-status')
-@login_required
-@subscription_required
-def get_exchange_status():
-    connections = ExchangeConnection.query.filter_by(
-        user_id=current_user.id,
-        is_connected=True
-    ).all()
-    
-    return jsonify({
-        'success': True,
-        'connections': [{
-            'id': c.id,
-            'exchange_type': c.exchange_type,
-            'connection_name': c.connection_name,
-            'last_verified': c.last_verified.strftime('%Y-%m-%d %H:%M') if c.last_verified else None
-        } for c in connections]
-    })
-
-
-# TRADING ROUTES - All use user's connected exchange via user_id
-
-@app.route("/get_live_price/<symbol>")
-@login_required
-def live_price_api(symbol):
-    """Get live price for a symbol"""
-    price = logic.get_live_price(symbol, current_user.id)
-    return jsonify({"price": price if price else 0, "symbol": symbol})
+        print(f"❌ Error resetting daily trades: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route("/validate_symbol/<symbol>")
 @login_required
 def validate_symbol_api(symbol):
     """
     ✅ NEW: Validate if a symbol exists and is tradeable
-    Returns symbol validity, price, and availability info
+    Used to prevent UI errors before switching charts or feeds.
     """
+    symbol = symbol.upper().strip()
     try:
-        symbol = symbol.strip().upper()
-        symbols = logic.get_all_exchange_symbols(current_user.id)
+        # Get all tradeable symbols
+        all_symbols = logic.get_all_exchange_symbols(current_user.id)
         
-        if symbol in symbols:
+        if symbol in all_symbols:
             # Symbol exists - try to get price to double-check it's tradeable
             price = logic.get_live_price(symbol, current_user.id)
             return jsonify({
-                "valid": True,
+                "valid": True, 
                 "symbol": symbol,
-                "price": price,
                 "tradeable": price > 0,
                 "message": f"✅ {symbol} is valid and tradeable" if price > 0 else f"⚠️ {symbol} exists but price unavailable"
             })
         else:
             return jsonify({
-                "valid": False,
+                "valid": False, 
                 "symbol": symbol,
-                "message": f"❌ {symbol} not found in available symbols",
-                "available_count": len(symbols),
-                "suggestion": "Check symbol spelling or try selecting from dropdown"
+                "tradeable": False,
+                "message": f"❌ {symbol} is not a valid Binance Futures symbol"
             })
     except Exception as e:
-        print(f"❌ Symbol validation error: {e}")
-        return jsonify({
-            "valid": False,
-            "symbol": symbol,
-            "error": str(e),
-            "message": "Error validating symbol"
-        }), 500
+        return jsonify({"valid": False, "error": str(e)}), 500
 
 @app.route("/get_open_positions")
 @login_required
 @subscription_required
 def get_open_positions_api():
-    """
-    ✅ FIXED: Now supports filtering by symbol via ?symbol=BTCUSDT query parameter
-    This allows dynamic symbol switching to fetch relevant positions only
-    """
     symbol_filter = request.args.get('symbol', '').strip().upper()
     fresh = request.args.get('fresh', '').strip() in {'1', 'true', 'yes'}
     all_positions = logic.get_open_positions_live(current_user.id) if fresh else logic.get_open_positions(current_user.id)
@@ -850,9 +510,6 @@ def calculate_sizing_api():
             "liquidation_price": sizing.get('liquidation_price', 0)
         })
     except Exception as e:
-        print(f"❌ Sizing calculation error: {e}")
-        import traceback
-        traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/get_user_trade_positions")
@@ -863,50 +520,55 @@ def get_user_trade_positions_api():
     positions = logic.get_user_trade_positions_with_tp_sl(current_user.id)
     return jsonify({"positions": positions})
 
-@app.route("/api/wallet")
+@app.route("/api/wallet_balance")
 @login_required
-@subscription_required
-def get_wallet_api():
-    """FIXED: Dedicated wallet endpoint with diagnostics"""
-    wallet_data = logic.get_wallet_balances(current_user.id)
-    
-    # Add connection status summary
-    from models import ExchangeConnection
-    connection = ExchangeConnection.query.filter_by(
-        user_id=current_user.id, 
-        exchange_type='binance', 
-        is_connected=True
-    ).first()
-    
-    wallet_data['connection_status'] = {
-        'exists': bool(connection),
-        'connected': connection.is_connected if connection else False,
-        'name': connection.connection_name if connection else None,
-        'last_verified': connection.last_verified.isoformat() if connection and connection.last_verified else None
-    }
-    
-    print(f"🌐 /api/wallet response: success={wallet_data.get('success')}, assets={wallet_data.get('total_assets',0)}")
-    return jsonify(wallet_data)
+def api_wallet_balance():
+    """Fetch user's live wallet balance from Binance"""
+    try:
+        # Get user's exchange connection
+        connection = ExchangeConnection.query.filter_by(
+            user_id=current_user.id, 
+            exchange_type='binance', 
+            is_connected=True
+        ).first()
+        
+        if not connection:
+            return jsonify({"success": False, "error": "Exchange not connected"}), 400
+            
+        balance_data = logic.get_live_balance(current_user.id)
+        if balance_data and isinstance(balance_data, tuple):
+            inner_tuple = balance_data[0]
+            if isinstance(inner_tuple, tuple) and len(inner_tuple) >= 2:
+                balance = float(inner_tuple[0] or 0.0)
+                margin_used = float(inner_tuple[1] or 0.0)
+                unutilized = max(balance - margin_used, 0.0)
+                return jsonify({
+                    "success": True, 
+                    "balance": balance, 
+                    "margin_used": margin_used,
+                    "unutilized": unutilized
+                })
+        
+        return jsonify({"success": False, "error": "Failed to fetch balance"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
 
 @app.route("/clear_trade_events", methods=["POST"])
 @login_required
-@subscription_required
 def clear_trade_events_api():
     if "trade_events" in session:
         session["trade_events"] = []
-        session.modified = True
     return jsonify({"success": True})
 
 @app.route("/api/trade_logs")
 @login_required
-@subscription_required
 def api_trade_logs():
     """Returns trade events for live log display"""
     try:
         # Get trade events from session or database
         events = session.get("trade_events", [])
         
-        # If no session events, fetch from database
+        # If session empty, try to get recent history
         if not events:
             trades = logic.get_trade_history(current_user.id)
             if trades:
@@ -915,238 +577,44 @@ def api_trade_logs():
                         "type": "TRADE_CLOSE" if trade.get("realized_pnl") else "TRADE_OPEN",
                         "symbol": trade.get("symbol", ""),
                         "timestamp": str(trade.get("time", "")),
+                        "message": f"{trade.get('side')} {trade.get('symbol')} @ {trade.get('price')}",
                         "pnl": float(trade.get("realized_pnl", 0))
                     }
                     for trade in trades[:10]  # Last 10 trades
                 ]
         
-        return jsonify({"success": True, "events": events})
+        return jsonify({"events": events})
     except Exception as e:
         print(f"❌ Error fetching trade logs: {e}")
-        return jsonify({"success": False, "error": str(e), "events": []}), 500
+        return jsonify({"events": []})
 
-@app.route("/close_position/<symbol>", methods=["POST"])
+@app.route('/logout')
 @login_required
-@subscription_required
-def close_position_api(symbol):
-    result = logic.close_position(symbol, current_user.id)
-    return jsonify(result)
+def logout():
+    user = User.query.get(current_user.id)
+    if user:
+        user.active_session = None
+        db.session.commit()
+    logout_user()
+    session.clear()
+    flash("Logged out successfully.", "info")
+    return redirect(url_for('login'))
 
-@app.route("/partial_close", methods=["POST"])
-@login_required
-@subscription_required
-def partial_close_api():
-    data = request.get_json()
-    symbol = data.get('symbol')
-    close_percent = data.get('close_percent')
-    close_qty = data.get('close_qty')
-    if not symbol:
-        return jsonify({"success": False, "message": "Symbol required"})
-    result = logic.partial_close_position(symbol, close_percent, close_qty, current_user.id)
-    return jsonify(result)
-
-@app.route("/api/trail_sl", methods=["POST"])
-@login_required
-@subscription_required
-def trail_sl_api():
-    """Dynamic trailing SL"""
-    data = request.get_json()
-    symbol = data.get('symbol')
-    if not symbol:
-        return jsonify({"success": False, "message": "Symbol required"}), 400
-    result = logic.trail_stop_loss(symbol, current_user.id)
-    return jsonify(result)
-
-@app.route("/api/live_pnl/<symbol>")
-@login_required
-@subscription_required
-def live_pnl_api(symbol):
-    """Live PnL for symbol"""
-    result = logic.get_live_pnl(symbol, current_user.id)
-    return jsonify(result)
-
-@app.route("/api/today_stats")
-@login_required
-@subscription_required
-def today_stats_api():
-    """Daily limits"""
-    stats = logic.get_today_stats(current_user.id)
-    return jsonify(stats)
-
-@app.route("/api/coin-details/<symbol>")
-@login_required
-@subscription_required
-def coin_details_api(symbol):
-    """Get real-time coin details including live position data with calculation breakdowns"""
-    try:
-        # ✅ CRITICAL FIX: Validate and normalize symbol
-        symbol = (symbol or '').strip().upper()
-        if not symbol or len(symbol) < 6:
-            return jsonify({
-                "success": False,
-                "symbol": symbol,
-                "message": "Invalid symbol format"
-            }), 400
-        
-        # Get actual SL from form (passed as query params for real-time calculation)
-        sl_type = request.args.get('sl_type', 'SL % Movement')
-        sl_value = float(request.args.get('sl_value', 1.5))  # Default to 1.5% if not provided
-        side = request.args.get('side', 'LONG')
-        
-        # Get max leverage from Binance
-        max_lev = logic.get_max_leverage(symbol, current_user.id)
-        
-        # Calculate suggested leverage based on ACTUAL SL value from form
-        if sl_type == "SL % Movement":
-            sl_percent = sl_value
-        else:
-            # For SL Points, get current price - ✅ PASS SYMBOL CORRECTLY
-            current_price = logic.get_live_price(symbol, current_user.id) or 0
-            if current_price > 0 and sl_value > 0:
-                sl_distance = abs(float(sl_value) - float(current_price))
-                sl_percent = (sl_distance / current_price) * 100.0
-            else:
-                sl_percent = 2.0  # Fallback
-        
-        # Risk-based leverage: 100 / (SL% + 0.2% buffer)
-        risk_based_lev = 100.0 / (sl_percent + 0.2)
-        suggested_lev = min(int(risk_based_lev), max_lev, 125)
-        
-        # Get live position data
-        position = None
-        calculation_breakdown = None
-        try:
-            fresh = request.args.get('fresh', '').strip() in {'1', 'true', 'yes'}
-            positions_data = logic.get_open_positions_live(current_user.id) if fresh else logic.get_open_positions(current_user.id)
-            
-            # Handle different response formats
-            if isinstance(positions_data, dict) and positions_data.get("success"):
-                positions = positions_data.get("positions", [])
-                # Find position for this symbol
-                if isinstance(positions, list):
-                    for pos in positions:
-                        if isinstance(pos, dict) and pos.get("symbol") == symbol:
-                            position = pos
-                            break
-            elif isinstance(positions_data, list):
-                # If it's directly a list of positions
-                for pos in positions_data:
-                    if isinstance(pos, dict) and pos.get("symbol") == symbol:
-                        position = pos
-                        break
-            
-            # ✅ CALCULATE BREAKDOWN if position exists
-            if position and isinstance(position, dict):
-                leverage = position.get('leverage', 1)
-                
-                # Extract base ROI (before leverage multiplication)
-                dashboard_roi = position.get('dashboard_roi_percent', 0)
-                roi = position.get('roi_percent', 0)
-                actual_roi = dashboard_roi if dashboard_roi else roi
-                
-                # Extract base margin ratio (before leverage multiplication)
-                dashboard_margin_ratio = position.get('dashboard_margin_ratio', 0)
-                margin_ratio = position.get('margin_ratio', 0)
-                actual_margin_ratio = dashboard_margin_ratio if dashboard_margin_ratio else margin_ratio
-                
-                # Base percentages (divide by leverage to get base)
-                base_roi = actual_roi / leverage if leverage > 0 else actual_roi
-                base_margin_ratio = actual_margin_ratio / leverage if leverage > 0 else actual_margin_ratio
-                
-                # Actual calculated values
-                calculated_roi = base_roi * leverage
-                calculated_margin_ratio = base_margin_ratio * leverage
-                
-                calculation_breakdown = {
-                    "roi": {
-                        "base_percent": round(base_roi, 4),
-                        "leverage": leverage,
-                        "calculated_percent": round(calculated_roi, 2),
-                        "formula": f"{base_roi:.4f}% × {leverage}x = {calculated_roi:.2f}%"
-                    },
-                    "margin_ratio": {
-                        "base_percent": round(base_margin_ratio, 4),
-                        "leverage": leverage,
-                        "calculated_percent": round(calculated_margin_ratio, 2),
-                        "formula": f"{base_margin_ratio:.4f}% × {leverage}x = {calculated_margin_ratio:.2f}%"
-                    },
-                    "liquidation_price": position.get('liquidation_price', position.get('liquidationPrice', 0)),
-                    "entry_price": position.get('entry_price', position.get('avgPrice', 0)),
-                    "mark_price": position.get('mark_price', position.get('markPrice', 0)),
-                    "size": position.get('amount', position.get('positionAmt', 0)),
-                    "margin": position.get('margin_usdt', position.get('notional', 0))
-                }
-        except Exception as pos_err:
-            print(f"Position fetch warning (non-blocking): {pos_err}")
-            position = None
-        
-        # Get current price
-        if 'current_price' not in locals():
-            current_price = logic.get_live_price(symbol, current_user.id)
-        
-        response_data = {
-            "success": True,
-            "symbol": symbol,
-            "max_leverage": max_lev,
-            "suggested_leverage": suggested_lev,
-            "sl_percent": round(sl_percent, 3),
-            "current_price": float(current_price) if current_price else 0,
-            "timestamp": int(time.time()),
-            "position": position,
-            "calculation_breakdown": calculation_breakdown
-        }
-        
-        return jsonify(response_data)
-    except Exception as e:
-        print(f"Error fetching coin details: {e}")
-        return jsonify({
-            "success": False,
-            "symbol": symbol,
-            "message": f"Error: {str(e)}"
-        }), 500
-
-
-@app.route("/update_sl", methods=["POST"])  # Legacy
-@login_required
-@subscription_required
-def update_sl_api():
-    return trail_sl_api()
-
-@app.route("/download_trades")
-@login_required
-@subscription_required
-def download_trades():
-    trades = logic.get_trade_history(current_user.id)
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['Time (UTC)', 'Symbol', 'Side', 'Quantity', 'Price', 'Realized PnL', 'Commission', 'Order ID', 'SL', 'Current SL', 'TP1', 'TP1 Qty %', 'TP2', 'Remaining Qty %', 'Position Status'])
-    for trade in trades:
-        writer.writerow([trade.get('time', ''), trade.get('symbol', ''), trade.get('side', ''), 
-                        trade.get('qty', ''), trade.get('price', ''), trade.get('realized_pnl', ''), 
-                        trade.get('commission', ''), trade.get('order_id', ''),
-                        trade.get('sl_price', ''), trade.get('current_sl', ''),
-                        trade.get('tp1_price', ''), trade.get('tp1_qty_pct', ''),
-                        trade.get('tp2_price', ''), trade.get('remain_qty_pct', ''),
-                        trade.get('position_status', '')])
-    output.seek(0)
-    return Response(output.getvalue(), mimetype='text/csv', 
-                   headers={'Content-Disposition': f'attachment; filename=trade_history_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'})
-
-@app.route("/index", methods=["GET", "POST"])
+@app.route('/index', methods=['GET', 'POST'])
 @login_required
 @subscription_required
 def index():
+    # 1. Initialize session if needed
     logic.initialize_session()
-    symbols = logic.get_all_exchange_symbols(current_user.id)
-    print(f"🌟 DEBUG /index: Loaded {len(symbols)} symbols for user {current_user.id}")
     
-    symbols_len = len(symbols)
-    # FIXED: Enhanced diagnostics + wallet status
+    # 2. Get available symbols
+    symbols = logic.get_all_exchange_symbols(current_user.id)
+    
+    # 3. Get user balance & unutilized capital
     balance_data = logic.get_live_balance(current_user.id)
     balance = 0.0
     margin_used = 0.0
-    wallet_debug = {}
-
+    
     if balance_data and isinstance(balance_data, tuple):
         inner_tuple = balance_data[0]
         if isinstance(inner_tuple, tuple) and len(inner_tuple) >= 2:
@@ -1279,106 +747,274 @@ def ensure_sqlite_trade_positions_columns():
         from sqlalchemy import text
         with db.engine.begin() as conn:
             r = conn.execute(text("PRAGMA table_info(trade_positions)"))
-            cols = {row[1] for row in r}
+            cols = [row[1] for row in r.fetchall()]
             if "opening_order_id" not in cols:
                 conn.execute(text("ALTER TABLE trade_positions ADD COLUMN opening_order_id VARCHAR(64)"))
     except Exception as e:
         print(f"SQLite schema patch (trade_positions): {e}")
 
-
-with app.app_context():
-    db.create_all()
-    ensure_sqlite_trade_positions_columns()
-
-# ============================================
-# ERROR HANDLERS - Add these after app creation
-# ============================================
-
-@app.errorhandler(404)
-def not_found_error(error):
-    return render_template('home.html'), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    db.session.rollback()  # Rollback any failed database transactions
-    print(f"❌ Internal Server Error: {error}")
-    return render_template('home.html'), 500
-
-@app.errorhandler(Exception)
-def handle_exception(error):
-    # Pass through HTTP errors
-    if hasattr(error, 'code') and 400 <= error.code < 600:
-        return error
-    
-    # Handle all other exceptions
-    print(f"❌ Unhandled Exception: {error}")
-    import traceback
-    traceback.print_exc()
-    return render_template('home.html'), 500
-
-# Debug route to check server status
-@app.route('/debug-wallet')
+@app.route('/exchange-connections')
 @login_required
-def debug_wallet():
-    """DEBUG: Test wallet for specific user_id"""
-    user_id = request.args.get('user_id')
-    if not user_id or not user_id.isdigit():
-        return "❌ Provide ?user_id=1 (your user ID)", 400
+def exchange_connections():
+    # Get user's existing connections
+    connections = ExchangeConnection.query.filter_by(user_id=current_user.id).all()
     
-    user_id = int(user_id)
+    # Format for UI
+    formatted_connections = []
+    for conn in connections:
+        formatted_connections.append({
+            'id': conn.id,
+            'exchange_type': conn.exchange_type,
+            'connection_name': conn.connection_name or f"{conn.exchange_type.capitalize()} Connection",
+            'is_connected': conn.is_connected,
+            'last_verified': conn.last_verified.strftime("%Y-%m-%d %H:%M") if conn.last_verified else "Never"
+        })
     
-    # Test live balance
-    live_balance_data = logic.get_live_balance(user_id)
+    # Supported exchanges list
+    supported_exchanges = [
+        {'id': 'binance', 'name': 'Binance Futures', 'icon': 'https://bin.bnbstatic.com/static/images/common/favicon.ico'},
+        {'id': 'bybit', 'name': 'Bybit (Coming Soon)', 'icon': 'https://www.bybit.com/favicon.ico'},
+        {'id': 'okx', 'name': 'OKX (Coming Soon)', 'icon': 'https://www.okx.com/favicon.ico'}
+    ]
     
-    # Test full wallet
-    wallet_data = logic.get_wallet_balances(user_id)
-    
-    # Check connection
-    from models import ExchangeConnection
-    connection = ExchangeConnection.query.filter_by(
-        user_id=user_id, exchange_type='binance'
-    ).first()
-    
-    return render_template('debug.html', 
-                         user_id=user_id,
-                         live_balance=live_balance_data,
-                         wallet_data=wallet_data,
-                         connection=connection)
+    return render_template('exchange_connections.html', 
+                          connections=formatted_connections, 
+                          supported_exchanges=supported_exchanges)
 
+@app.route('/add-exchange', methods=['POST'])
+@login_required
+def add_exchange():
+    data = request.get_json()
+    exchange_type = data.get('exchange_type')
+    api_key = data.get('api_key')
+    api_secret = data.get('api_secret')
+    connection_name = data.get('connection_name')
+    
+    if not exchange_type or not api_key or not api_secret:
+        return jsonify({'success': False, 'message': 'Missing required fields'}), 400
+    
+    # Check if connection already exists
+    existing = ExchangeConnection.query.filter_by(user_id=current_user.id, exchange_type=exchange_type).first()
+    
+    if existing:
+        existing.api_key = api_key
+        existing.api_secret = api_secret
+        existing.connection_name = connection_name
+        existing.is_connected = False # Reset status to verify
+        conn = existing
+    else:
+        conn = ExchangeConnection(
+            user_id=current_user.id,
+            exchange_type=exchange_type,
+            api_key=api_key,
+            api_secret=api_secret,
+            connection_name=connection_name
+        )
+        db.session.add(conn)
+    
+    try:
+        db.session.commit()
+        
+        # Verify connection immediately
+        # In logic.py, get_user_exchange_client will try to create a client
+        # and set is_connected to True if successful
+        logic.clear_user_client(current_user.id)
+        client = logic.get_user_exchange_client(current_user.id)
+        
+        if client:
+            conn.is_connected = True
+            conn.last_verified = datetime.utcnow()
+            db.session.commit()
+            return jsonify({'success': True, 'message': f'Successfully connected to {exchange_type.capitalize()}!'})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to verify API keys. Please check permissions.'})
+            
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/disconnect-exchange/<int:conn_id>', methods=['POST'])
+@login_required
+def disconnect_exchange(conn_id):
+    conn = ExchangeConnection.query.filter_by(id=conn_id, user_id=current_user.id).first()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Connection not found'}), 404
+    
+    try:
+        db.session.delete(conn)
+        db.session.commit()
+        logic.clear_user_client(current_user.id)
+        return jsonify({'success': True, 'message': 'Exchange disconnected.'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/subscribe')
+@login_required
+def subscribe():
+    # If already subscribed and not expired, show status
+    is_admin = getattr(current_user, 'is_admin', False) or current_user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
+    
+    if is_admin:
+        flash("You have admin access with unlimited features.", "info")
+        return redirect(url_for('index'))
+        
+    return render_template('subscribe.html', user=current_user)
+
+@app.route('/payment/create', methods=['POST'])
+@login_required
+def create_payment():
+    plan_type = request.form.get('plan') # monthly/yearly
+    
+    amount = 490000 if plan_type == 'monthly' else 4900000 # In paise (INR 4,900 or 49,000)
+    
+    try:
+        order = razorpay_client.order.create({
+            'amount': amount,
+            'currency': 'INR',
+            'payment_capture': '1'
+        })
+        return jsonify(order)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/payment/verify', methods=['POST'])
+@login_required
+def verify_payment():
+    data = request.get_json()
+    
+    # Verify signature
+    try:
+        razorpay_client.utility.verify_payment_signature({
+            'razorpay_order_id': data['razorpay_order_id'],
+            'razorpay_payment_id': data['razorpay_payment_id'],
+            'razorpay_signature': data['razorpay_signature']
+        })
+        
+        # Payment successful - Update user subscription
+        plan_type = data.get('plan', 'monthly')
+        duration_days = 30 if plan_type == 'monthly' else 365
+        
+        current_user.is_subscribed = True
+        current_user.subscription_status = 'active'
+        current_user.subscription_type = plan_type
+        current_user.subscription_start = datetime.utcnow()
+        current_user.subscription_end = datetime.utcnow() + timedelta(days=duration_days)
+        
+        # Log history
+        history = SubscriptionHistory(
+            user_id=current_user.id,
+            plan_type=plan_type,
+            start_date=current_user.subscription_start,
+            end_date=current_user.subscription_end,
+            status='active'
+        )
+        
+        db.session.add(history)
+        db.session.commit()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/close_position/<symbol>', methods=['POST'])
+@login_required
+@subscription_required
+def close_position_api(symbol):
+    result = logic.close_position(symbol, current_user.id)
+    return jsonify(result)
+
+@app.route('/partial_close', methods=['POST'])
+@login_required
+@subscription_required
+def partial_close_api():
+    data = request.get_json()
+    symbol = data.get('symbol')
+    close_percent = float(data.get('close_percent', 50))
+    result = logic.partial_close_position(symbol, close_percent=close_percent, user_id=current_user.id)
+    return jsonify(result)
+
+@app.route('/update_sl', methods=['POST'])
+@login_required
+@subscription_required
+def update_sl_api():
+    data = request.get_json()
+    symbol = data.get('symbol')
+    new_sl_percent = float(data.get('new_sl_percent', 0))
+    # Note: In logic.py, update_stop_loss calls trail_stop_loss
+    result = logic.update_stop_loss(symbol, new_sl_percent, current_user.id)
+    return jsonify(result)
+
+@app.route('/download_trades')
+@login_required
+@subscription_required
+def download_trades():
+    trades = logic.get_trade_history(current_user.id)
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Time', 'Symbol', 'Side', 'Qty', 'Price', 'PnL', 'Commission', 'OrderID', 'SL', 'CurrentSL', 'TP1', 'TP1%', 'TP2', 'TP2%', 'Status'])
+    
+    for trade in trades:
+        writer.writerow([trade.get('time', ''), trade.get('symbol', ''), trade.get('side', ''), 
+                        trade.get('qty', ''), trade.get('price', ''), trade.get('realized_pnl', ''), 
+                        trade.get('commission', ''), trade.get('order_id', ''),
+                        trade.get('sl_price', ''), trade.get('current_sl', ''),
+                        trade.get('tp1_price', ''), trade.get('tp1_qty_pct', ''),
+                        trade.get('tp2_price', ''), trade.get('remain_qty_pct', ''),
+                        trade.get('position_status', '')])
+    
+    return Response(output.getvalue(), mimetype='text/csv', 
+                   headers={'Content-Disposition': f'attachment; filename=trade_history_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'})
+
+@app.route('/create-admin')
+def create_admin():
+    """Debug route to create admin user test@test.com / Test@123"""
+    try:
+        admin_email = "test@test.com"
+        admin_pass = "Test@123"
+        
+        user = User.query.filter_by(email=admin_email).first()
+        if not user:
+            user = User(
+                username="admin_test",
+                email=admin_email,
+                password=generate_password_hash(admin_pass),
+                is_admin=True,
+                is_subscribed=True,
+                subscription_status='active',
+                subscription_end=datetime.utcnow() + timedelta(days=3650)
+            )
+            db.session.add(user)
+            db.session.commit()
+            return f"✅ Admin user {admin_email} created with password {admin_pass}. You can now login."
+        else:
+            user.is_admin = True
+            user.is_subscribed = True
+            user.subscription_status = 'active'
+            user.subscription_end = datetime.utcnow() + timedelta(days=3650)
+            db.session.commit()
+            return f"✅ User {admin_email} already exists. Updated to Admin status. You can login with your password."
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
 
 @app.route('/test-binance')
 @login_required
-@subscription_required
 def test_binance():
-    """Test Binance connectivity for logged-in user"""
+    """Debug route to test Binance connectivity for current user"""
     try:
-        import logic
-        client = logic.get_client(current_user.id)
-        balance, margin = logic.get_live_balance(current_user.id)
-        btc_price = logic.get_live_price('BTCUSDT', current_user.id)
-        symbols = logic.get_all_exchange_symbols(current_user.id)[:5]  # First 5
+        client = logic.get_user_exchange_client(current_user.id)
+        if not client:
+            return "❌ No Binance connection found for your account."
         
-        proxy_status = 'Configured' if getattr(config, 'PROXY_URL', None) else 'Not set'
-        
-        test_result = {
-            'status': 'success',
-            'client_available': client is not None,
-            'balance': balance,
-            'margin_used': margin,
-            'btc_price': btc_price,
-            'symbol_count': len(symbols),
-            'sample_symbols': symbols,
-            'proxy_status': proxy_status,
-            'message': '✅ Binance connection OK!' if client else '⚠️ No connection - add your exchange keys'
-        }
-        return jsonify(test_result)
+        acc = client.futures_account(recvWindow=10000)
+        balance = acc.get('totalWalletBalance', '0')
+        return f"✅ Successfully connected! Your Futures Wallet Balance: {balance} USDT"
     except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'error': str(e),
-            'message': '❌ Test failed - check VPN/proxy if geo-restricted'
-        }), 500
+        return f"❌ Connection Error: {str(e)}"
 
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000, debug=True)
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+        ensure_sqlite_trade_positions_columns()
+    app.run(debug=True, port=5000)

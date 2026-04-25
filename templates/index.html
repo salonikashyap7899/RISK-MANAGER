@@ -423,7 +423,12 @@
             </div>
 
             <div class="status" style="padding: 4px; margin: 4px 0;">
-                <strong style="font-size: 9px;">📊 Daily Limits:</strong>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong style="font-size: 9px;">📊 Daily Limits:</strong>
+                    {% if user.is_admin or user.email in ['admin@mindriskcontrol.com', 'test@test.com'] %}
+                    <button type="button" onclick="adminResetDailyTrades()" style="background: #ff4444; color: white; border: none; padding: 1px 4px; border-radius: 2px; font-size: 7px; cursor: pointer;">Reset Admin</button>
+                    {% endif %}
+                </div>
                 <span style="font-size: 8px;">Total: <span id="total_trades_display">{{today_stats.total_trades}}/{{today_stats.max_trades}}</span> | <span id="symbol_trades_label">{{selected_symbol}}</span>: <span id="symbol_trades_display">{{ today_stats.symbol_trades.get(selected_symbol, 0) if today_stats.symbol_trades else 0 }}/{{today_stats.max_per_symbol}}</span></span>
                 <progress id="daily_limit_progress" class="daily-limit-progress{% if today_stats.total_trades >= today_stats.max_trades %} limit-over{% endif %}" value="{{ today_stats.total_trades }}" max="{{ today_stats.max_trades or 1 }}" aria-label="Daily total trades used versus limit"></progress>
             </div>
@@ -1462,11 +1467,22 @@
     }
     // Auto refresh intervals - OPTIMIZED for performance
     setInterval(updateLivePrice, 5000);     // Price 5s (was 1s - too frequent for external API)
-    setInterval(updateLivePositions, 10000); // Positions 10s (was 3s - reduce Binance API calls)
+    setInterval(updateLivePositions, 5000); // Positions 5s (was 10s - user wants faster refresh)
     setInterval(updateLiveDataOnly, 2000);  // ✅ LIVE Liquidation Prices: 2s (real-time updates)
-    setInterval(updateTradeHistory, 30000);  // History 30s (was 5s - trade history doesn't change often)
+    setInterval(updateTradeHistory, 10000);  // History 10s (was 30s - user wants faster refresh)
     setInterval(updateTradeLimits, 10000);  // Limits 10s (unchanged - local data)
     setInterval(updateLiveTradeLog, 2000);  // Live log 2s (unchanged - local data)
+
+    function adminResetDailyTrades() {
+        if (confirm("Admin: Reset your daily trade count?")) {
+            fetch('/api/admin/reset_daily_trades', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                alert(data.message);
+                updateTradeLimits();
+            });
+        }
+    }
     
     // ✅ FIXED: Ensure updateLivePrice runs AFTER DOM is fully loaded with correct symbol
     document.addEventListener('DOMContentLoaded', function() {
