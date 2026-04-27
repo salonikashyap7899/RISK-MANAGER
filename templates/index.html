@@ -1503,10 +1503,12 @@
     // Keep these but they now run AFTER DOMContentLoaded ensures symbol is ready
     document.addEventListener('DOMContentLoaded', function() {
         setTimeout(() => {
-            updateLivePositions();
-            updateTradeHistory();
+            const sym = getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}';
+            updateLivePositions(sym, true);
+            updateTradeHistory(sym);
             updateTradeLimits();
             updateLiveTradeLog();
+            updateEmbeddedCoinDetails(sym, true);
         }, 200);
     });
     
@@ -2013,14 +2015,10 @@
         
         // Construct URL with optional symbol filter
         let url = '/get_open_positions';
-        if (targetSymbol) {
-            url += `?symbol=${encodeURIComponent(targetSymbol)}`;
-            if (forceFresh) url += '&fresh=1';
-        } else if (forceFresh) {
-            url += '?fresh=1';
-        }
-        // Always bust browser cache
-        url += (url.includes('?') ? '&' : '?') + `_t=${Date.now()}`;
+        const qp = [];
+        if (forceFresh) qp.push('fresh=1');
+        qp.push(`_t=${Date.now()}`);
+        url += '?' + qp.join('&');
         
         fetch(url)
         .then(r => r.json())
@@ -2324,9 +2322,9 @@
 
         let url = '/get_open_positions';
         const params = [];
-        if (targetSymbol) params.push(`symbol=${encodeURIComponent(targetSymbol)}`);
         if (forceFresh) params.push('fresh=1');
-        if (params.length > 0) url += `?${params.join('&')}`;
+        params.push(`_t=${Date.now()}`);
+        url += `?${params.join('&')}`;
 
         fetch(url)
         .then(r => r.json())
