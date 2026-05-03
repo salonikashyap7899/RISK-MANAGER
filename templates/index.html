@@ -829,6 +829,8 @@
             if (data.positions) {
                 currentPositions = {};
                 data.positions.forEach(pos => {
+                    // ✅ Ensure leverage is correctly typed, fallback to 0/null for loading state
+                    pos.leverage = pos.leverage ? parseFloat(pos.leverage) : 0;
                     currentPositions[pos.symbol] = pos;
                 });
                 
@@ -860,7 +862,7 @@
                         currentPositions[symbol].dashboard_roi_percent = liveData.roi_percent;
                         currentPositions[symbol].margin_ratio = liveData.margin_ratio;
                         currentPositions[symbol].dashboard_margin_ratio = liveData.margin_ratio;
-                        currentPositions[symbol].leverage = liveData.leverage; // ✅ UPDATE LIVE LEVERAGE
+                        currentPositions[symbol].leverage = liveData.leverage ? parseFloat(liveData.leverage) : 0; // ✅ UPDATE LIVE LEVERAGE
                         currentPositions[symbol].timestamp = liveData.timestamp;
                     }
                 });
@@ -891,7 +893,7 @@
                         <div style="display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 8px;">
                             <span style="font-weight: bold; color: ${pos.side === 'LONG' ? '#00ff88' : '#ff4444'}; font-size: 12px;">${pos.symbol} <span style="font-size: 10px; color: #888;">${pos.side}</span></span>
                             <div style="display: flex; align-items: center; gap: 6px;">
-                                <small style="color: #00d4ff; font-size: 10px; font-weight: bold;"><span id="lev_val_${pos.symbol}">${pos.leverage}</span>x Leverage</small>
+                                <small style="color: #00d4ff; font-size: 10px; font-weight: bold;"><span id="lev_val_${pos.symbol}">${pos.leverage > 0 ? pos.leverage : '...'}</span>x Leverage</small>
                                 <button onclick="editLeverageMod('${pos.symbol}')" style="background: linear-gradient(135deg, #ffbf3f 0%, #ff8a00 100%); color: #081017; border: none; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold; text-transform: uppercase; box-shadow: 0 0 5px rgba(255, 191, 63, 0.3);">Lev</button>
                             </div>
                         </div>
