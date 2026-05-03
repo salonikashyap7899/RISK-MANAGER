@@ -428,7 +428,7 @@ def get_open_positions(user_id=None, force_refresh=False):
                 mark_price = float(pos.get('markPrice', 0))
                 unrealized_pnl = float(pos.get('unRealizedProfit', 0))
                 liquidation_price = float(pos.get('liquidationPrice', 0))
-                leverage = int(pos.get('leverage', 1))
+                leverage = int(pos.get('leverage', 0))
                 notional = float(pos.get('notional', 0))
                 
                 initial_margin = abs(notional) / leverage if leverage > 0 else abs(notional)
@@ -496,7 +496,7 @@ def get_open_positions_live(user_id=None):
                 mark_price = float(pos.get('markPrice', 0))
                 unrealized_pnl = float(pos.get('unRealizedProfit', 0))
                 liquidation_price = float(pos.get('liquidationPrice', 0))
-                leverage = int(pos.get('leverage', 1))
+                leverage = int(pos.get('leverage', 0))
                 notional = float(pos.get('notional', 0))
                 
                 initial_margin = abs(notional) / leverage if leverage > 0 else abs(notional)
@@ -568,6 +568,9 @@ def get_all_open_conditional_orders(user_id=None):
         # Use a large recvWindow to prevent timestamp issues
         all_orders = client.futures_get_open_orders(recvWindow=10000)
         
+        # [DEBUG] Log all orders to see types
+        print(f"[DEBUG] All open orders from Binance: {[(o.get('type'), o.get('stopPrice'), o.get('symbol')) for o in all_orders]}")
+
         # Comprehensive list of conditional/trigger order types
         conditional_types = [
             'STOP', 'STOP_MARKET', 
@@ -582,12 +585,15 @@ def get_all_open_conditional_orders(user_id=None):
             o_type = o.get('type', '').upper()
             # Also include any order with a stopPrice > 0 as it's a conditional trigger order
             has_stop_price = float(o.get('stopPrice', 0)) > 0
+            has_activate_price = float(o.get('activatePrice', 0)) > 0
             
-            if o_type in conditional_types or has_stop_price:
+            if o_type in conditional_types or has_stop_price or has_activate_price:
+                label = 'SL' if 'STOP' in o_type else ('TP' if 'TAKE_PROFIT' in o_type else ('Trail SL' if 'TRAILING' in o_type else o_type))
                 conditional_orders.append({
                     'orderId': o.get('orderId'),
                     'symbol': o.get('symbol'),
                     'type': o_type,
+                    'label': label,
                     'side': o.get('side'),
                     'stopPrice': float(o.get('stopPrice', 0)),
                     'price': float(o.get('price', 0)),

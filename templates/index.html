@@ -565,18 +565,7 @@
                 <div id="warning-list"></div>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; padding: 4px 0 0 0; margin: 0; flex: 1; min-height: 0;">
-                <div class="dashboard-card positions-card" style="padding: 8px; display: flex; flex-direction: column; min-height: 0; border: 1px solid #0ca7d4; background: #0b0f12; border-radius: 6px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px 0; border-bottom: 1px solid #0ca7d4; padding: 0 0 4px 0;">
-                        <h3 style="color: #00d4ff; margin: 0; font-size: 11px; font-weight: bold;" id="position_header">📍 LIVE POSITIONS (0)</h3>
-                        <button type="button" onclick="closeAllPositions()" aria-label="Close all open positions" style="background: #cc0000; color: #fff; border: none; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold; transition: all 0.2s;">Close All</button>
-                    </div>
-
-                    <div id="live_positions" class="positions-scroll" style="overflow-y: auto; flex: 1; min-height: 0; font-size: 9px; margin: 0; padding: 0 4px;">
-                        <div style="text-align: center; color: #555; padding: 40px 2px; font-size: 10px;">No open positions yet<br><small style="color: #444;">Place a trade to see live position details</small></div>
-                    </div>
-                </div>
-
+                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px 0 0 0; margin: 0; flex: 1; min-height: 0;">
                 <div class="dashboard-card conditional-orders-card" style="padding: 8px; display: flex; flex-direction: column; min-height: 0; border: 1px solid #ffaa00; background: #0b0f12; border-radius: 6px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px 0; border-bottom: 1px solid #ffaa00; padding: 0 0 4px 0;">
                         <h3 style="color: #ffaa00; margin: 0; font-size: 11px; font-weight: bold;" id="conditional_header">⏳ CONDITIONAL (0)</h3>
@@ -606,6 +595,17 @@
     <div class="panel right dashboard-right">
         <div class="dashboard-section chart-section">
             <div id="tv_chart" class="dashboard-chart"></div>
+        </div>
+
+        <div class="dashboard-card positions-card" style="padding: 8px; display: flex; flex-direction: column; min-height: 0; border: 1px solid #0ca7d4; background: #0b0f12; border-radius: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px 0; border-bottom: 1px solid #0ca7d4; padding: 0 0 4px 0;">
+                <h3 style="color: #00d4ff; margin: 0; font-size: 11px; font-weight: bold;" id="position_header">📍 LIVE POSITIONS (0)</h3>
+                <button type="button" onclick="closeAllPositions()" aria-label="Close all open positions" style="background: #cc0000; color: #fff; border: none; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold; transition: all 0.2s;">Close All</button>
+            </div>
+
+            <div id="live_positions" class="positions-scroll" style="overflow-y: auto; flex: 1; min-height: 0; font-size: 9px; margin: 0; padding: 0 4px;">
+                <div style="text-align: center; color: #555; padding: 40px 2px; font-size: 10px;">No open positions yet<br><small style="color: #444;">Place a trade to see live position details</small></div>
+            </div>
         </div>
 
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
@@ -1029,11 +1029,11 @@
                                 <span style="font-weight: bold; color: #e9fbff;">${o.symbol}</span>
                                 <span style="color: ${sideColor}; font-weight: bold;">${o.side}</span>
                             </div>
-                            <div style="color: #ffaa00; font-size: 9px; margin-bottom: 4px; font-weight: bold;">${typeLabel}</div>
+                            <div style="color: #ffaa00; font-size: 9px; margin-bottom: 4px; font-weight: bold;">${o.label || typeLabel}</div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; color: #aaa; font-size: 9px;">
                                 <div>Qty: <span style="color: #fff;">${o.origQty}</span></div>
-	                                <div>Stop: <span style="color: #fff;">$${o.stopPrice > 0 ? o.stopPrice.toFixed(4) : (o.price > 0 ? o.price.toFixed(4) : '0.0000')}</span></div>
-	                            </div>
+                                <div>Stop: <span style="color: #fff;">$${o.stopPrice > 0 ? o.stopPrice.toFixed(4) : (o.price > 0 ? o.price.toFixed(4) : 'N/A')}</span></div>
+                            </div>
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <span style="color: #555; font-size: 8px;">${o.time}</span>
                                 <button onclick="cancelOrder('${o.symbol}', '${o.orderId}')" style="background: #cc0000; color: #fff; border: none; padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 9px; font-weight: bold;">Cancel</button>
@@ -2393,7 +2393,7 @@
                     unrealized_pnl: parseFloat(pos.unrealized_pnl ?? pos.unrealizedPnL ?? 0),
                     roi_percent: parseFloat(pos.roi_percent ?? 0),
                     dashboard_roi_percent: parseFloat(pos.dashboard_roi_percent ?? pos.roi_percent ?? 0),
-                    leverage: parseFloat(pos.leverage ?? 1),
+                    leverage: parseFloat(pos.leverage ?? 0),
                     liquidation_price: parseFloat(pos.liquidation_price ?? pos.liquidationPrice ?? 0),
                     open_orders: Array.isArray(pos.open_orders) ? pos.open_orders : [],
                     timestamp: pos.timestamp || ''
@@ -2479,6 +2479,9 @@
         updateEmbeddedCoinDetails();
         updateTradeHistory();
     }, 30000);
+
+    // Refresh conditional orders every 10 seconds
+    setInterval(updateConditionalOrders, 10000);
 
     window.onclick = function(event) {
         const modal = document.getElementById('coin-details-modal');

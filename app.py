@@ -1054,6 +1054,7 @@ def change_leverage():
 
 @app.route('/api/conditional_orders')
 @login_required
+@subscription_required
 def get_conditional_orders():
     """API endpoint to fetch all open conditional orders"""
     try:
