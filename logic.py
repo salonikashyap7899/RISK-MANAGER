@@ -558,66 +558,121 @@ def get_open_orders_for_symbol(symbol, user_id=None):
         return []
 
 def get_all_open_conditional_orders(user_id=None):
-    """Fetches all open conditional orders (STOP, TAKE_PROFIT, etc.) for all symbols"""
     try:
         client = get_client(user_id)
-        if client is None: 
+        if client is None:
             return []
-        
-        # Fetch all open orders for the account
-        # Use a large recvWindow to prevent timestamp issues
-        all_orders = client.futures_get_open_orders(recvWindow=10000)
-        
-        # [DEBUG] Log all orders to see types
-        print(f"[DEBUG] All open orders from Binance: {[(o.get('type'), o.get('stopPrice'), o.get('symbol')) for o in all_orders]}")
 
-        # Comprehensive list of conditional/trigger order types
+        # --- Fetch regular open orders ---
+        all_orders = client.futures_get_open_orders(recvWindow=10000)
+        print(f"[DEBUG] Regular open orders: {[(o.get('type'), o.get('stopPrice'), o.get('symbol')) for o in all_orders]}")
+
         conditional_types = [
-            'STOP', 'STOP_MARKET', 
-            'TAKE_PROFIT', 'TAKE_PROFIT_MARKET', 
+            'STOP', 'STOP_MARKET',
+            'TAKE_PROFIT', 'TAKE_PROFIT_MARKET',
             'TRAILING_STOP_MARKET',
             'STOP_LOSS', 'STOP_LOSS_LIMIT',
             'TAKE_PROFIT_LIMIT'
         ]
-        
+
         conditional_orders = []
+        seen_ids = set()
+
         for o in all_orders:
             o_type = o.get('type', '').upper()
-            # Also include any order with a stopPrice > 0 as it's a conditional trigger order
             has_stop_price = float(o.get('stopPrice', 0)) > 0
             has_activate_price = float(o.get('activatePrice', 0)) > 0
-            
+
             if o_type in conditional_types or has_stop_price or has_activate_price:
                 label = 'SL' if 'STOP' in o_type else ('TP' if 'TAKE_PROFIT' in o_type else ('Trail SL' if 'TRAILING' in o_type else o_type))
-                conditional_orders.append({
-                    'orderId': o.get('orderId'),
-                    'symbol': o.get('symbol'),
-                    'type': o_type,
-                    'label': label,
-                    'side': o.get('side'),
-                    'stopPrice': float(o.get('stopPrice', 0)),
-                    'price': float(o.get('price', 0)),
-                    'origQty': float(o.get('origQty', 0)),
-                    'time': datetime.fromtimestamp(o.get('time', 0) / 1000).strftime('%Y-%m-%d %H:%M:%S'),
-                    'reduceOnly': o.get('reduceOnly', False)
-                })
-        
+                oid = str(o.get('orderId', ''))
+                if oid not in seen_ids:
+                    seen_ids.add(oid)
+                    conditional_orders.append({
+                        'orderId': o.get('orderId'),
+                        'symbol': o.get('symbol'),
+                        'type': o_type,
+                        'label': label,
+                        'side': o.get('side'),
+                        'stopPrice': float(o.get('stopPrice', 0)),
+                        'price': float(o.get('price', 0)),
+                        'origQty': float(o.get('origQty', 0)),
+                        'time': datetime.fromtimestamp(o.get('time', 0) / 1000).strftime('%Y-%m-%d %H:%M:%S'),
+                        'reduceOnly': o.get('reduceOnly', False),
+                        'source': 'regular'
+                    })
+
+        # --- Fetch algo/conditional orders (TP1 lives here) ---
+        try:
+            algo_resp = None
+            # Try multiple methods to fetch algo orders
+            if hasattr(client, 'futures_get_algo_orders'):
+                algo_resp = client.futures_get_algo_orders(recvWindow=10000)
+            elif hasattr(client, '_request_futures_api'):
+                algo_resp = client._request_futures_api('get', 'algoOrder/openOrders', True, data={'recvWindow': 10000})
+            
+            if algo_resp is not None:
+                # Response may be a list or a dict with 'orders' key
+                algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
+                print(f"[DEBUG] Algo open orders: {[(o.get('type'), o.get('triggerPrice'), o.get('symbol')) for o in algo_orders]}")
+
+                for o in algo_orders:
+                    o_type = (o.get('type') or o.get('algoType') or '').upper()
+                    algo_id = str(o.get('algoId') or o.get('orderId') or '')
+                    trigger_price = float(o.get('triggerPrice') or o.get('stopPrice') or 0)
+                    qty = float(o.get('qty') or o.get('origQty') or 0)
+                    book_time = o.get('bookTime') or o.get('time') or 0
+
+                    label = 'TP1' if 'TAKE_PROFIT' in o_type else ('SL' if 'STOP' in o_type else ('Trail SL' if 'TRAILING' in o_type else o_type))
+
+                    if algo_id not in seen_ids:
+                        seen_ids.add(algo_id)
+                        conditional_orders.append({
+                            'orderId': algo_id,
+                            'symbol': o.get('symbol'),
+                            'type': o_type,
+                            'label': label,
+                            'side': o.get('side'),
+                            'stopPrice': trigger_price,
+                            'price': float(o.get('price') or 0),
+                            'origQty': qty,
+                            'time': datetime.fromtimestamp(int(book_time) / 1000).strftime('%Y-%m-%d %H:%M:%S') if book_time else 'N/A',
+                            'reduceOnly': o.get('reduceOnly', True),
+                            'source': 'algo'
+                        })
+        except Exception as algo_err:
+            print(f"[DEBUG] Algo orders fetch failed (non-fatal): {algo_err}")
+
         # Sort by time descending
         conditional_orders.sort(key=lambda x: x['time'], reverse=True)
         return conditional_orders
+
     except Exception as e:
         print(f"Error fetching conditional orders: {e}")
         return []
 
 def cancel_order(symbol, order_id, user_id=None):
-    """Cancels a specific order on Binance"""
     try:
         client = get_client(user_id)
-        if client is None: 
+        if client is None:
             return False, "Exchange connection not found"
-        
-        client.futures_cancel_order(symbol=symbol, orderId=order_id)
-        return True, "Order cancelled successfully"
+
+        # Try regular cancel first
+        try:
+            client.futures_cancel_order(symbol=symbol, orderId=order_id)
+            return True, "Order cancelled successfully"
+        except BinanceAPIException as e:
+            # If regular cancel fails, try algo cancel
+            if e.code in [-2011, -2013]:  # Order does not exist as regular order
+                try:
+                    if hasattr(client, 'futures_cancel_algo_order'):
+                        client.futures_cancel_algo_order(algoId=order_id)
+                    elif hasattr(client, '_request_futures_api'):
+                        client._request_futures_api('delete', 'algoOrder', True, data={'algoId': order_id})
+                    return True, "Algo order cancelled successfully"
+                except Exception as algo_cancel_err:
+                    return False, f"Algo cancel failed: {str(algo_cancel_err)}"
+            return False, str(e)
     except Exception as e:
         print(f"Error cancelling order {order_id}: {e}")
         return False, str(e)
