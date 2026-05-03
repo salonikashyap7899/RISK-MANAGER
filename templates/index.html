@@ -565,7 +565,7 @@
                 <div id="warning-list"></div>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px 0 0 0; margin: 0; flex: 1; min-height: 0;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; padding: 4px 0 0 0; margin: 0; flex: 1; min-height: 0;">
                 <div class="dashboard-card positions-card" style="padding: 8px; display: flex; flex-direction: column; min-height: 0; border: 1px solid #0ca7d4; background: #0b0f12; border-radius: 6px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px 0; border-bottom: 1px solid #0ca7d4; padding: 0 0 4px 0;">
                         <h3 style="color: #00d4ff; margin: 0; font-size: 11px; font-weight: bold;" id="position_header">📍 LIVE POSITIONS (0)</h3>
@@ -577,10 +577,21 @@
                     </div>
                 </div>
 
+                <div class="dashboard-card conditional-orders-card" style="padding: 8px; display: flex; flex-direction: column; min-height: 0; border: 1px solid #ffaa00; background: #0b0f12; border-radius: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px 0; border-bottom: 1px solid #ffaa00; padding: 0 0 4px 0;">
+                        <h3 style="color: #ffaa00; margin: 0; font-size: 11px; font-weight: bold;" id="conditional_header">⏳ CONDITIONAL (0)</h3>
+                        <button type="button" onclick="updateConditionalOrders()" style="background: rgba(255, 170, 0, 0.1); color: #ffaa00; border: 1px solid #ffaa00; padding: 1px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; font-weight: bold;">Refresh</button>
+                    </div>
+
+                    <div id="conditional_orders" class="orders-scroll" style="overflow-y: auto; flex: 1; min-height: 0; font-size: 9px; margin: 0; padding: 0 4px;">
+                        <div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">No conditional orders</div>
+                    </div>
+                </div>
+
                 <div class="dashboard-card recent-trades-card" style="padding: 8px; display: flex; flex-direction: column; min-height: 0; border: 1px solid #0ca7d4; background: #0b0f12; border-radius: 6px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px 0; border-bottom: 1px solid #0ca7d4; padding: 0 0 4px 0;">
                         <h3 style="color: #00d4ff; margin: 0; font-size: 11px; font-weight: bold;">📊 TRADES</h3>
-                        <a href="/download_trades" style="color: #0ca7d4; text-decoration: none; font-weight: bold; font-size: 9px; background: rgba(12, 167, 212, 0.1); padding: 2px 6px; border-radius: 3px; border: 1px solid rgba(12, 167, 212, 0.3);">CSV Export</a>
+                        <a href="/download_trades" style="color: #0ca7d4; text-decoration: none; font-weight: bold; font-size: 9px; background: rgba(12, 167, 212, 0.1); padding: 2px 6px; border-radius: 3px; border: 1px solid rgba(12, 167, 212, 0.3);">CSV</a>
                     </div>
 
                     <div id="trade_history" class="trade-history-box" style="overflow-y: auto; flex: 1; min-height: 0; background: #000; border: 1px solid #1a3a45; border-radius: 4px; padding: 4px; font-family: monospace; font-size: 9px; line-height: 1.4; margin: 0;">
@@ -990,6 +1001,70 @@
                 }
             });
         });
+    }
+
+    function updateConditionalOrders() {
+        const container = document.getElementById('conditional_orders');
+        const header = document.getElementById('conditional_header');
+        if (!container) return;
+
+        fetch('/api/conditional_orders')
+        .then(r => r.json())
+        .then(data => {
+            const orders = Array.isArray(data.orders) ? data.orders : [];
+            header.textContent = `⏳ CONDITIONAL (${orders.length})`;
+            
+            if (orders.length > 0) {
+                let html = '';
+                orders.forEach(o => {
+                    const sideColor = o.side === 'BUY' ? '#00ff88' : '#ff4444';
+                    const typeLabel = o.type.replace(/_/g, ' ');
+                    html += `
+                        <div style="border: 1px solid #333; padding: 8px; margin-bottom: 6px; border-radius: 4px; background: rgba(20, 20, 20, 0.6); font-size: 10px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; border-bottom: 1px solid #222; padding-bottom: 4px;">
+                                <span style="font-weight: bold; color: #e9fbff;">${o.symbol}</span>
+                                <span style="color: ${sideColor}; font-weight: bold;">${o.side}</span>
+                            </div>
+                            <div style="color: #ffaa00; font-size: 9px; margin-bottom: 4px; font-weight: bold;">${typeLabel}</div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; color: #aaa; font-size: 9px;">
+                                <div>Qty: <span style="color: #fff;">${o.origQty}</span></div>
+                                <div>Stop: <span style="color: #fff;">$${o.stopPrice.toFixed(4)}</span></div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="color: #555; font-size: 8px;">${o.time}</span>
+                                <button onclick="cancelOrder('${o.symbol}', '${o.orderId}')" style="background: #cc0000; color: #fff; border: none; padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 9px; font-weight: bold;">Cancel</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = '<div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">No conditional orders</div>';
+            }
+        })
+        .catch(err => {
+            console.error('Error fetching conditional orders:', err);
+            container.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 40px 0; font-size: 10px;">Error loading orders</div>';
+        });
+    }
+
+    function cancelOrder(symbol, orderId) {
+        if (!confirm(`Cancel order ${orderId} for ${symbol}?`)) return;
+        
+        fetch('/api/cancel_order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: symbol, orderId: orderId })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                updateConditionalOrders();
+            } else {
+                alert(`Error: ${data.error}`);
+            }
+        })
+        .catch(err => alert(`Error: ${err.message}`));
     }
 
     function updateTradeHistory() {
@@ -2273,6 +2348,7 @@
         updatePositionSizing(activeSymbol);
         updateLivePositions(activeSymbol, forceFresh);
         updateTradeHistory(activeSymbol);
+        updateConditionalOrders();
         updateTradeLimits();
     }
 
@@ -2323,6 +2399,7 @@
             if (positions.length > 0) {
                 renderPositions();
                 updateLiveDataOnly();
+                updateConditionalOrders();
             } else {
                 currentPositions = {};
                 if (headerEl) {

@@ -557,6 +557,54 @@ def get_open_orders_for_symbol(symbol, user_id=None):
     except Exception:
         return []
 
+def get_all_open_conditional_orders(user_id=None):
+    """Fetches all open conditional orders (STOP, TAKE_PROFIT, etc.) for all symbols"""
+    try:
+        client = get_client(user_id)
+        if client is None: 
+            return []
+        
+        # Fetch all open orders for the account
+        all_orders = client.futures_get_open_orders(recvWindow=10000)
+        
+        conditional_types = ['STOP', 'STOP_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_MARKET', 'TRAILING_STOP_MARKET']
+        
+        conditional_orders = []
+        for o in all_orders:
+            o_type = o.get('type')
+            if o_type in conditional_types:
+                conditional_orders.append({
+                    'orderId': o.get('orderId'),
+                    'symbol': o.get('symbol'),
+                    'type': o_type,
+                    'side': o.get('side'),
+                    'stopPrice': float(o.get('stopPrice', 0)),
+                    'price': float(o.get('price', 0)),
+                    'origQty': float(o.get('origQty', 0)),
+                    'time': datetime.fromtimestamp(o.get('time', 0) / 1000).strftime('%Y-%m-%d %H:%M:%S'),
+                    'reduceOnly': o.get('reduceOnly', False)
+                })
+        
+        # Sort by time descending
+        conditional_orders.sort(key=lambda x: x['time'], reverse=True)
+        return conditional_orders
+    except Exception as e:
+        print(f"Error fetching conditional orders: {e}")
+        return []
+
+def cancel_order(symbol, order_id, user_id=None):
+    """Cancels a specific order on Binance"""
+    try:
+        client = get_client(user_id)
+        if client is None: 
+            return False, "Exchange connection not found"
+        
+        client.futures_cancel_order(symbol=symbol, orderId=order_id)
+        return True, "Order cancelled successfully"
+    except Exception as e:
+        print(f"Error cancelling order {order_id}: {e}")
+        return False, str(e)
+
 def run_virtual_tp_sl_guard(user_id=None):
     """
     Fallback TP/SL enforcement for symbols/accounts where Binance rejects algo order endpoints (-4120).

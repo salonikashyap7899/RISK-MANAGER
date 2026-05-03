@@ -1052,6 +1052,37 @@ def change_leverage():
         print(f"Error changing leverage: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/conditional_orders')
+@login_required
+def get_conditional_orders():
+    """API endpoint to fetch all open conditional orders"""
+    try:
+        orders = logic.get_all_open_conditional_orders(current_user.id)
+        return jsonify({"success": True, "orders": orders})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/cancel_order', methods=['POST'])
+@login_required
+def cancel_order_api():
+    """API endpoint to cancel a specific order"""
+    try:
+        data = request.get_json()
+        symbol = data.get('symbol')
+        order_id = data.get('orderId')
+        
+        if not symbol or not order_id:
+            return jsonify({"success": False, "error": "Missing symbol or orderId"}), 400
+            
+        success, message = logic.cancel_order(symbol, order_id, current_user.id)
+        if success:
+            logic.log_trade_event(current_user.id, f"🚫 Order {order_id} for {symbol} cancelled", "ORDER_CANCEL")
+            return jsonify({"success": True, "message": message})
+        else:
+            return jsonify({"success": False, "error": message}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
