@@ -1548,9 +1548,11 @@
                 if (condOrders.length > 0) {
                     let html = '';
                     condOrders.forEach(o => {
+                        // Ensure TP1 label is used for algo orders
+                        const label = o.label || (o.type.includes('TAKE_PROFIT') ? 'TP1' : o.type);
                         html += '<div style="padding:4px 6px; border-bottom:1px solid rgba(0,212,255,0.1); font-size:9px;">'
                             + '<span style="color:#00ffcc; font-weight:bold;">' + o.symbol + '</span>'
-                            + '<span style="color:#ffaa00; margin-left:6px;">' + (o.label || o.type) + '</span>'
+                            + '<span style="color:#ffaa00; margin-left:6px;">' + label + '</span>'
                             + '<span style="color:#fff; margin-left:6px;">@ ' + (o.stopPrice || o.price) + '</span>'
                             + '<span style="color:#81b8c5; margin-left:6px;">Qty: ' + o.origQty + '</span>'
                             + '<button onclick="cancelConditionalOrder(\'' + o.orderId + '\',\'' + o.symbol + '\')" style="float:right;background:#ff4444;color:#fff;border:none;border-radius:3px;padding:1px 5px;font-size:8px;cursor:pointer;">Cancel</button>'
@@ -1558,7 +1560,7 @@
                     });
                     condBox.innerHTML = html;
                 } else {
-                    condBox.innerHTML = '<div style="color:#81b8c5;font-size:9px;text-align:center;padding:10px;">No conditional orders</div>';
+                    condBox.innerHTML = '<div style="color:#81b8c5;font-size:9px;text-align:center;padding:10px;">No conditional orders (TP1)</div>';
                 }
             }
 
@@ -1567,16 +1569,21 @@
                 if (basicOrders.length > 0) {
                     let html = '';
                     basicOrders.forEach(o => {
+                        // Label TP2 or SL for basic orders
+                        let label = o.label || o.type;
+                        if (o.type.includes('TAKE_PROFIT')) label = 'TP2';
+                        else if (o.type.includes('STOP')) label = 'SL';
+                        
                         html += '<div style="padding:4px 6px; border-bottom:1px solid rgba(0,212,255,0.1); font-size:9px;">'
                             + '<span style="color:#00ffcc; font-weight:bold;">' + o.symbol + '</span>'
-                            + '<span style="color:#ff6b6b; margin-left:6px;">' + (o.label || o.type) + '</span>'
+                            + '<span style="color:#ff6b6b; margin-left:6px;">' + label + '</span>'
                             + '<span style="color:#fff; margin-left:6px;">@ ' + (o.stopPrice || o.price) + '</span>'
                             + '<span style="color:#81b8c5; margin-left:6px;">Qty: ' + o.origQty + '</span>'
                             + '</div>';
                     });
                     basicBox.innerHTML = html;
                 } else {
-                    basicBox.innerHTML = '<div style="color:#81b8c5;font-size:9px;text-align:center;padding:8px;">No basic orders (0)</div>';
+                    basicBox.innerHTML = '<div style="color:#81b8c5;font-size:9px;text-align:center;padding:8px;">No basic orders (SL/TP2)</div>';
                 }
             }
         })

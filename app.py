@@ -1056,7 +1056,9 @@ def change_leverage():
 @login_required
 def api_conditional_orders():
     orders = logic.get_all_open_conditional_orders(current_user.id)
-    conditional = [o for o in orders if o.get('source') == 'algo' or 'TAKE_PROFIT' in o.get('type','').upper()]
+    # TP1 comes in conditional order (source='algo')
+    # TP2 and SL come in basic order (source='regular')
+    conditional = [o for o in orders if o.get('source') == 'algo']
     basic = [o for o in orders if o.get('source') == 'regular']
     return jsonify({"conditional_orders": conditional, "basic_orders": basic, "success": True})
 
@@ -1069,8 +1071,9 @@ def api_cancel_conditional_order():
     if not order_id or not symbol:
         return jsonify({"success": False, "message": "Missing order_id or symbol"}), 400
     try:
-        result = logic.cancel_open_order(symbol, order_id, current_user.id)
-        return jsonify(result)
+        # Use logic.cancel_order which handles both regular and algo orders
+        success, message = logic.cancel_order(symbol, order_id, current_user.id)
+        return jsonify({"success": success, "message": message})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 

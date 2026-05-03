@@ -633,6 +633,7 @@ def get_all_open_conditional_orders(user_id=None):
                     qty = float(o.get('qty') or o.get('origQty') or 0)
                     book_time = o.get('bookTime') or o.get('time') or 0
 
+                    # User wants TP1 in conditional box
                     label = 'TP1' if 'TAKE_PROFIT' in o_type else ('SL' if 'STOP' in o_type else ('Trail SL' if 'TRAILING' in o_type else o_type))
 
                     if algo_id not in seen_ids:
@@ -1241,68 +1242,48 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         try:
             if tp2 > 0 and ((side=="LONG" and tp2>entry) or (side=="SHORT" and tp2<entry)):
                 tp2_qty = round_qty(symbol, qty - tp1_qty, user_id)
+                tp2_price = round_price(symbol, tp2, user_id)
+                
+                # Use basic order variants for TP2 (no closePosition=True to avoid conflicts)
+                tp2_variants = [
+                    {
+                        "symbol": symbol,
+                        "side": x_side,
+                        "type": "TAKE_PROFIT_MARKET",
+                        "stopPrice": tp2_price,
+                        "quantity": tp2_qty,
+                        "reduceOnly": True,
+                        "workingType": "MARK_PRICE",
+                    },
+                    {
+                        "symbol": symbol,
+                        "side": x_side,
+                        "type": "TAKE_PROFIT_MARKET",
+                        "stopPrice": tp2_price,
+                        "quantity": tp2_qty,
+                        "reduceOnly": True,
+                    },
+                    {
+                        "symbol": symbol,
+                        "side": x_side,
+                        "type": "TAKE_PROFIT",
+                        "stopPrice": tp2_price,
+                        "price": tp2_price,
+                        "quantity": tp2_qty,
+                        "reduceOnly": True,
+                        "timeInForce": "GTC",
+                        "workingType": "MARK_PRICE",
+                    }
+                ]
+                
                 if tp2_qty > 0:
-                    tp2_price = round_price(symbol, tp2, user_id)
-                    tp2_variants = [
-                        {
-                            "symbol": symbol,
-                            "side": x_side,
-                            "type": "TAKE_PROFIT_MARKET",
-                            "stopPrice": tp2_price,
-                            "quantity": tp2_qty,
-                            "reduceOnly": True,
-                            "workingType": "MARK_PRICE",
-                        },
-                        {
-                            "symbol": symbol,
-                            "side": x_side,
-                            "type": "TAKE_PROFIT_MARKET",
-                            "stopPrice": tp2_price,
-                            "quantity": tp2_qty,
-                            "reduceOnly": True,
-                        },
-                        {
-                            "symbol": symbol,
-                            "side": x_side,
-                            "type": "TAKE_PROFIT_MARKET",
-                            "stopPrice": tp2_price,
-                            "closePosition": True,
-                            "workingType": "MARK_PRICE",
-                        },
-                        {
-                            "symbol": symbol,
-                            "side": x_side,
-                            "type": "TAKE_PROFIT_MARKET",
-                            "stopPrice": tp2_price,
-                            "closePosition": True,
-                        },
-                        {
-                            "symbol": symbol,
-                            "side": x_side,
-                            "type": "TAKE_PROFIT",
-                            "stopPrice": tp2_price,
-                            "price": tp2_price,
-                            "quantity": tp2_qty,
-                            "reduceOnly": True,
-                            "timeInForce": "GTC",
-                            "workingType": "MARK_PRICE",
-                        },
-                        {
-                            "symbol": symbol,
-                            "side": x_side,
-                            "type": "TAKE_PROFIT",
-                            "stopPrice": tp2_price,
-                            "price": tp2_price,
-                            "quantity": tp2_qty,
-                            "reduceOnly": True,
-                            "timeInForce": "GTC",
-                        },
-                    ]
                     tp2_created, tp2_order, tp2_error = _create_order_with_fallbacks(tp2_variants)
                     if tp2_created and tp2_order and tp2_order.get("orderId"):
                         tp2_created = True
                         print(f"✅ TP2 order created: {tp2_order['orderId']}")
+                    
                     if not tp2_created:
+                        # Fallback to algo if regular fails
                         tp2_algo_variants = [
                             {
                                 "symbol": symbol,
@@ -1310,31 +1291,10 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                                 "side": x_side,
                                 "type": "TAKE_PROFIT_MARKET",
                                 "triggerPrice": tp2_price,
-                                "closePosition": "true",
-                                "workingType": "MARK_PRICE",
-                            },
-                            {
-                                "symbol": symbol,
-                                "algoType": "CONDITIONAL",
-                                "side": x_side,
-                                "type": "TAKE_PROFIT_MARKET",
-                                "triggerPrice": tp2_price,
                                 "quantity": tp2_qty,
                                 "reduceOnly": "true",
                                 "workingType": "MARK_PRICE",
-                            },
-                            {
-                                "symbol": symbol,
-                                "algoType": "CONDITIONAL",
-                                "side": x_side,
-                                "type": "TAKE_PROFIT",
-                                "triggerPrice": tp2_price,
-                                "price": tp2_price,
-                                "quantity": tp2_qty,
-                                "reduceOnly": "true",
-                                "timeInForce": "GTC",
-                                "workingType": "MARK_PRICE",
-                            },
+                            }
                         ]
                         tp2_created, tp2_algo_order, tp2_algo_error = _create_algo_order_with_fallbacks(tp2_algo_variants)
                         if tp2_created:
