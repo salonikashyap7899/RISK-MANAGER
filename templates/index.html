@@ -21,10 +21,7 @@
             50% { opacity: 0.5; }
         }
         .live-badge { animation: pulse 2s infinite; }
-        .panel.right.dashboard-right {
-            overflow: hidden;
-            padding: 6px;
-        }
+        
         .dashboard-right {
             display: flex;
             flex-direction: column;
@@ -35,6 +32,12 @@
             min-width: 0;
             overflow: hidden;
         }
+
+        .panel.right.dashboard-right {
+            overflow: hidden;
+            padding: 6px;
+        }
+
         .dashboard-section {
             background: linear-gradient(180deg, #09111a 0%, #0c141d 100%);
             border: 1px solid #0ca7d4;
@@ -43,6 +46,7 @@
             min-height: 0;
             min-width: 0;
         }
+
         .chart-section {
             display: flex;
             flex: 0 0 65%;
@@ -51,6 +55,7 @@
             min-height: 250px;
             max-height: 65%;
         }
+
         .dashboard-chart {
             width: 100%;
             height: 100%;
@@ -60,6 +65,7 @@
             overflow: hidden;
             background: #090d12;
         }
+
         .dashboard-card {
             background: linear-gradient(180deg, #09111a 0%, #0c141d 100%);
             border: 1px solid #0ca7d4;
@@ -70,6 +76,7 @@
             min-width: 0;
             box-sizing: border-box;
         }
+
         .positions-card {
             padding: 7px 9px;
             display: flex;
@@ -79,12 +86,14 @@
             max-height: 35%;
             overflow: hidden;
         }
+
         .positions-scroll {
             flex: 1 1 auto;
             min-height: 0;
             overflow-y: auto;
             padding-right: 2px;
         }
+
         .dashboard-bottom-row {
             display: grid;
             grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
@@ -298,17 +307,9 @@
             }
         }
         @media (max-height: 760px) {
-            .dashboard-right {
-                gap: 4px;
-            }
-            .chart-section {
-                flex: 0 0 60%;
-                min-height: 200px;
-            }
-            .positions-card {
-                flex: 0 0 40%;
-                min-height: 150px;
-            }
+            .dashboard-right { gap: 4px; }
+            .chart-section { flex: 0 0 60%; min-height: 200px; }
+            .positions-card { flex: 0 0 40%; min-height: 150px; }
         }
         @media (max-width: 1200px) {
             .dashboard-bottom-row {
@@ -348,23 +349,11 @@
             }
             .coin-analysis-header {
                 flex-direction: column;
-                align-items: flex-start;
-            }
-            .analysis-grid,
-            .analysis-grid.analysis-single,
-            .analysis-grid.analysis-prices,
-            .analysis-actions {
-                grid-template-columns: 1fr;
-            }
-            .positions-scroll {
-                max-height: 220px;
-            }
-            .trade-history-box {
-                min-height: 220px;
-                max-height: 280px;
             }
         }
-    </style>
+</style>
+
+
 </head>
 <body>
 <div class="container">
@@ -1016,7 +1005,7 @@
         });
     }
 
-    function updateConditionalOrders() {
+            function updateConditionalOrders() {
         const container = document.getElementById('conditional_orders');
         const header = document.getElementById('conditional_header');
         if (!container) return;
@@ -1025,7 +1014,41 @@
         .then(r => r.json())
         .then(data => {
             const orders = Array.isArray(data.orders) ? data.orders : [];
-            header.textContent = `⏳ CONDITIONAL (${orders.length})`;
+            header.textContent = `📋 CONDITIONAL ORDERS (${orders.length})`;
+            
+            if (orders.length > 0) {
+                let html = '';
+                orders.forEach(o => {
+                    html += `
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 0; border-bottom:1px solid #1a2a35; font-size:9px;">
+                          <span style="color:#00d4ff; font-weight:bold; min-width:40px;">${o.label || o.type}</span>
+                          <span style="color:#fff; min-width:60px;">${o.symbol}</span>
+                          <span style="color:#aaa;">@ ${o.stopPrice > 0 ? o.stopPrice.toFixed(4) : 'N/A'}</span>
+                          <span style="color:#aaa;">Qty: ${o.origQty}</span>
+                          <button onclick="cancelOrder('${o.symbol}', '${o.orderId}')" style="background:#cc0000; color:#fff; border:none; padding:1px 5px; border-radius:3px; cursor:pointer; font-size:8px;">✕</button>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = '<div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">No conditional orders</div>';
+            }
+        })
+        .catch(err => {
+            console.error('Error fetching conditional orders:', err);
+            container.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 40px 0; font-size: 10px;">Error loading orders</div>';
+        });
+    });
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = '<div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">No conditional orders</div>';
+            }
+        })
+        .catch(err => {
+            console.error('Error fetching conditional orders:', err);
+            container.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 40px 0; font-size: 10px;">Error loading orders</div>';
+        });
+    })`;
             
             if (orders.length > 0) {
                 let html = '';
