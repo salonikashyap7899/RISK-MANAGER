@@ -33,6 +33,7 @@
             gap: 6px;
             min-height: 0;
             min-width: 0;
+            overflow: hidden;
         }
         .dashboard-section {
             background: linear-gradient(180deg, #09111a 0%, #0c141d 100%);
@@ -44,10 +45,11 @@
         }
         .chart-section {
             display: flex;
-            flex: 2 1 0;
+            flex: 0 0 65%;
             padding: 4px;
             overflow: hidden;
-            min-height: 300px;
+            min-height: 250px;
+            max-height: 65%;
         }
         .dashboard-chart {
             width: 100%;
@@ -72,8 +74,10 @@
             padding: 7px 9px;
             display: flex;
             flex-direction: column;
-            min-height: 200px;
-            flex: 1 1 0;
+            flex: 0 0 35%;
+            min-height: 180px;
+            max-height: 35%;
+            overflow: hidden;
         }
         .positions-scroll {
             flex: 1 1 auto;
@@ -295,10 +299,15 @@
         }
         @media (max-height: 760px) {
             .dashboard-right {
-                gap: 6px;
+                gap: 4px;
             }
-            .dashboard-chart {
-                min-height: 0;
+            .chart-section {
+                flex: 0 0 60%;
+                min-height: 200px;
+            }
+            .positions-card {
+                flex: 0 0 40%;
+                min-height: 150px;
             }
         }
         @media (max-width: 1200px) {
@@ -331,6 +340,11 @@
             .dashboard-chart {
                 min-height: 300px;
                 height: 300px;
+            }
+            .positions-card {
+                flex: none;
+                min-height: 200px;
+                height: auto;
             }
             .coin-analysis-header {
                 flex-direction: column;
@@ -593,16 +607,15 @@
             <div id="tv_chart" class="dashboard-chart"></div>
         </div>
 
-        <div class="dashboard-card positions-card" style="padding: 8px; display: flex; flex-direction: column; min-height: 0; border: 1px solid #0ca7d4; background: #0b0f12; border-radius: 6px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px 0; border-bottom: 1px solid #0ca7d4; padding: 0 0 4px 0;">
-                <h3 style="color: #00d4ff; margin: 0; font-size: 11px; font-weight: bold;" id="position_header">📍 LIVE POSITIONS (0)</h3>
-                <button type="button" onclick="closeAllPositions()" aria-label="Close all open positions" style="background: #cc0000; color: #fff; border: none; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold; transition: all 0.2s;">Close All</button>
-            </div>
-
-            <div id="live_positions" class="positions-scroll" style="overflow-y: auto; flex: 1; min-height: 0; font-size: 9px; margin: 0; padding: 0 4px;">
-                <div style="text-align: center; color: #555; padding: 40px 2px; font-size: 10px;">No open positions yet<br><small style="color: #444;">Place a trade to see live position details</small></div>
-            </div>
+    <div class="dashboard-card positions-card" style="padding: 8px; display: flex; flex-direction: column; border: 1px solid #0ca7d4; background: #0b0f12; border-radius: 6px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px 0; border-bottom: 1px solid #0ca7d4; padding: 0 0 4px 0;">
+            <h3 style="color: #00d4ff; margin: 0; font-size: 11px; font-weight: bold;" id="position_header">📍 LIVE POSITIONS (0)</h3>
+            <button type="button" onclick="closeAllPositions()" aria-label="Close all open positions" style="background: #cc0000; color: #fff; border: none; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold; transition: all 0.2s;">Close All</button>
         </div>
+        <div id="live_positions" class="positions-scroll" style="overflow-y: auto; flex: 1; min-height: 0; font-size: 9px; margin: 0; padding: 0 4px;">
+            <div style="text-align: center; color: #555; padding: 40px 2px; font-size: 10px;">No open positions yet<br><small style="color: #444;">Place a trade to see live position details</small></div>
+        </div>
+    </div>
 
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script type="text/javascript">
