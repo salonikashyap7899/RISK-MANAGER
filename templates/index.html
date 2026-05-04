@@ -49,11 +49,11 @@
 
         .chart-section {
             display: flex;
-            flex: 0 0 65%;
+            flex: 0 0 60%;
             padding: 4px;
             overflow: hidden;
             min-height: 250px;
-            max-height: 65%;
+            max-height: 60%;
         }
 
         .dashboard-chart {
@@ -567,11 +567,11 @@
                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px 0 0 0; margin: 0; flex: 1; min-height: 0;">
                 <div class="dashboard-card conditional-orders-card" style="padding: 8px; display: flex; flex-direction: column; min-height: 0; border: 1px solid #ffaa00; background: #0b0f12; border-radius: 6px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px 0; border-bottom: 1px solid #ffaa00; padding: 0 0 4px 0;">
-                        <h3 style="color: #ffaa00; margin: 0; font-size: 11px; font-weight: bold;" id="conditional_header">⏳ CONDITIONAL (0)</h3>
+                        <h3 style="color: #ffaa00; margin: 0; font-size: 11px; font-weight: bold;" id="conditional_header_left">⏳ CONDITIONAL (0)</h3>
                         <button type="button" onclick="updateConditionalOrders()" style="background: rgba(255, 170, 0, 0.1); color: #ffaa00; border: 1px solid #ffaa00; padding: 1px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; font-weight: bold;">Refresh</button>
                     </div>
 
-                    <div id="conditional_orders" class="orders-scroll" style="overflow-y: auto; flex: 1; min-height: 0; font-size: 9px; margin: 0; padding: 0 4px;">
+                    <div id="conditional_orders_left" class="orders-scroll" style="overflow-y: auto; flex: 1; min-height: 0; font-size: 9px; margin: 0; padding: 0 4px;">
                         <div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">No conditional orders</div>
                     </div>
                 </div>
@@ -606,22 +606,14 @@
         </div>
     </div>
 
-    <div class="dashboard-card" style="padding:6px; margin-top:6px; flex-shrink:0;">
-        <div style="font-size:9px; font-weight:700; color:#e9fbff; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:4px; border-bottom:1px solid rgba(12,167,212,0.4); padding-bottom:3px;">
-            🔔 Conditional Orders (TP1)
+        <div class="dashboard-card" style="padding:6px; margin-top:6px; flex-shrink:0;">
+        <div style="padding: 6px 8px; border-bottom: 1px solid rgba(12,167,212,0.4); display:flex; justify-content:space-between; align-items:center;">
+            <span id="conditional_header" style="color:#e9fbff; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">CONDITIONAL ORDERS (0)</span>
         </div>
-        <div id="conditional_orders" style="min-height:40px; max-height:120px; overflow-y:auto;">
-            <div style="color:#81b8c5;font-size:9px;text-align:center;padding:10px;">Loading...</div>
+        <div id="conditional_orders" style="padding: 6px; overflow-y: auto; flex: 1 1 auto; min-height: 0;">
+            <div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">No conditional orders</div>
         </div>
-        <div style="font-size:9px; font-weight:700; color:#e9fbff; text-transform:uppercase; letter-spacing:0.04em; margin:6px 0 4px; border-bottom:1px solid rgba(12,167,212,0.4); padding-bottom:3px;">
-            📋 Basic Orders (SL / TP2)
-        </div>
-        <div id="basic_orders" style="min-height:30px; max-height:80px; overflow-y:auto;">
-            <div style="color:#81b8c5;font-size:9px;text-align:center;padding:8px;">Loading...</div>
-        </div>
-    </div>
-
-        <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    </div><script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script type="text/javascript">
           let tvWidget = null;
           // ✅ FIXED: currentChartSymbol tracks the ACTIVE symbol for the chart
@@ -1020,7 +1012,7 @@
         });
     }
 
-            function updateConditionalOrders() {
+                function updateConditionalOrders() {
         const container = document.getElementById('conditional_orders');
         const header = document.getElementById('conditional_header');
         if (!container) return;
@@ -1029,71 +1021,36 @@
         .then(r => r.json())
         .then(data => {
             const orders = Array.isArray(data.orders) ? data.orders : [];
-            header.textContent = `📋 CONDITIONAL ORDERS (${orders.length})`;
-            
-            if (orders.length > 0) {
-                let html = '';
-                orders.forEach(o => {
-                    html += `
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 0; border-bottom:1px solid #1a2a35; font-size:9px;">
-                          <span style="color:#00d4ff; font-weight:bold; min-width:40px;">${o.label || o.type}</span>
-                          <span style="color:#fff; min-width:60px;">${o.symbol}</span>
-                          <span style="color:#aaa;">@ ${o.stopPrice > 0 ? o.stopPrice.toFixed(4) : 'N/A'}</span>
-                          <span style="color:#aaa;">Qty: ${o.origQty}</span>
-                          <button onclick="cancelOrder('${o.symbol}', '${o.orderId}')" style="background:#cc0000; color:#fff; border:none; padding:1px 5px; border-radius:3px; cursor:pointer; font-size:8px;">✕</button>
-                        </div>
-                    `;
-                });
-                container.innerHTML = html;
-            } else {
-                container.innerHTML = '<div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">No conditional orders</div>';
-            }
-        })
-        .catch(err => {
-            console.error('Error fetching conditional orders:', err);
-            container.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 40px 0; font-size: 10px;">Error loading orders</div>';
-        });
-    });
-                container.innerHTML = html;
-            } else {
-                container.innerHTML = '<div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">No conditional orders</div>';
-            }
-        })
-        .catch(err => {
-            console.error('Error fetching conditional orders:', err);
-            container.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 40px 0; font-size: 10px;">Error loading orders</div>';
-        });
-    })`;
-            
+            if (header) header.textContent = 'CONDITIONAL ORDERS (' + orders.length + ')';
+
             if (orders.length > 0) {
                 let html = '';
                 orders.forEach(o => {
                     const sideColor = o.side === 'BUY' ? '#00ff88' : '#ff4444';
-                    const typeLabel = o.type.replace(/_/g, ' ');
-                    html += `
-                        <div style="border: 1px solid #333; padding: 8px; margin-bottom: 6px; border-radius: 4px; background: rgba(20, 20, 20, 0.6); font-size: 10px;">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; border-bottom: 1px solid #222; padding-bottom: 4px;">
-                                <span style="font-weight: bold; color: #e9fbff;">${o.symbol}</span>
-                                <span style="color: ${sideColor}; font-weight: bold;">${o.side}</span>
-                            </div>
-                            <div style="color: #ffaa00; font-size: 9px; margin-bottom: 4px; font-weight: bold;">${o.label || typeLabel}</div>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; color: #aaa; font-size: 9px;">
-                                <div>Qty: <span style="color: #fff;">${o.origQty}</span></div>
-                                <div>Stop: <span style="color: #fff;">$${o.stopPrice > 0 ? o.stopPrice.toFixed(4) : (o.price > 0 ? o.price.toFixed(4) : 'N/A')}</span></div>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="color: #555; font-size: 8px;">${o.time}</span>
-                                <button onclick="cancelOrder('${o.symbol}', '${o.orderId}')" style="background: #cc0000; color: #fff; border: none; padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 9px; font-weight: bold;">Cancel</button>
-                            </div>
-                        </div>
-                    `;
+                    const typeLabel = (o.type || '').replace(/_/g, ' ');
+                    const displayPrice = o.stopPrice > 0 ? o.stopPrice.toFixed(4) : (o.price > 0 ? o.price.toFixed(4) : 'N/A');
+                    html += '<div style="border: 1px solid #333; padding: 8px; margin-bottom: 6px; border-radius: 4px; background: rgba(20, 20, 20, 0.6); font-size: 10px;">';
+                    html += '<div style="display: flex; justify-content: space-between; margin-bottom: 4px; border-bottom: 1px solid #222; padding-bottom: 4px;">';
+                    html += '<span style="font-weight: bold; color: #e9fbff;">' + o.symbol + '</span>';
+                    html += '<span style="color: ' + sideColor + '; font-weight: bold;">' + o.side + '</span>';
+                    html += '</div>';
+                    html += '<div style="color: #ffaa00; font-size: 9px; margin-bottom: 4px; font-weight: bold;">' + (o.label || typeLabel) + '</div>';
+                    html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; color: #aaa; font-size: 9px;">';
+                    html += '<div>Qty: <span style="color: #fff;">' + o.origQty + '</span></div>';
+                    html += '<div>Price: <span style="color: #fff;">$' + displayPrice + '</span></div>';
+                    html += '</div>';
+                    html += '<div style="display: flex; justify-content: space-between; align-items: center;">';
+                    html += '<span style="color: #555; font-size: 8px;">' + o.time + '</span>';
+                    html += '<button onclick="cancelOrder('' + o.symbol + '', '' + o.orderId + '')" style="background: #cc0000; color: #fff; border: none; padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 9px; font-weight: bold;">Cancel</button>';
+                    html += '</div>';
+                    html += '</div>';
                 });
                 container.innerHTML = html;
             } else {
                 container.innerHTML = '<div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">No conditional orders</div>';
             }
         })
-        .catch(err => {
+        .catch(function(err) {
             console.error('Error fetching conditional orders:', err);
             container.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 40px 0; font-size: 10px;">Error loading orders</div>';
         });
@@ -1536,59 +1493,7 @@
         }
     }
 
-    function updateConditionalOrders() {
-        fetch('/api/conditional_orders')
-        .then(r => r.json())
-        .then(data => {
-            const condBox = document.getElementById('conditional_orders');
-            const basicBox = document.getElementById('basic_orders');
-
-            if (condBox) {
-                const condOrders = data.conditional_orders || [];
-                if (condOrders.length > 0) {
-                    let html = '';
-                    condOrders.forEach(o => {
-                        // Ensure TP1 label is used for algo orders
-                        const label = o.label || (o.type.includes('TAKE_PROFIT') ? 'TP1' : o.type);
-                        html += '<div style="padding:4px 6px; border-bottom:1px solid rgba(0,212,255,0.1); font-size:9px;">'
-                            + '<span style="color:#00ffcc; font-weight:bold;">' + o.symbol + '</span>'
-                            + '<span style="color:#ffaa00; margin-left:6px;">' + label + '</span>'
-                            + '<span style="color:#fff; margin-left:6px;">@ ' + (o.stopPrice || o.price) + '</span>'
-                            + '<span style="color:#81b8c5; margin-left:6px;">Qty: ' + o.origQty + '</span>'
-                            + '<button onclick="cancelConditionalOrder(\'' + o.orderId + '\',\'' + o.symbol + '\')" style="float:right;background:#ff4444;color:#fff;border:none;border-radius:3px;padding:1px 5px;font-size:8px;cursor:pointer;">Cancel</button>'
-                            + '</div>';
-                    });
-                    condBox.innerHTML = html;
-                } else {
-                    condBox.innerHTML = '<div style="color:#81b8c5;font-size:9px;text-align:center;padding:10px;">No conditional orders (TP1)</div>';
-                }
-            }
-
-            if (basicBox) {
-                const basicOrders = data.basic_orders || [];
-                if (basicOrders.length > 0) {
-                    let html = '';
-                    basicOrders.forEach(o => {
-                        // Label TP2 or SL for basic orders
-                        let label = o.label || o.type;
-                        if (o.type.includes('TAKE_PROFIT')) label = 'TP2';
-                        else if (o.type.includes('STOP')) label = 'SL';
-                        
-                        html += '<div style="padding:4px 6px; border-bottom:1px solid rgba(0,212,255,0.1); font-size:9px;">'
-                            + '<span style="color:#00ffcc; font-weight:bold;">' + o.symbol + '</span>'
-                            + '<span style="color:#ff6b6b; margin-left:6px;">' + label + '</span>'
-                            + '<span style="color:#fff; margin-left:6px;">@ ' + (o.stopPrice || o.price) + '</span>'
-                            + '<span style="color:#81b8c5; margin-left:6px;">Qty: ' + o.origQty + '</span>'
-                            + '</div>';
-                    });
-                    basicBox.innerHTML = html;
-                } else {
-                    basicBox.innerHTML = '<div style="color:#81b8c5;font-size:9px;text-align:center;padding:8px;">No basic orders (SL/TP2)</div>';
-                }
-            }
-        })
-        .catch(err => console.error('Failed to fetch conditional orders:', err));
-    }
+    
 
     function cancelConditionalOrder(orderId, symbol) {
         if (!confirm('Cancel conditional order ' + orderId + ' for ' + symbol + '?')) return;
@@ -1895,11 +1800,17 @@
                     const shouldSnap = entryInput.dataset.snapToLive === '1'
                         || !entryInput.dataset.userEntry
                         || parseFloat(entryInput.dataset.userEntry) <= 0;
+
                     if (shouldSnap) {
                         entryInput.value = currentPrice;
                         entryInput.dataset.userEntry = currentPrice;
                         entryInput.dataset.snapToLive = '0';
                         entryInput.style.color = '#00ff88';
+
+                        if (typeof updatePositionSizing === 'function') {
+                            updatePositionSizing(targetSymbol);
+                        }
+
                         setTimeout(() => {
                             if (entryInput.dataset.liveSymbol === targetSymbol.toUpperCase()) {
                                 entryInput.style.color = '';
@@ -2599,7 +2510,7 @@
     }, 30000);
 
     // Refresh conditional orders every 10 seconds
-    setInterval(updateConditionalOrders, 10000);
+    setInterval(updateConditionalOrders, 5000);
 
     window.onclick = function(event) {
         const modal = document.getElementById('coin-details-modal');
