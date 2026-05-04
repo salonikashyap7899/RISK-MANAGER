@@ -638,11 +638,13 @@ def get_all_open_conditional_orders(user_id=None):
 
                     if algo_id not in seen_ids:
                         seen_ids.add(algo_id)
+                        # TP1 comes in conditional orders - label it explicitly as TP1
+                        display_label = 'TP1' if 'TAKE_PROFIT' in o_type else label
                         conditional_orders.append({
                             'orderId': algo_id,
                             'symbol': o.get('symbol'),
                             'type': o_type,
-                            'label': label,
+                            'label': display_label,
                             'side': o.get('side'),
                             'stopPrice': trigger_price,
                             'price': float(o.get('price') or 0),
@@ -1241,42 +1243,34 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         tp2_error = None
         try:
             if tp2 > 0 and ((side=="LONG" and tp2>entry) or (side=="SHORT" and tp2<entry)):
-                tp2_qty = round_qty(symbol, qty - tp1_qty, user_id)
-                tp2_price = round_price(symbol, tp2, user_id)
-                
-                # Use basic order variants for TP2 (no closePosition=True to avoid conflicts)
-                tp2_variants = [
-                    {
-                        "symbol": symbol,
-                        "side": x_side,
-                        "type": "TAKE_PROFIT_MARKET",
-                        "stopPrice": tp2_price,
-                        "quantity": tp2_qty,
-                        "reduceOnly": True,
-                        "workingType": "MARK_PRICE",
-                    },
-                    {
-                        "symbol": symbol,
-                        "side": x_side,
-                        "type": "TAKE_PROFIT_MARKET",
-                        "stopPrice": tp2_price,
-                        "quantity": tp2_qty,
-                        "reduceOnly": True,
-                    },
-                    {
-                        "symbol": symbol,
-                        "side": x_side,
-                        "type": "TAKE_PROFIT",
-                        "stopPrice": tp2_price,
-                        "price": tp2_price,
-                        "quantity": tp2_qty,
-                        "reduceOnly": True,
-                        "timeInForce": "GTC",
-                        "workingType": "MARK_PRICE",
-                    }
-                ]
-                
+                # TP2 is the remaining quantity (Total Qty - TP1 Qty)
+                # If TP1 failed or was not set, TP2 uses the full quantity
+                actual_tp1_qty = tp1_qty if tp1_created else 0
+                tp2_qty = round_qty(symbol, qty - actual_tp1_qty, user_id)
+
                 if tp2_qty > 0:
+                    tp2_price = round_price(symbol, tp2, user_id)
+                    # TP2 is a Basic order (LIMIT or TAKE_PROFIT_MARKET with explicit quantity)
+                    tp2_variants = [
+                        {
+                            "symbol": symbol,
+                            "side": x_side,
+                            "type": "LIMIT",
+                            "price": tp2_price,
+                            "quantity": tp2_qty,
+                            "timeInForce": "GTC",
+                            "reduceOnly": True,
+                        },
+                        {
+                            "symbol": symbol,
+                            "side": x_side,
+                            "type": "TAKE_PROFIT_MARKET",
+                            "stopPrice": tp2_price,
+                            "quantity": tp2_qty,
+                            "reduceOnly": True,
+                            "workingType": "MARK_PRICE",
+                        },
+                    ]
                     tp2_created, tp2_order, tp2_error = _create_order_with_fallbacks(tp2_variants)
                     if tp2_created and tp2_order and tp2_order.get("orderId"):
                         tp2_created = True
