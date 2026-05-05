@@ -1865,7 +1865,22 @@ def get_live_price(symbol, user_id=None):
             print(f"   ⚠️ Public API {endpoint} failed: {e}")
             continue
 
-    # ✅ ATTEMPT 2b: CoinGecko public API fallback (no API key needed)
+    # ✅ ATTEMPT 3: Binance Spot API Fallback (Public)
+    try:
+        print(f"   → Trying Binance Spot API fallback for {symbol}...")
+        spot_url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+        spot_response = requests.get(spot_url, timeout=5, proxies=proxies)
+        spot_data = spot_response.json()
+        price = float(spot_data.get('price', 0))
+        if price > 0:
+            _price_cache[cache_key] = price
+            _price_cache_time[cache_key] = current_time
+            print(f"✅ GOT PRICE FROM BINANCE SPOT API: {symbol} = ${price}")
+            return price
+    except Exception as e:
+        print(f"   ⚠️ Binance Spot API failed for {symbol}: {e}")
+
+    # ✅ ATTEMPT 4: CoinGecko public API fallback (no API key needed)
     COINGECKO_MAP = {
         'BTCUSDT': 'bitcoin', 'ETHUSDT': 'ethereum', 'BNBUSDT': 'binancecoin',
         'SOLUSDT': 'solana', 'XRPUSDT': 'ripple', 'ADAUSDT': 'cardano',

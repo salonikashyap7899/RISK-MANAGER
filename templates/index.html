@@ -1587,6 +1587,7 @@
     let priceWs = null;
     let priceWsSymbol = '';
     let lastPriceMessageAt = 0;
+    let restPollingInterval = null;
 
     // ✅ HYBRID APPROACH: Form reload for chart (reliable) + dynamic updates for data (fast)
     function isValidSymbol(symbol) {
@@ -1763,7 +1764,7 @@
                     priceWs.close();
                     fetchLivePriceViaREST(targetSymbol, entryInput, indicator);
                 }
-            }, 3000);
+            }, 5000);
         };
 
         priceWs.onmessage = (event) => {
@@ -1928,6 +1929,20 @@
                             indicator.style.color = '';
                             indicator.textContent = '🔄 Live Price';
                         }, 2000);
+                    }
+
+                    // ✅ FIX C: Start REST polling if not already running
+                    if (!restPollingInterval) {
+                        console.log(`⏱️ Starting REST polling interval for ${symbol}`);
+                        restPollingInterval = setInterval(() => {
+                            if (getSelectedSymbol() === symbol.toUpperCase() && (!priceWs || priceWs.readyState !== WebSocket.OPEN)) {
+                                fetchLivePriceViaREST(symbol, entryInput, indicator);
+                            } else {
+                                console.log(`🛑 Stopping REST polling for ${symbol}`);
+                                clearInterval(restPollingInterval);
+                                restPollingInterval = null;
+                            }
+                        }, 5000);
                     }
                 } else {
                     console.error(`❌ [fetchLivePriceViaREST] Invalid price: ${data.price}`);
@@ -2484,11 +2499,15 @@
             updateLivePositions();
             updateTradeHistory();
             refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
+            // ✅ FIX D: Ensure updateLivePrice is called on page load
+            setTimeout(() => updateLivePrice(), 500);
         });
     } else {
         updateLivePositions();
         updateTradeHistory();
         refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
+        // ✅ FIX D: Ensure updateLivePrice is called on page load
+        setTimeout(() => updateLivePrice(), 500);
     }
 
     // ✅ AUTO-REFRESH TIMERS (Background updates while user trades)
