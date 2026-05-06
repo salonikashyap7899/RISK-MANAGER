@@ -1316,8 +1316,9 @@
         if(confirm(`Close ${symbol}?`)) {
             fetch(`/close_position/${symbol}`, {method: 'POST'})
             .then(r => r.json())
-            .then(data => alert(data.message || 'Closed'))
-            .then(updateLivePositions);
+            .then(data => { alert(data.message || 'Closed'); })
+            .then(updateLivePositions)
+            .then(() => setTimeout(updateConditionalOrders, 1500));
         }
     }
 
