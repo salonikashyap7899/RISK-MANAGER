@@ -567,8 +567,8 @@
                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px 0 0 0; margin: 0; flex: 1; min-height: 0;">
                 <div class="dashboard-card conditional-orders-card" style="padding: 8px; display: flex; flex-direction: column; min-height: 0; border: 1px solid #ffaa00; background: #0b0f12; border-radius: 6px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px 0; border-bottom: 1px solid #ffaa00; padding: 0 0 4px 0;">
-                        <h3 style="color: #ffaa00; margin: 0; font-size: 11px; font-weight: bold;" id="conditional_header_left">⏳ CONDITIONAL (0)</h3>
-                        <button type="button" onclick="updateConditionalOrders()" style="background: rgba(255, 170, 0, 0.1); color: #ffaa00; border: 1px solid #ffaa00; padding: 1px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; font-weight: bold;">Refresh</button>
+                        <h3 style="color: #ffaa00; margin: 0; font-size: 11px; font-weight: bold;" id="conditional_header_left">🎨 TP1 & SL (0)</h3>
+                        <button type="button" onclick="updateTP1SLOrders()" style="background: rgba(255, 170, 0, 0.1); color: #ffaa00; border: 1px solid #ffaa00; padding: 1px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; font-weight: bold;">Refresh</button>
                     </div>
 
                     <div id="conditional_orders_left" class="orders-scroll" style="overflow-y: auto; flex: 1; min-height: 0; font-size: 9px; margin: 0; padding: 0 4px;">
@@ -1002,6 +1002,84 @@
                     tpSlElement.innerHTML = '<div style="color: #666; font-size: 8px;">TP/SL data unavailable</div>';
                 }
             });
+        });
+    }
+
+    function updateTP1SLOrders() {
+        // NEW FUNCTION: Fetch and display ONLY TP1 and SL orders with position context.
+        // This makes it easy to find and manually close TP1/SL orders after a trade closes.
+        const container = document.getElementById('conditional_orders_left');
+        const header = document.getElementById('conditional_header_left');
+        if (!container) return;
+
+        fetch('/api/tp1_and_sl_orders')
+        .then(r => r.json())
+        .then(data => {
+            const tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders : [];
+            const slOrders = Array.isArray(data.sl_orders) ? data.sl_orders : [];
+            const totalOrders = tp1Orders.length + slOrders.length;
+            
+            if (header) header.textContent = 'TP1 & SL ORDERS (' + totalOrders + ')';
+
+            if (totalOrders > 0) {
+                let html = '';
+                
+                // Display TP1 orders first (green)
+                if (tp1Orders.length > 0) {
+                    html += '<div style="margin-bottom: 8px; padding: 4px 0; border-bottom: 1px solid #333;">';
+                    html += '<div style="color: #00ff88; font-size: 9px; font-weight: bold; margin-bottom: 4px;">📈 TP1 ORDERS (' + tp1Orders.length + ')</div>';
+                    tp1Orders.forEach(o => {
+                        const sideColor = o.side === 'BUY' ? '#00ff88' : '#ff4444';
+                        html += '<div style="border: 1px solid #1a5f3f; padding: 6px; margin-bottom: 4px; border-radius: 3px; background: rgba(0, 50, 30, 0.4); font-size: 9px;">';
+                        html += '<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">';
+                        html += '<span style="font-weight: bold; color: #00ff88;">' + o.symbol + '</span>';
+                        html += '<span style="color: ' + sideColor + '; font-weight: bold;">' + o.side + '</span>';
+                        html += '</div>';
+                        html += '<div style="color: #aaa; font-size: 8px; margin-bottom: 2px;">Trigger: $' + o.triggerPrice.toFixed(4) + ' | Qty: ' + o.qty.toFixed(4) + '</div>';
+                        if (o.position_entry) {
+                            html += '<div style="color: #888; font-size: 8px; margin-bottom: 2px;">Entry: $' + o.position_entry.toFixed(4) + ' | SL: $' + (o.position_sl || 'N/A') + '</div>';
+                        }
+                        html += '<div style="display: flex; justify-content: space-between; align-items: center;">';
+                        html += '<span style="color: #555; font-size: 7px;">' + o.time + '</span>';
+                        html += "<button onclick=\"cancelOrder('" + o.symbol + "', '" + o.orderId + "')\" style=\"background: #ff6600; color: #fff; border: none; padding: 2px 6px; border-radius: 2px; cursor: pointer; font-size: 8px; font-weight: bold;\">Close</button>";
+                        html += '</div>';
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                }
+                
+                // Display SL orders (red)
+                if (slOrders.length > 0) {
+                    html += '<div style="margin-bottom: 0; padding: 4px 0;">';
+                    html += '<div style="color: #ff6666; font-size: 9px; font-weight: bold; margin-bottom: 4px;">🛑 STOP LOSS ORDERS (' + slOrders.length + ')</div>';
+                    slOrders.forEach(o => {
+                        const sideColor = o.side === 'BUY' ? '#00ff88' : '#ff4444';
+                        html += '<div style="border: 1px solid #5f1a1a; padding: 6px; margin-bottom: 4px; border-radius: 3px; background: rgba(50, 0, 0, 0.4); font-size: 9px;">';
+                        html += '<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">';
+                        html += '<span style="font-weight: bold; color: #ff6666;">' + o.symbol + '</span>';
+                        html += '<span style="color: ' + sideColor + '; font-weight: bold;">' + o.side + '</span>';
+                        html += '</div>';
+                        html += '<div style="color: #aaa; font-size: 8px; margin-bottom: 2px;">Trigger: $' + o.triggerPrice.toFixed(4) + ' | Qty: ' + o.qty.toFixed(4) + '</div>';
+                        if (o.position_entry) {
+                            html += '<div style="color: #888; font-size: 8px; margin-bottom: 2px;">Entry: $' + o.position_entry.toFixed(4) + ' | Loss: ' + ((o.position_entry - o.triggerPrice) / o.position_entry * 100).toFixed(2) + '%</div>';
+                        }
+                        html += '<div style="display: flex; justify-content: space-between; align-items: center;">';
+                        html += '<span style="color: #555; font-size: 7px;">' + o.time + '</span>';
+                        html += "<button onclick=\"cancelOrder('" + o.symbol + "', '" + o.orderId + "')\" style=\"background: #cc0000; color: #fff; border: none; padding: 2px 6px; border-radius: 2px; cursor: pointer; font-size: 8px; font-weight: bold;\">Close</button>";
+                        html += '</div>';
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                }
+                
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = '<div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">No TP1 or SL orders</div>';
+            }
+        })
+        .catch(function(err) {
+            console.error('Error fetching TP1/SL orders:', err);
+            container.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 40px 0; font-size: 10px;">Error loading TP1/SL orders</div>';
         });
     }
 
@@ -2411,11 +2489,13 @@
             console.log('✅ Page loaded, initializing dynamic functions');
             updateLivePositions();
             updateTradeHistory();
+            updateTP1SLOrders();
             refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
         });
     } else {
         updateLivePositions();
         updateTradeHistory();
+        updateTP1SLOrders();
         refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
     }
 
@@ -2437,8 +2517,11 @@
         updateTradeHistory();
     }, 30000);
 
-    // Refresh conditional orders every 10 seconds
-    setInterval(updateConditionalOrders, 5000);
+    // Refresh TP1 and SL orders every 5 seconds
+    setInterval(updateTP1SLOrders, 5000);
+    
+    // Also refresh all conditional orders for backup
+    setInterval(updateConditionalOrders, 10000);
 
     window.onclick = function(event) {
         const modal = document.getElementById('coin-details-modal');
