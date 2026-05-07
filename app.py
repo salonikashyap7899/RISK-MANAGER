@@ -1056,10 +1056,15 @@ def change_leverage():
 @login_required
 def api_conditional_orders():
     orders = logic.get_all_open_conditional_orders(current_user.id)
-    # TP1 comes in conditional order (source='algo')
-    # TP2 and SL come in basic order (source='regular')
-    conditional = [o for o in orders if o.get('source') == 'algo']
-    basic = [o for o in orders if o.get('source') == 'regular']
+    # Split by Binance's Conditional vs Basic tab classification:
+    # Conditional = TAKE_PROFIT_MARKET, STOP_MARKET, TAKE_PROFIT, STOP, TRAILING_STOP_MARKET (TP1, SL)
+    # Basic       = LIMIT, LIMIT_MAKER (TP2)
+    CONDITIONAL_TYPES = {
+        'TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'STOP_MARKET',
+        'STOP', 'TRAILING_STOP_MARKET', 'STOP_LOSS', 'STOP_LOSS_LIMIT'
+    }
+    conditional = [o for o in orders if o.get('type', '').upper() in CONDITIONAL_TYPES or o.get('source') == 'algo']
+    basic = [o for o in orders if o.get('type', '').upper() not in CONDITIONAL_TYPES and o.get('source') != 'algo']
     return jsonify({"conditional_orders": conditional, "basic_orders": basic, "success": True})
 
 @app.route('/api/cancel_conditional_order', methods=['POST'])
