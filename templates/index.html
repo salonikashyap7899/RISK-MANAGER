@@ -1016,7 +1016,7 @@
             // API returns conditional_orders (algo/TP1) and basic_orders (SL/TP2/regular)
             const conditionalOrders = Array.isArray(data.conditional_orders) ? data.conditional_orders : [];
             const basicOrders = Array.isArray(data.basic_orders) ? data.basic_orders : [];
-            const orders = [...conditionalOrders, ...basicOrders];
+            const orders = [...conditionalOrders]; // Only show Binance-conditional orders (TP1, SL) not basic (TP2)
             if (header) header.textContent = 'CONDITIONAL ORDERS (' + orders.length + ')';
 
             if (orders.length > 0) {
@@ -1055,10 +1055,10 @@
     function cancelOrder(symbol, orderId) {
         if (!confirm(`Cancel order ${orderId} for ${symbol}?`)) return;
         
-        fetch('/api/cancel_order', {
+        fetch('/api/cancel_conditional_order', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol: symbol, orderId: orderId })
+            body: JSON.stringify({ symbol: symbol, order_id: orderId })
         })
         .then(r => r.json())
         .then(data => {
@@ -2489,4 +2489,4 @@
     </div>
 </div>
 </body>
-    </html>
+</html>
