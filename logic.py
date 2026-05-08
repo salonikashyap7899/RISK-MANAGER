@@ -577,6 +577,7 @@ def get_all_open_conditional_orders(user_id=None):
         all_orders = []
         try:
             all_orders = client.futures_get_open_orders(recvWindow=10000)
+            print(f"[DEBUG] Raw regular open orders: {all_orders}")
             print(f"[DEBUG] Regular open orders count: {len(all_orders)}")
         except Exception as e:
             print(f"[DEBUG] Error fetching regular open orders: {e}")
@@ -643,6 +644,7 @@ def get_all_open_conditional_orders(user_id=None):
                     print(f"[DEBUG] _request_futures_api algo failed: {e2}")
 
             if algo_resp is not None:
+                print(f"[DEBUG] Raw algo response: {algo_resp}")
                 # Response may be a list or a dict with 'orders' key
                 algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
                 print(f"[DEBUG] Algo open orders count: {len(algo_orders)}")
@@ -687,6 +689,7 @@ def get_all_open_conditional_orders(user_id=None):
 
         # Sort by time descending
         conditional_orders.sort(key=lambda x: x['time'], reverse=True)
+        print(f"[DEBUG] Final conditional_orders to return: {conditional_orders}")
         return conditional_orders
 
     except Exception as e:

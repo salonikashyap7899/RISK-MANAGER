@@ -10,6 +10,7 @@ def get_tp1_and_sl_orders(user_id):
     try:
         # 1. Get all open conditional orders from Binance
         all_conditional = logic.get_all_open_conditional_orders(user_id)
+        print(f"[DEBUG] all_conditional from logic: {len(all_conditional)} orders")
         
         # 2. Get user's active positions from database to provide context
         # We fetch both open and closed to handle cases where trade just closed
@@ -44,7 +45,10 @@ def get_tp1_and_sl_orders(user_id):
                 tp1_orders.append(context)
             elif label == 'SL' or 'STOP' in o.get('type', '') or 'STOP_LOSS' in o.get('type', ''):
                 sl_orders.append(context)
+            else:
+                print(f"[DEBUG] Order {o.get('orderId')} ({o.get('type')}) skipped - label: {label}")
                 
+        print(f"[DEBUG] Returning {len(tp1_orders)} TP1 and {len(sl_orders)} SL orders")
         return {
             "success": True,
             "tp1_orders": tp1_orders,
