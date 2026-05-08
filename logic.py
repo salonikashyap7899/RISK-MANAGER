@@ -574,15 +574,20 @@ def get_all_open_conditional_orders(user_id=None):
             return []
 
         # --- Fetch regular open orders ---
-        all_orders = client.futures_get_open_orders(recvWindow=10000)
-        print(f"[DEBUG] Regular open orders: {[(o.get('type'), o.get('stopPrice'), o.get('symbol')) for o in all_orders]}")
+        all_orders = []
+        try:
+            all_orders = client.futures_get_open_orders(recvWindow=10000)
+            print(f"[DEBUG] Regular open orders count: {len(all_orders)}")
+        except Exception as e:
+            print(f"[DEBUG] Error fetching regular open orders: {e}")
 
         conditional_types = [
             'STOP', 'STOP_MARKET',
             'TAKE_PROFIT', 'TAKE_PROFIT_MARKET',
             'TRAILING_STOP_MARKET',
             'STOP_LOSS', 'STOP_LOSS_LIMIT',
-            'TAKE_PROFIT_LIMIT'
+            'TAKE_PROFIT_LIMIT',
+            'LIMIT' # Only if it has a stopPrice set
         ]
 
         conditional_orders = []
@@ -594,30 +599,29 @@ def get_all_open_conditional_orders(user_id=None):
             has_activate_price = float(o.get('activatePrice', 0)) > 0
 
             if o_type in conditional_types or has_stop_price or has_activate_price:
-                label = 'SL' if 'STOP' in o_type else ('TP' if 'TAKE_PROFIT' in o_type else ('Trail SL' if 'TRAILING' in o_type else o_type))
+                # Better labeling for TP1 vs SL
+                label = 'SL'
+                if 'TAKE_PROFIT' in o_type:
+                    label = 'TP1'
+                elif 'TRAILING' in o_type:
+                    label = 'Trail SL'
+                elif 'STOP' in o_type or 'STOP_LOSS' in o_type:
+                    label = 'SL'
+                
                 oid = str(o.get('orderId', ''))
                 if oid not in seen_ids:
                     seen_ids.add(oid)
-                    # Improve labeling for TP1 and SL
                     qty = float(o.get('origQty', 0))
-                    # Often TP1 is a specific quantity while SL is closePosition=True
-                    # We can also check against DB if needed, but label helps UI
-                    display_label = label
-                    if 'TAKE_PROFIT' in o_type:
-                        display_label = 'TP1'
-                    elif 'STOP' in o_type:
-                        display_label = 'SL'
-
                     conditional_orders.append({
                         'orderId': o.get('orderId'),
                         'symbol': o.get('symbol'),
                         'type': o_type,
-                        'label': display_label,
+                        'label': label,
                         'side': o.get('side'),
                         'stopPrice': float(o.get('stopPrice', 0)),
                         'price': float(o.get('price', 0)),
                         'origQty': qty,
-                        'time': datetime.fromtimestamp(o.get('time', 0) / 1000).strftime('%Y-%m-%d %H:%M:%S'),
+                        'time': datetime.fromtimestamp(o.get('time', 0) / 1000).strftime('%Y-%m-%d %H:%M:%S') if o.get('time') else 'N/A',
                         'reduceOnly': o.get('reduceOnly', False),
                         'source': 'regular'
                     })
@@ -627,14 +631,21 @@ def get_all_open_conditional_orders(user_id=None):
             algo_resp = None
             # Try multiple methods to fetch algo orders
             if hasattr(client, 'futures_get_algo_orders'):
-                algo_resp = client.futures_get_algo_orders(recvWindow=10000)
-            elif hasattr(client, '_request_futures_api'):
-                algo_resp = client._request_futures_api('get', 'algoOrder/openOrders', True, data={'recvWindow': 10000})
+                try:
+                    algo_resp = client.futures_get_algo_orders(recvWindow=10000)
+                except Exception as e1:
+                    print(f"[DEBUG] futures_get_algo_orders failed: {e1}")
             
+            if algo_resp is None and hasattr(client, '_request_futures_api'):
+                try:
+                    algo_resp = client._request_futures_api('get', 'algoOrder/openOrders', True, data={'recvWindow': 10000})
+                except Exception as e2:
+                    print(f"[DEBUG] _request_futures_api algo failed: {e2}")
+
             if algo_resp is not None:
                 # Response may be a list or a dict with 'orders' key
                 algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
-                print(f"[DEBUG] Algo open orders: {[(o.get('type'), o.get('triggerPrice'), o.get('symbol')) for o in algo_orders]}")
+                print(f"[DEBUG] Algo open orders count: {len(algo_orders)}")
 
                 for o in algo_orders:
                     o_type = (o.get('type') or o.get('algoType') or '').upper()
@@ -643,18 +654,22 @@ def get_all_open_conditional_orders(user_id=None):
                     qty = float(o.get('qty') or o.get('origQty') or 0)
                     book_time = o.get('bookTime') or o.get('time') or 0
 
-                    # User wants TP1 in conditional box
-                    label = 'TP1' if 'TAKE_PROFIT' in o_type else ('SL' if 'STOP' in o_type else ('Trail SL' if 'TRAILING' in o_type else o_type))
+                    # Better labeling for TP1 vs SL
+                    label = 'SL'
+                    if 'TAKE_PROFIT' in o_type:
+                        label = 'TP1'
+                    elif 'TRAILING' in o_type:
+                        label = 'Trail SL'
+                    elif 'STOP' in o_type or 'STOP_LOSS' in o_type:
+                        label = 'SL'
 
                     if algo_id not in seen_ids:
                         seen_ids.add(algo_id)
-                        # TP1 comes in conditional orders - label it explicitly as TP1
-                        display_label = 'TP1' if 'TAKE_PROFIT' in o_type else label
                         conditional_orders.append({
                             'orderId': algo_id,
                             'symbol': o.get('symbol'),
                             'type': o_type,
-                            'label': display_label,
+                            'label': label,
                             'side': o.get('side'),
                             'stopPrice': trigger_price,
                             'price': float(o.get('price') or 0),
@@ -664,7 +679,11 @@ def get_all_open_conditional_orders(user_id=None):
                             'source': 'algo'
                         })
         except Exception as algo_err:
-            print(f"[DEBUG] Algo orders fetch failed (non-fatal): {algo_err}")
+            from binance.exceptions import BinanceAPIException
+            if isinstance(algo_err, BinanceAPIException) and algo_err.code == -4120:
+                print(f"[DEBUG] Algo orders not supported (-4120), using regular orders only")
+            else:
+                print(f"[DEBUG] Algo orders fetch failed (non-fatal): {algo_err}")
 
         # Sort by time descending
         conditional_orders.sort(key=lambda x: x['time'], reverse=True)

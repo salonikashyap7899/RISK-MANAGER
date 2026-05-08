@@ -12,7 +12,8 @@ def get_tp1_and_sl_orders(user_id):
         all_conditional = logic.get_all_open_conditional_orders(user_id)
         
         # 2. Get user's active positions from database to provide context
-        db_positions = TradePosition.query.filter_by(user_id=user_id).order_by(TradePosition.created_at.desc()).all()
+        # We fetch both open and closed to handle cases where trade just closed
+        db_positions = TradePosition.query.filter_by(user_id=user_id).order_by(TradePosition.created_at.desc()).limit(20).all()
         pos_map = {p.symbol: p for p in db_positions}
         
         tp1_orders = []
@@ -29,6 +30,7 @@ def get_tp1_and_sl_orders(user_id):
                 'symbol': symbol,
                 'side': o.get('side'),
                 'type': o.get('type'),
+                'label': o.get('label', ''),
                 'triggerPrice': o.get('stopPrice'),
                 'qty': o.get('origQty'),
                 'time': o.get('time'),
@@ -40,7 +42,7 @@ def get_tp1_and_sl_orders(user_id):
             
             if label == 'TP1' or 'TAKE_PROFIT' in o.get('type', ''):
                 tp1_orders.append(context)
-            elif label == 'SL' or 'STOP' in o.get('type', ''):
+            elif label == 'SL' or 'STOP' in o.get('type', '') or 'STOP_LOSS' in o.get('type', ''):
                 sl_orders.append(context)
                 
         return {

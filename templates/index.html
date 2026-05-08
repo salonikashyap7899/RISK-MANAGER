@@ -1178,7 +1178,7 @@
                 updateTP1SLOrders();
                 updateConditionalOrders();
             } else {
-                alert(`Error: ${data.error}`);
+                alert(`Error: ${data.message || data.error || 'Unknown error'}`);
             }
         })
         .catch(err => alert(`Error: ${err.message}`));
