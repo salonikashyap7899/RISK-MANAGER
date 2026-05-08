@@ -1071,12 +1071,23 @@ def api_conditional_orders():
 @login_required
 def api_tp1_and_sl_orders():
     """
-    NEW ENDPOINT: Fetch ONLY TP1 and SL orders with position context.
-    This allows users to easily find and manually close TP1/SL orders after a trade closes.
+    Fetch ONLY TP1 and SL conditional orders with position context.
     """
     from conditional_orders_enhancement import get_tp1_and_sl_orders
     result = get_tp1_and_sl_orders(current_user.id)
     return jsonify(result)
+
+@app.route('/api/debug_conditional_orders')
+@login_required
+def api_debug_conditional_orders():
+    """
+    Debug: returns raw output of get_all_open_conditional_orders.
+    Visit mindriskcontrol.com/api/debug_conditional_orders in your browser
+    while logged in to see exactly what Binance is returning.
+    Delete this route once confirmed working.
+    """
+    raw = logic.get_all_open_conditional_orders(current_user.id)
+    return jsonify({"count": len(raw), "orders": raw})
 
 @app.route('/api/cancel_conditional_order', methods=['POST'])
 @login_required
