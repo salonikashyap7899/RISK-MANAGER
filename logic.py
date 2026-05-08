@@ -588,7 +588,7 @@ def get_all_open_conditional_orders(user_id=None):
             'TRAILING_STOP_MARKET',
             'STOP_LOSS', 'STOP_LOSS_LIMIT',
             'TAKE_PROFIT_LIMIT',
-            'LIMIT' # Only if it has a stopPrice set
+            'LIMIT'  # Only if it has a stopPrice set
         ]
 
         conditional_orders = []
@@ -630,7 +630,6 @@ def get_all_open_conditional_orders(user_id=None):
         # --- Fetch algo/conditional orders (TP1 lives here) ---
         try:
             algo_resp = None
-            # Try multiple methods to fetch algo orders
             if hasattr(client, 'futures_get_algo_orders'):
                 try:
                     algo_resp = client.futures_get_algo_orders(recvWindow=10000)
@@ -642,13 +641,11 @@ def get_all_open_conditional_orders(user_id=None):
                     algo_resp = client._request_futures_api('get', 'algoOrder/openOrders', True, data={'recvWindow': 10000})
                 except Exception as e2:
                     print(f"[DEBUG] _request_futures_api algo failed: {e2}")
-
+            
             if algo_resp is not None:
-                print(f"[DEBUG] Raw algo response: {algo_resp}")
-                # Response may be a list or a dict with 'orders' key
                 algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
                 print(f"[DEBUG] Algo open orders count: {len(algo_orders)}")
-
+                
                 for o in algo_orders:
                     o_type = (o.get('type') or o.get('algoType') or '').upper()
                     algo_id = str(o.get('algoId') or o.get('orderId') or '')
