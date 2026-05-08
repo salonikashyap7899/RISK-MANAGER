@@ -2604,7 +2604,2540 @@
             ✓ Close
         </button>
         </div>
+    </div><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MindRiskControl</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../static/style.css">
+<style>
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+        .container {
+            height: calc(100vh - 14px);
+            min-height: 0;
+            align-items: stretch;
+            padding: 0 !important;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .live-badge { animation: pulse 2s infinite; }
+        
+        .dashboard-right {
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 auto;
+            height: 100%;
+            gap: 6px;
+            min-height: 0;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .panel.right.dashboard-right {
+            overflow: hidden;
+            padding: 6px;
+        }
+
+        .dashboard-section {
+            background: linear-gradient(180deg, #09111a 0%, #0c141d 100%);
+            border: 1px solid #0ca7d4;
+            border-radius: 12px;
+            box-shadow: inset 0 0 0 1px rgba(0, 212, 255, 0.08);
+            min-height: 0;
+            min-width: 0;
+        }
+
+        .chart-section {
+            display: flex;
+            flex: 0 0 60%;
+            padding: 4px;
+            overflow: hidden;
+            min-height: 250px;
+            max-height: 60%;
+        }
+
+        .dashboard-chart {
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            flex: 1 1 auto;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #090d12;
+        }
+
+        .dashboard-card {
+            background: linear-gradient(180deg, #09111a 0%, #0c141d 100%);
+            border: 1px solid #0ca7d4;
+            border-radius: 12px;
+            box-shadow: inset 0 0 0 1px rgba(0, 212, 255, 0.08);
+            color: #fff;
+            min-height: 0;
+            min-width: 0;
+            box-sizing: border-box;
+        }
+
+        .positions-card {
+            padding: 7px 9px;
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 auto;
+            min-height: 0;
+            max-height: none;
+            overflow: hidden;
+        }
+
+        .positions-scroll {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            padding-right: 2px;
+        }
+
+        .dashboard-bottom-row {
+            display: grid;
+            grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+            gap: 8px;
+            flex: 1 1 auto;
+            min-height: 0;
+            align-items: stretch;
+        }
+        .dashboard-bottom-row > .dashboard-card {
+            min-height: 0;
+        }
+        .coin-analysis-card {
+            display: flex;
+            flex: 1 1 auto;
+            flex-direction: column;
+            padding: 0;
+            overflow: hidden;
+        }
+        .coin-analysis-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            padding: 6px 8px;
+            border-bottom: 1px solid rgba(12, 167, 212, 0.55);
+            background: linear-gradient(90deg, rgba(0, 212, 255, 0.14), rgba(0, 212, 255, 0.04));
+        }
+        .coin-analysis-title {
+            margin: 0;
+            color: #e9fbff;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            line-height: 1.05;
+        }
+        .coin-analysis-subtitle {
+            margin: 0;
+            color: #81b8c5;
+            font-size: 6px;
+            line-height: 1;
+        }
+        .analysis-badge {
+            padding: 3px 6px;
+            border-radius: 999px;
+            border: 1px solid rgba(0, 212, 255, 0.35);
+            background: rgba(0, 212, 255, 0.08);
+            color: #89ebff;
+            font-size: 6px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+            text-transform: uppercase;
+            line-height: 1;
+        }
+        .coin-analysis-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
+            padding: 6px;
+            display: grid;
+            grid-template-rows: repeat(4, minmax(0, 1fr)) auto;
+            gap: 4px;
+        }
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-rows: minmax(0, 1fr);
+            gap: 4px;
+            height: 100%;
+        }
+        .analysis-grid.analysis-single {
+            grid-template-columns: 1fr;
+        }
+        .analysis-grid.analysis-prices {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .analysis-metric {
+            min-height: 0;
+            height: 100%;
+            padding: 6px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 212, 255, 0.12);
+            background: linear-gradient(180deg, rgba(10, 18, 24, 0.96), rgba(8, 13, 18, 0.94));
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+        }
+        .analysis-metric.warm {
+            border-color: rgba(255, 170, 0, 0.22);
+        }
+        .analysis-metric.danger {
+            border-color: rgba(255, 100, 100, 0.22);
+        }
+        .analysis-metric-label {
+            margin: 0;
+            color: #81b8c5;
+            font-size: 7px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            line-height: 1;
+        }
+        .analysis-metric-value {
+            margin: 2px 0 0;
+            color: #f4fcff;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1.1;
+            word-break: break-word;
+        }
+        .analysis-metric-value.price {
+            font-size: 8px;
+        }
+        .analysis-actions {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 4px;
+            margin-top: 0;
+            align-self: stretch;
+        }
+        .analysis-action-btn {
+            border: none;
+            border-radius: 7px;
+            padding: 5px 4px;
+            font-size: 7px;
+            font-weight: 700;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            line-height: 1;
+        }
+        .analysis-action-btn.action-leverage {
+            background: linear-gradient(135deg, #ffbf3f 0%, #ff8a00 100%);
+            color: #081017;
+        }
+        .analysis-action-btn.action-tpsl {
+            background: linear-gradient(135deg, #3fd8ff 0%, #0099ff 100%);
+            color: #081017;
+        }
+        .analysis-action-btn.action-close {
+            background: linear-gradient(135deg, #ff7f7f 0%, #ff3d3d 100%);
+            color: #fff;
+        }
+        #validation-warnings {
+            display: none !important;
+        }
+        .recent-trades-card {
+            padding: 8px;
+            border-color: #333;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        .left-panel-scroll {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-right: 0;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .left-panel-scroll::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+            display: none;
+            background: transparent;
+        }
+        .trade-history-box {
+            background: #000;
+            border: 1px solid #333;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 6px;
+            border-radius: 6px;
+            font-size: 8px;
+            font-family: monospace;
+        }
+        /* Native progress avoids template syntax inside style="" (lint/CSS parse) */
+        .daily-limit-progress {
+            width: 100%;
+            height: 6px;
+            vertical-align: middle;
+            margin: 1px 0;
+            border: none;
+            border-radius: 2px;
+            background: #1a3a45;
+        }
+        .daily-limit-progress::-webkit-progress-bar {
+            background: #1a3a45;
+            border-radius: 2px;
+        }
+        .daily-limit-progress::-webkit-progress-value {
+            background: linear-gradient(90deg, #0ca7d4, #00d4ff);
+            border-radius: 2px;
+        }
+        .daily-limit-progress.limit-over::-webkit-progress-value {
+            background: #cc0000;
+        }
+        .daily-limit-progress::-moz-progress-bar {
+            background: linear-gradient(90deg, #0ca7d4, #00d4ff);
+            border-radius: 2px;
+        }
+        .daily-limit-progress.limit-over::-moz-progress-bar {
+            background: #cc0000;
+        }
+        @media (max-height: 920px) {
+            .dashboard-chart {
+                min-height: 0;
+            }
+        }
+        @media (max-height: 760px) {
+            .dashboard-right { gap: 4px; }
+            .chart-section { flex: 0 0 60%; min-height: 200px; }
+            .positions-card { flex: 0 0 40%; min-height: 150px; }
+        }
+        @media (max-width: 1200px) {
+            .dashboard-bottom-row {
+                grid-template-columns: 1fr;
+            }
+        }
+        @media (max-width: 900px) {
+            html, body {
+                height: auto;
+                overflow-x: hidden;
+                overflow-y: auto;
+            }
+            .container {
+                height: auto;
+                min-height: 100vh;
+            }
+            .panel.right.dashboard-right {
+                overflow: visible;
+            }
+            .dashboard-right {
+                display: flex;
+                height: auto;
+                overflow: visible;
+                gap: 10px;
+            }
+            .chart-section {
+                flex: none;
+            }
+            .dashboard-chart {
+                min-height: 300px;
+                height: 300px;
+            }
+            .positions-card {
+                flex: none;
+                min-height: 200px;
+                height: auto;
+            }
+            .coin-analysis-header {
+                flex-direction: column;
+            }
+        }
+</style>
+
+
+</head>
+<body>
+<div class="container">
+    {% if banner %}
+    <div class="alert alert-{{ banner.type }} text-center">
+        {{ banner.message }}
+        <a href="{{ url_for('subscribe') }}" class="btn btn-sm btn-light ms-2">Renew</a>
     </div>
+    {% endif %}
+    
+    <div class="panel left">
+        <div class="header">TRADING CONTROLS</div>
+        {% if trade_status %}
+        <div class="message {{ 'success' if trade_status.success else 'error' }}">
+            {{ trade_status.message }}
+        </div>
+        {% endif %}
+     
+        <div class="left-panel-scroll">
+        <form method="POST" style="display: flex; flex-direction: column;">
+            <input type="hidden" name="side" id="side_hidden" value="{{default_side}}">
+            <input type="hidden" name="prev_symbol" value="{{selected_symbol}}">
+            <input type="hidden" id="sizing_suggested_units" value="{{sizing.suggested_units | default(0)}}">
+            <input type="hidden" id="sizing_suggested_leverage" value="{{sizing.suggested_leverage | default(1)}}">
+
+            <div class="row">
+                <div class="col">
+                    <label for="wallet_unutilized_display" style="font-size: 10px; margin-bottom: 1px;">Capital (1% Risk)</label>
+                    <div id="wallet-display" style="position: relative;">
+<input id="wallet_unutilized_display" type="text" readonly value="{{ wallet_debug.unutilized | default(0) | round(2) }}" title="Unutilized margin USDT" aria-label="Unutilized capital for trading in USDT" style="color: #7aff00; width: 100%; font-size: 10px; height: 20px;">
+                        <div id="wallet-status" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-size: 8px; padding: 1px 4px; border-radius: 6px;">
+                            {% if wallet_debug.needs_connection %}
+                                <span style="background: #ff4444; color: white;">⚠️ Connect</span>
+                            {% elif not wallet_debug.success %}
+                                <span style="background: #ffaa00; color: white;">?</span>
+                            {% else %}
+                                <span style="background: #00ff88; color: black;">✅</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% if wallet_debug.needs_connection %}
+            <div style="background: #4d1a1a; border: 1px solid #ff4444; color: #ffaa88; padding: 3px; margin-bottom: 4px; border-radius: 3px; font-size: 9px;">
+                <strong style="font-size: 8px;">🚨 NO BINANCE CONNECTION</strong><br>
+                <a href="/exchange-connections" style="color: #ffddaa; text-decoration: underline; font-size: 8px;">Connect → API Key + Secret (Futures)</a>
+            </div>
+            {% elif not wallet_debug.success %}
+            <div style="background: #1a1a2e; border: 1px solid #ffaa00; color: #ffdd88; padding: 3px; margin-bottom: 4px; border-radius: 3px; font-size: 8px;">
+                <strong style="font-size: 8px;">⚠️ Wallet Error:</strong> {{ wallet_debug.error }}<br>
+                <small style="font-size: 7px;">{{ wallet_debug.debug_info }}</small>
+            </div>
+            {% endif %}
+
+            <div class="risk-control">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 6px;">
+                    <label for="risk_slider" style="margin-bottom: 0; font-size: 10px; white-space: nowrap;">🔒 Risk %</label>
+                    <input type="range" id="risk_slider" name="risk_slider" min="0.5" max="2" step="0.1" value="1" onchange="updateRiskSizing()" aria-label="Risk percent per trade" title="Risk percent per trade" style="width: 60px; flex: 1;">
+                    <span id="risk_pct_display" style="font-size: 10px; white-space: nowrap;">1.0%</span>
+                </div>
+                <div id="risk-preview" class="risk-preview" style="display: none; font-size: 9px; line-height: 1.2;">
+                    <strong>✅ Sug Trade (1% Risk)</strong><br>
+                    Risk: $<span id="risk_amount">0</span> | Pos: <span id="risk_qty">0</span> units | Lev: <span id="risk_lev">0</span>x
+                </div>
+            </div>
+
+            <div class="status" style="padding: 4px; margin: 4px 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong style="font-size: 9px;">📊 Daily Limits:</strong>
+                    {% if user.is_admin or user.email in ['admin@mindriskcontrol.com', 'test@test.com'] %}
+                    <button type="button" onclick="adminResetDailyTrades()" style="background: #ff4444; color: white; border: none; padding: 1px 4px; border-radius: 2px; font-size: 7px; cursor: pointer;">Reset Admin</button>
+                    {% endif %}
+                </div>
+                <span style="font-size: 8px;">Total: <span id="total_trades_display">{{today_stats.total_trades}}/{{today_stats.max_trades}}</span> | <span id="symbol_trades_label">{{selected_symbol}}</span>: <span id="symbol_trades_display">{{ today_stats.symbol_trades.get(selected_symbol, 0) if today_stats.symbol_trades else 0 }}/{{today_stats.max_per_symbol}}</span></span>
+                <progress id="daily_limit_progress" class="daily-limit-progress{% if today_stats.total_trades >= today_stats.max_trades %} limit-over{% endif %}" value="{{ today_stats.total_trades }}" max="{{ today_stats.max_trades or 1 }}" aria-label="Daily total trades used versus limit"></progress>
+            </div>
+
+            <div class="row">
+                <div class="col" style="flex: 1.2;">
+                    <label for="symbol_select">Symbol</label>
+                    <select name="symbol" onchange="changeSymbolDynamic(event)" id="symbol_select" aria-label="Trading symbol" style="font-size: 10px;">
+        {% for sym in symbols %}
+        <option value="{{sym}}" {{ 'selected' if sym == selected_symbol }}>{{sym}}</option>
+        {% endfor %}
+    </select>
+                </div>
+                <div class="col">
+                    <label for="order_type_select">Order Type</label>
+                    <select name="order_type" id="order_type_select" aria-label="Order type market or limit" style="font-size: 10px;">
+                        <option value="MARKET" {{ 'selected' if order_type == 'MARKET' }}>MARKET</option>
+                        <option value="LIMIT" {{ 'selected' if order_type == 'LIMIT' }}>LIMIT</option>
+                    </select>
+                </div>
+                <div class="col" style="flex: 1.3;">
+                    <label for="margin_mode_select" style="font-size: 9px;">Margin Mode</label>
+                    <select name="margin_mode" id="margin_mode_select" aria-label="Margin mode isolated or cross" style="font-size: 10px;">
+                        <option value="ISOLATED" {{ 'selected' if margin_mode == 'ISOLATED' }}>ISOLATED</option>
+                        <option value="CROSS" {{ 'selected' if margin_mode == 'CROSS' }}>CROSS</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button type="button" class="tab {{ 'active' if default_side == 'LONG' }}" 
+                        onclick="document.getElementById('side_hidden').value='LONG'; this.form.submit();" data-testid="long-button" style="font-size: 10px;">
+                    LONG
+                </button>
+                <button type="button" class="tab {{ 'active' if default_side == 'SHORT' }}" 
+                        onclick="document.getElementById('side_hidden').value='SHORT'; this.form.submit();" data-testid="short-button" style="font-size: 10px;">
+                    SHORT
+                </button>
+            </div>
+
+            <div class="row">
+                <div class="col" style="flex: 1.2;">
+                    <label for="entry_input" style="font-size: 10px;">
+                        Entry Price
+                        <span id="live-price-indicator"
+                              title="Current live market price (Δ vs. entry)"
+                              style="margin-left:6px; padding:1px 5px; border-radius:3px; background:#0b2030; border:1px solid #0ca7d4; color:#9fdcff; font-size:9px; font-weight:600; vertical-align:middle; display:inline-flex; align-items:center; gap:4px;">
+                            <span id="live-price-value">--</span>
+                            <span id="live-price-delta" style="color:#9fdcff;">Δ --</span>
+                        </span>
+                    </label>
+                    <div style="display: flex; align-items: center; gap: 3px;">
+                        <input type="number" name="entry" id="entry_input" value="{{default_entry}}" step="any" title="Entry price" aria-label="Entry price"
+                               oninput="this.dataset.userEntry=this.value; if(typeof refreshLivePriceIndicator==='function') refreshLivePriceIndicator();"
+                               style="flex: 1; font-size: 10px;">
+                        <button type="button" id="reset-live-btn"
+                                onclick="(function(){var e=document.getElementById('entry_input'); if(e){ e.dataset.snapToLive='1'; } updateLivePrice();})()"
+                                style="background: #0d6efd; color: white; border: none; padding: 3px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; white-space: nowrap;">Live</button>
+                    </div>
+                </div>
+                <div class="col" style="flex: 0.8;">
+                    <label for="tp1_mode_select" style="font-size: 10px;">TP1 Type</label>
+                    <select name="tp1_mode" id="tp1_mode_select" onchange="this.form.submit();" aria-label="Take profit 1 price or percent mode" style="font-size: 9px;">
+                        <option value="TP1 Price" {{ 'selected' if default_tp1_mode == 'TP1 Price' }}>Price</option>
+                        <option value="TP1 % Movement" {{ 'selected' if default_tp1_mode == 'TP1 % Movement' }}>% Move</option>
+                    </select>
+                </div>
+                <div class="col">
+                    <label for="tp1_input" style="font-size: 10px;">TP1 Value</label>
+                    <input type="number" name="tp1" id="tp1_input" value="{{default_tp1_value}}" step="any" title="Take profit 1 value" aria-label="Take profit 1 value" style="font-size: 10px;">
+                </div>
+                <div class="col" style="flex: 0.7;">
+                    <label for="tp1_pct_input" style="font-size: 10px;">TP1 %</label>
+                    <input type="number" name="tp1_pct" id="tp1_pct_input" value="{{tp1_pct}}" title="Percent of position for TP1" aria-label="Percent of position for TP1" style="font-size: 10px;">
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col" style="flex: 1;">
+                    <label for="tp2_input" style="font-size: 10px;">TP2 Price</label>
+                    <input type="number" name="tp2" id="tp2_input" value="{{tp2}}" step="any" title="Take profit 2 price" aria-label="Take profit 2 price" style="font-size: 10px;">
+                </div>
+                <div class="col" style="flex: 0.8;">
+                    <label for="sl_type_select" style="font-size: 10px;">SL Method</label>
+                    <select name="sl_type" id="sl_type_select" onchange="this.form.submit();" aria-label="Stop loss method points or percent" style="font-size: 9px;">
+                        <option value="SL Points" {{ 'selected' if default_sl_type == 'SL Points' }}>Points</option>
+                        <option value="SL % Movement" {{ 'selected' if default_sl_type == 'SL % Movement' }}>% Move</option>
+                    </select>
+                </div>
+                <div class="col" style="flex: 0.9;">
+                    <label for="sl_value_input" style="font-size: 9px;">SL Value⚠️</label>
+                    <input type="number" name="sl_value" id="sl_value_input" value="{{default_sl_value}}" step="any" 
+                           onchange="this.form.submit();" required title="Stop loss value" aria-label="Stop loss value" style="font-size: 10px;">
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col" style="flex: 1;">
+                    <label style="font-size: 10px;">Pos Override</label>
+                    <input type="number" name="user_units" step="any" style="font-size: 10px;" title="Suggested: {{sizing.suggested_units}}">
+                    <small style="font-size: 8px;">Sug: {{sizing.suggested_units}}</small>
+                </div>
+                <div class="col" style="flex: 1.1;">
+                    <label style="font-size: 10px;">Lev Override</label>
+                    <input type="number" name="user_lev" step="any" style="font-size: 10px;" title="Suggested: {{sizing.suggested_leverage}}x | Max: {{sizing.exchange_max_leverage | default('-')}}x">
+                    <small style="font-size: 8px;">Sug: {{sizing.suggested_leverage}}x</small>
+                </div>
+            </div>
+
+            <button type="submit" name="place_order" class="place" data-testid="execute-order-button"
+                    {% if default_sl_value <= 0 %} disabled style="filter: grayscale(1); padding: 2px 8px; min-height: 20px; font-size: 8px;" {% endif %}
+                    onclick="return confirmTradeExecution()" style="font-size: 8px; padding: 2px 8px; min-height: 20px; margin-bottom: 10px;">
+                {% if default_sl_value <= 0 %} 
+                    🔒 SET SL FIRST
+                {% else %} 
+                    ✅ EXECUTE (SL: {{default_sl_value}})
+                {% endif %}
+            </button>
+
+            <div class="status-box">
+                {% if not sizing.error %}
+                    <details style="background: #06212a; padding: 4px; border-radius: 3px; border: 1px solid #0ca7d4; font-size: 8px;">
+                        <summary style="color: #00b7ff; cursor: pointer; font-size: 8px; font-weight: bold;">📐 Risk Logic</summary>
+                        <span style="font-size: 0.7em; line-height: 1.2;">
+                            Risk: ${{ sizing.risk_amount | round(2) }} | SL: {{ sizing.sl_percent }}% | Lev: {{sizing.suggested_leverage}}x<br>
+                            Pos: ${{ sizing.suggested_position_value | round(2) }}
+                        </span>
+                    </details>
+                {% endif %}
+            </div>
+            
+            <div id="validation-warnings" style="display: none; background: #2a1a1a; border: 1px solid #ff6b35; color: #ffaa88; padding: 3px; border-radius: 3px; margin-top: 3px; font-size: 8px;">
+                <small style="font-size: 7px;">⚠️ Validation Issues:</small>
+                <div id="warning-list"></div>
+            </div>
+
+                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px 0 0 0; margin: 0; flex: 1; min-height: 0;">
+                <div class="dashboard-card conditional-orders-card" style="padding: 8px; display: flex; flex-direction: column; min-height: 0; border: 1px solid #ffaa00; background: #0b0f12; border-radius: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px 0; border-bottom: 1px solid #ffaa00; padding: 0 0 4px 0;">
+                        <h3 style="color: #ffaa00; margin: 0; font-size: 11px; font-weight: bold;" id="conditional_header_left">🎨 TP1 & SL (0)</h3>
+                        <button type="button" onclick="updateTP1SLOrders()" style="background: rgba(255, 170, 0, 0.1); color: #ffaa00; border: 1px solid #ffaa00; padding: 1px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; font-weight: bold;">Refresh</button>
+                    </div>
+
+                    <div id="conditional_orders_left" class="orders-scroll" style="overflow-y: auto; flex: 1; min-height: 0; font-size: 9px; margin: 0; padding: 0 4px;">
+                        <div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">No conditional orders</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-card recent-trades-card" style="padding: 8px; display: flex; flex-direction: column; min-height: 0; border: 1px solid #0ca7d4; background: #0b0f12; border-radius: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px 0; border-bottom: 1px solid #0ca7d4; padding: 0 0 4px 0;">
+                        <h3 style="color: #00d4ff; margin: 0; font-size: 11px; font-weight: bold;">📊 TRADES</h3>
+                        <a href="/download_trades" style="color: #0ca7d4; text-decoration: none; font-weight: bold; font-size: 9px; background: rgba(12, 167, 212, 0.1); padding: 2px 6px; border-radius: 3px; border: 1px solid rgba(12, 167, 212, 0.3);">CSV</a>
+                    </div>
+
+                    <div id="trade_history" class="trade-history-box" style="overflow-y: auto; flex: 1; min-height: 0; background: #000; border: 1px solid #1a3a45; border-radius: 4px; padding: 4px; font-family: monospace; font-size: 9px; line-height: 1.4; margin: 0;">
+                        <div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">Loading trades...</div>
+                    </div>
+                </div>
+            </div>
+        </form>
+        </div>
+    </div>
+
+    <div class="panel right dashboard-right">
+        <div class="dashboard-section chart-section">
+            <div id="tv_chart" class="dashboard-chart"></div>
+        </div>
+
+    <div class="dashboard-card positions-card" style="padding: 8px; display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; border: 1px solid #0ca7d4; background: #0b0f12; border-radius: 6px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px 0; border-bottom: 1px solid #0ca7d4; padding: 0 0 4px 0;">
+            <h3 style="color: #00d4ff; margin: 0; font-size: 11px; font-weight: bold;" id="position_header">📍 LIVE POSITIONS (0)</h3>
+            <button type="button" onclick="closeAllPositions()" aria-label="Close all open positions" style="background: #cc0000; color: #fff; border: none; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold; transition: all 0.2s;">Close All</button>
+        </div>
+        <div id="live_positions" class="positions-scroll" style="overflow-y: auto; flex: 1; min-height: 0; font-size: 9px; margin: 0; padding: 0 4px;">
+            <div style="text-align: center; color: #555; padding: 40px 2px; font-size: 10px;">No open positions yet<br><small style="color: #444;">Place a trade to see live position details</small></div>
+        </div>
+    </div>
+
+<script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+        <script type="text/javascript">
+          let tvWidget = null;
+          // ✅ FIXED: currentChartSymbol tracks the ACTIVE symbol for the chart
+          let currentChartSymbol = "{{ selected_symbol or 'BTCUSDT' }}";
+          let lastValidSymbol = currentChartSymbol;
+
+          function getTradingViewSymbol(symbol) {
+            const cleanSymbol = (symbol || currentChartSymbol || 'BTCUSDT').trim().toUpperCase();
+            // TradingView futures formatting isn't consistent for all Binance listings.
+            // Heuristic: multiplier-style symbols (starting with a digit) often work without ".P".
+            if (/^[0-9]/.test(cleanSymbol)) return `BINANCE:${cleanSymbol}`;
+            return `BINANCE:${cleanSymbol}.P`;
+          }
+          
+          // ✅ FIXED: Accept symbol parameter so chart updates on symbol change
+          function initializeTradingViewChart(symbol) {
+            // Use passed symbol, fall back to currentChartSymbol, then server-rendered default
+            if (symbol && symbol.trim() !== '') {
+              currentChartSymbol = symbol.trim().toUpperCase();
+            }
+            
+            const isMobileChart = window.matchMedia('(max-width: 900px)').matches;
+            const chartContainer = document.getElementById('tv_chart');
+            
+            if (!chartContainer) {
+              console.error('❌ Chart container not found!');
+              return;
+            }
+            
+            // Clear previous widget if it exists
+            if (tvWidget) {
+              try {
+                tvWidget.remove();
+                tvWidget = null;
+              } catch (e) {
+                console.log('Previous chart cleanup skipped');
+              }
+            }
+
+            // Clear the container completely before reinitializing
+            chartContainer.innerHTML = '';
+            
+            // Add small delay to ensure DOM is ready after clearing
+            setTimeout(() => {
+              try {
+                console.log(`📊 Initializing TradingView chart for: ${currentChartSymbol}`);
+                
+                // ✅ CRITICAL FIX: Format symbol correctly for TradingView Futures
+                // TradingView expects futures symbols in specific formats
+                const fullTvSymbol = getTradingViewSymbol(currentChartSymbol);
+                console.log(`📊 TradingView formatted symbol: ${fullTvSymbol}`);
+                
+                tvWidget = new TradingView.widget({
+                  "autosize": true,
+                  "symbol": fullTvSymbol,
+                  "interval": "5",
+                  "timezone": "Etc/UTC",
+                  "theme": "dark",
+                  "style": "1",
+                  "locale": "en",
+                  "toolbar_bg": "#f1f3f6",
+                  "enable_publishing": false,
+                  "hide_top_toolbar": isMobileChart,
+                  "save_image": false,
+                  "container_id": "tv_chart",
+                  "allow_symbol_change": true  // ✅ CHANGED: Allow symbol change so users can search if symbol doesn't match
+                });
+                
+                console.log(`✅ TradingView chart initialized for: ${fullTvSymbol}`);
+              } catch (e) {
+                console.error('❌ Error initializing TradingView chart:', e);
+                // Show user-friendly error
+                const chartDiv = document.getElementById('tv_chart');
+                if (chartDiv) {
+                  chartDiv.innerHTML = 
+                    '<div style="padding: 20px; text-align: center; color: #ff4444;">' +
+                    '⚠️ Chart initialization failed. Try refreshing the page or selecting a different symbol.' +
+                    '</div>';
+                }
+              }
+            }, 100);
+          }
+          
+          // Initialize chart on page load
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+              setTimeout(() => initializeTradingViewChart(), 500);
+            });
+          } else {
+            setTimeout(() => initializeTradingViewChart(), 500);
+          }
+          
+          // Reinitialize on visibility change (when tab comes back to focus)
+          document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+              console.log('📊 Page visible again, reinitializing chart...');
+              initializeTradingViewChart();
+            }
+          });
+        </script>
+
+<!-- ANALYSIS SECTION REMOVED AS PER USER REQUEST -->
+    </div>
+</div>
+
+<script>
+    // Store positions data for real-time updates
+    let currentPositions = {};
+
+    function getSelectedSymbol() {
+        const symbolElem = document.querySelector('select[name="symbol"]');
+        return symbolElem ? (symbolElem.value || '').trim().toUpperCase() : '';
+    }
+
+    function getCurrentSide() {
+        const sideElem = document.getElementById('side_hidden');
+        return sideElem ? (sideElem.value || 'LONG').trim().toUpperCase() : 'LONG';
+    }
+    
+    // Auto-populate embedded coin details with selected symbol
+    function updateEmbeddedCoinDetails(symbol, forceFresh = false) {
+        // Use passed symbol, then dropdown, then fallback
+        const activeSymbol = (symbol || getSelectedSymbol() || 'BTCUSDT').trim().toUpperCase();
+        const sl_typeElem = document.querySelector('select[name="sl_type"]');
+        const sl_type = sl_typeElem ? sl_typeElem.value : 'SL % Movement';
+        const sl_valueElem = document.querySelector('input[name="sl_value"]');
+        const sl_value = (sl_valueElem && sl_valueElem.value) ? sl_valueElem.value : '1.5';
+        const side = getCurrentSide();
+        
+        if (!activeSymbol) return;
+        
+        // Update header and loading state
+        document.getElementById('embed-modal-symbol').textContent = activeSymbol;
+        document.getElementById('embed-pnl').textContent = '...';
+        document.getElementById('embed-roi').textContent = '...';
+        document.getElementById('embed-size').textContent = '...';
+        document.getElementById('embed-margin').textContent = '...';
+        document.getElementById('embed-margin-ratio').textContent = '...';
+        document.getElementById('embed-entry').textContent = '-';
+        document.getElementById('embed-mark').textContent = '-';
+        document.getElementById('embed-liq').textContent = '-';
+        
+        const freshQuery = forceFresh ? '&fresh=1' : '';
+        const fetchUrl = `/api/coin-details/${activeSymbol}?sl_type=${encodeURIComponent(sl_type)}&sl_value=${encodeURIComponent(sl_value)}&side=${encodeURIComponent(side)}${freshQuery}`;
+        
+        fetch(fetchUrl)
+            .then(r => r.json())
+            .then(data => {
+                if (getSelectedSymbol() && getSelectedSymbol() !== activeSymbol) {
+                    console.log(`ℹ️ Ignoring stale embedded details for ${activeSymbol}`);
+                    return;
+                }
+
+                if (data && data.success) {
+                    const pos = data.position;
+                    
+                    if (pos && typeof pos === 'object' && Object.keys(pos).length > 0) {
+                        try {
+                            const size = parseFloat(pos.amount || pos.positionAmt || 0).toFixed(2);
+                            const entryPrice = parseFloat(pos.entry_price || pos.avgPrice || 0).toFixed(8);
+                            const markPrice = parseFloat(pos.mark_price || data.current_price || 0).toFixed(8);
+                            const liqPrice = parseFloat(pos.liquidation_price || pos.liquidationPrice || 0).toFixed(8);
+                            const unrealizedPnL = parseFloat(pos.unrealized_pnl || pos.unrealizedProfit || 0).toFixed(2);
+                            const roi = parseFloat(pos.dashboard_roi_percent || pos.roi_percent || 0).toFixed(2);
+                            const margin = parseFloat(pos.margin_usdt || pos.notional || 0).toFixed(2);
+                            const marginRatio = parseFloat(pos.dashboard_margin_ratio || pos.margin_ratio || 0).toFixed(2);
+                            
+                            // Update new card-based layout
+                            document.getElementById('embed-pnl').textContent = unrealizedPnL;
+                            document.getElementById('embed-pnl').style.color = unrealizedPnL >= 0 ? '#00ff88' : '#ff6464';
+                            
+                            document.getElementById('embed-roi').textContent = roi + '%';
+                            document.getElementById('embed-roi').style.color = roi >= 0 ? '#00ff88' : '#ff6464';
+                            
+                            document.getElementById('embed-size').textContent = size;
+                            document.getElementById('embed-margin').textContent = margin;
+                            document.getElementById('embed-margin-ratio').textContent = marginRatio + '%';
+                            document.getElementById('embed-margin-ratio').style.color = marginRatio < 5 ? '#ff6464' : '#ff6464';
+                            
+                            document.getElementById('embed-entry').textContent = entryPrice;
+                            document.getElementById('embed-mark').textContent = markPrice;
+                            document.getElementById('embed-liq').textContent = liqPrice;
+                        } catch (err) {
+                            console.error('Error parsing position data:', err);
+                        }
+                    } else {
+                        const currentPrice = parseFloat(data.current_price || 0).toFixed(8);
+                        // No position - still show live symbol snapshot
+                        document.getElementById('embed-pnl').textContent = '0.00';
+                        document.getElementById('embed-roi').textContent = '0.00%';
+                        document.getElementById('embed-size').textContent = '0.00';
+                        document.getElementById('embed-margin').textContent = '0.00';
+                        document.getElementById('embed-margin-ratio').textContent = '0.00%';
+                        document.getElementById('embed-entry').textContent = currentPrice !== '0.00000000' ? currentPrice : '-';
+                        document.getElementById('embed-mark').textContent = currentPrice !== '0.00000000' ? currentPrice : '-';
+                        document.getElementById('embed-liq').textContent = '-';
+                    }
+                }
+            })
+            .catch(err => {
+                console.error('Error fetching coin details:', err);
+            });
+    }
+    
+    // ✅ FIXED: Update embedded coin details AND chart when symbol changes
+    document.addEventListener('DOMContentLoaded', () => {
+        updateEmbeddedCoinDetails();
+        setInterval(updateEmbeddedCoinDetails, 5000); // Refresh every 5 seconds
+    });
+    
+    // Live Updates - Enhanced with real-time liquidation prices
+    function updateLivePositions() {
+        const container = document.getElementById('live_positions');
+        // Fetch main positions data (5-second cache)
+        fetch('/get_open_positions')
+        .then(r => r.json())
+        .then(data => {
+            if (data.positions) {
+                currentPositions = {};
+                data.positions.forEach(pos => {
+                    // ✅ Ensure leverage is correctly typed, fallback to 0/null for loading state
+                    pos.leverage = pos.leverage ? parseFloat(pos.leverage) : 0;
+                    currentPositions[pos.symbol] = pos;
+                });
+                
+                // Also fetch LIVE liquidation prices (no cache) every 2 seconds for real-time updates
+                updateLiveDataOnly();
+                // ✅ Auto-refresh conditional orders when positions update
+                updateConditionalOrders();
+            }
+            renderPositions();
+        }).catch(() => {
+            if (!container || container.innerHTML.trim() === '' || container.innerHTML.includes('No open positions')) {
+                document.getElementById('live_positions').innerHTML = '<div style="text-align: center; color: #ff4444; padding: 24px 12px; font-size: 10px;">Connection Error</div>';
+            }
+        });
+    }
+    
+    // Fetch ONLY liquidation prices live (NO cache) - run more frequently
+    function updateLiveDataOnly() {
+        fetch('/api/liquidation_prices')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.liquidation_prices) {
+                // Update only the liquidation-related fields with fresh data
+                Object.keys(data.liquidation_prices).forEach(symbol => {
+                    if (currentPositions[symbol]) {
+                        const liveData = data.liquidation_prices[symbol];
+                        currentPositions[symbol].liquidation_price = liveData.liquidation_price;
+                        currentPositions[symbol].mark_price = liveData.mark_price;
+                        currentPositions[symbol].unrealized_pnl = liveData.unrealized_pnl;
+                        currentPositions[symbol].roi_percent = liveData.roi_percent;
+                        currentPositions[symbol].dashboard_roi_percent = liveData.roi_percent;
+                        currentPositions[symbol].margin_ratio = liveData.margin_ratio;
+                        currentPositions[symbol].dashboard_margin_ratio = liveData.margin_ratio;
+                        currentPositions[symbol].leverage = liveData.leverage ? parseFloat(liveData.leverage) : 0; // ✅ UPDATE LIVE LEVERAGE
+                        currentPositions[symbol].timestamp = liveData.timestamp;
+                    }
+                });
+                // Re-render with updated data
+                renderPositions();
+            }
+        }).catch(err => {
+            console.log("Live data update error (non-critical):", err);
+        });
+    }
+    
+    // Render positions with current data
+    function renderPositions() {
+        const container = document.getElementById('live_positions');
+        const header = document.getElementById('position_header');
+        const positions = Object.values(currentPositions);
+        
+        if (positions.length > 0) {
+            let totalOrders = 0;
+            let html = '';
+            positions.forEach(pos => {
+                const pnlColor = pos.unrealized_pnl >= 0 ? '#00ff88' : '#ff4d4d';
+                const roiPercent = (pos.dashboard_roi_percent ?? pos.roi_percent).toFixed(1);
+                const marginRatio = (pos.dashboard_margin_ratio ?? pos.margin_ratio).toFixed(2);
+                totalOrders += pos.open_orders ? pos.open_orders.length : 0;
+                html += `
+                    <div style="border: 1px solid #333; padding: 12px; margin-bottom: 10px; border-radius: 6px; background: rgba(10, 10, 10, 0.5);">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 8px;">
+                            <span style="font-weight: bold; color: ${pos.side === 'LONG' ? '#00ff88' : '#ff4444'}; font-size: 12px;">${pos.symbol} <span style="font-size: 10px; color: #888;">${pos.side}</span></span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <small style="color: #00d4ff; font-size: 10px; font-weight: bold;"><span id="lev_val_${pos.symbol}">${pos.leverage > 0 ? pos.leverage : '...'}</span>x Leverage</small>
+                                <button onclick="editLeverageMod('${pos.symbol}')" style="background: linear-gradient(135deg, #ffbf3f 0%, #ff8a00 100%); color: #081017; border: none; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold; text-transform: uppercase; box-shadow: 0 0 5px rgba(255, 191, 63, 0.3);">Lev</button>
+                            </div>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px; font-size: 9px;">
+                            <div style="background: rgba(0, 212, 255, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid #00d4ff;">
+                                <div style="color: #666; margin-bottom: 2px;">Entry</div>
+                                <div style="color: #00d4ff; font-weight: bold; font-size: 10px;">$${pos.entry_price.toFixed(4)}</div>
+                            </div>
+                            <div style="background: rgba(100, 200, 255, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid #64c8ff;">
+                                <div style="color: #666; margin-bottom: 2px;">Mark</div>
+                                <div style="color: #64c8ff; font-weight: bold; font-size: 10px;">$${pos.mark_price.toFixed(4)}</div>
+                            </div>
+                            <div style="background: rgba(255, 100, 100, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid #ff6464;">
+                                <div style="color: #666; margin-bottom: 2px;">Liq.</div>
+                                <div style="color: #ff6464; font-weight: bold; font-size: 10px;">$${pos.liquidation_price.toFixed(4)}</div>
+                            </div>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; font-size: 9px;">
+                            <div style="background: rgba(0, 255, 136, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid #00ff88;">
+                                <div style="color: #666; margin-bottom: 2px;">Position</div>
+                                <div style="color: #00ff88; font-weight: bold; font-size: 10px;">${pos.amount.toFixed(4)} | $${pos.size_usdt.toFixed(2)}</div>
+                            </div>
+                            <div style="background: rgba(100, 200, 255, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid #64c8ff;">
+                                <div style="color: #666; margin-bottom: 2px;">Margin</div>
+                                <div style="color: #64c8ff; font-weight: bold; font-size: 10px;">$${pos.margin_usdt.toFixed(2)}</div>
+                            </div>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px; font-size: 9px;">
+                            <div style="background: rgba(${pnlColor.includes('88') ? '0,255,136' : '255,77,77'}, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid ${pnlColor};">
+                                <div style="color: #666; margin-bottom: 2px;">PnL</div>
+                                <div style="color: ${pnlColor}; font-weight: bold; font-size: 10px;">$${pos.unrealized_pnl.toFixed(2)}</div>
+                            </div>
+                            <div style="background: rgba(${pnlColor.includes('88') ? '0,255,136' : '255,77,77'}, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid ${pnlColor};">
+                                <div style="color: #666; margin-bottom: 2px;">ROI</div>
+                                <div style="color: ${pnlColor}; font-weight: bold; font-size: 10px;">${roiPercent}%</div>
+                            </div>
+                            <div style="background: rgba(${marginRatio < 5 ? '255,100,100' : '255,170,0'}, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid ${marginRatio < 5 ? '#ff6464' : '#ffaa00'};">
+                                <div style="color: #666; margin-bottom: 2px;">Margin Ratio</div>
+                                <div style="color: ${marginRatio < 5 ? '#ff6464' : '#ffaa00'}; font-weight: bold; font-size: 10px;">${marginRatio}%</div>
+                            </div>
+                        </div>
+                        
+                        <div id="tp_sl_info_${pos.symbol}" style="background: rgba(0, 212, 255, 0.05); padding: 8px; border-radius: 4px; margin-bottom: 8px; border-left: 2px solid #00d4ff; font-size: 9px;">
+                            <div style="color: #00d4ff; font-weight: bold; margin-bottom: 4px;">📍 TP/SL Levels:</div>
+                            <div id="tp_sl_details_${pos.symbol}" style="color: #aaa; font-size: 8px;">Loading TP/SL data...</div>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px;">
+                            <button onclick="closePosition('${pos.symbol}')" style="background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%); color: white; border: none; padding: 5px 6px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold;">❌ Close</button>
+                            <button onclick="partialClose('${pos.symbol}')" style="background: linear-gradient(135deg, #0d6efd 0%, #0a47ab 100%); color: white; border: none; padding: 5px 6px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold;">📊 Close %</button>
+                            <button onclick="moveTrailingSL('${pos.symbol}')" style="background: linear-gradient(135deg, #ffaa00 0%, #ff8800 100%); color: #000; border: none; padding: 5px 6px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold;">🎯 Trail SL</button>
+                            <button onclick="editTPSLMod()" style="background: linear-gradient(135deg, #00d4ff 0%, #00aadd 100%); color: #000; border: none; padding: 5px 6px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold;">⚙️ TP/SL</button>
+                        </div>
+                    </div>
+                `;
+            });
+            header.textContent = `📍 LIVE POSITIONS (${positions.length}) | ${totalOrders} Open Orders`;
+            container.innerHTML = html;
+        } else {
+            header.textContent = '📍 LIVE POSITIONS (0)';
+            container.innerHTML = '<div style="text-align: center; color: #666; padding: 24px 12px; font-size: 10px; line-height: 1.5;">No open positions yet<br><small style="color: #555; font-size: 9px;">Place a trade to see live position details</small></div>';
+        }
+        
+        // Fetch and display TP/SL data from database
+        fetchAndDisplayTPSLData();
+    }
+    
+    // Fetch TP/SL data from database and display it
+    function fetchAndDisplayTPSLData() {
+        fetch('/get_user_trade_positions')
+        .then(r => r.json())
+        .then(data => {
+            if (data.positions && data.positions.length > 0) {
+                data.positions.forEach(pos => {
+                    const tpSlElement = document.getElementById(`tp_sl_details_${pos.symbol}`);
+                    if (tpSlElement) {
+                        let tpSlHtml = '';
+                        tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #ff6464;">🛑 SL:</strong> $${pos.sl_price.toFixed(4)}</div>`;
+                        if (pos.current_sl && pos.current_sl !== pos.sl_price) {
+                            tpSlHtml += `<div style="margin-bottom: 3px; font-size: 8px; color: #ffaa00;"><strong>Current SL:</strong> $${pos.current_sl.toFixed(4)}</div>`;
+                        }
+                        if (pos.tp1_price > 0) {
+                            tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #00ff88;">🎯 TP1:</strong> $${pos.tp1_price.toFixed(4)} (${pos.tp1_qty_pct}%)</div>`;
+                        }
+                        if (pos.tp2_price > 0) {
+                            tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #00ff88;">🎯 TP2:</strong> $${pos.tp2_price.toFixed(4)} (Remainder)</div>`;
+                        }
+                        if (!tpSlHtml) {
+                            tpSlHtml = '<div style="color: #666;">No TP/SL set</div>';
+                        }
+                        tpSlElement.innerHTML = tpSlHtml;
+                    }
+                });
+            }
+        })
+        .catch(err => {
+            console.log('Error fetching TP/SL data:', err);
+            // Gracefully hide TP/SL sections if fetch fails
+            const allPositions = Object.keys(currentPositions);
+            allPositions.forEach(symbol => {
+                const tpSlElement = document.getElementById(`tp_sl_details_${symbol}`);
+                if (tpSlElement) {
+                    tpSlElement.innerHTML = '<div style="color: #666; font-size: 8px;">TP/SL data unavailable</div>';
+                }
+            });
+        });
+    }
+
+    function updateTP1SLOrders() {
+        // NEW FUNCTION: Fetch and display ONLY TP1 and SL orders with position context.
+        // This makes it easy to find and manually close TP1/SL orders after a trade closes.
+        const container = document.getElementById('conditional_orders_left');
+        const header = document.getElementById('conditional_header_left');
+        if (!container) return;
+
+        fetch('/api/tp1_and_sl_orders')
+        .then(r => r.json())
+        .then(data => {
+            const tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders : [];
+            const slOrders = Array.isArray(data.sl_orders) ? data.sl_orders : [];
+            const totalOrders = tp1Orders.length + slOrders.length;
+            
+            if (header) header.textContent = 'TP1 & SL ORDERS (' + totalOrders + ')';
+
+            if (totalOrders > 0) {
+                let html = '';
+                
+                // Display TP1 orders first (green)
+                if (tp1Orders.length > 0) {
+                    html += '<div style="margin-bottom: 8px; padding: 4px 0; border-bottom: 1px solid #333;">';
+                    html += '<div style="color: #00ff88; font-size: 9px; font-weight: bold; margin-bottom: 4px;">📈 TP1 ORDERS (' + tp1Orders.length + ')</div>';
+                    tp1Orders.forEach(o => {
+                        const sideColor = o.side === 'BUY' ? '#00ff88' : '#ff4444';
+                        html += '<div style="border: 1px solid #1a5f3f; padding: 6px; margin-bottom: 4px; border-radius: 3px; background: rgba(0, 50, 30, 0.4); font-size: 9px;">';
+                        html += '<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">';
+                        html += '<span style="font-weight: bold; color: #00ff88;">' + o.symbol + '</span>';
+                        html += '<span style="color: ' + sideColor + '; font-weight: bold;">' + o.side + '</span>';
+                        html += '</div>';
+                        html += '<div style="color: #aaa; font-size: 8px; margin-bottom: 2px;">Trigger: $' + o.triggerPrice.toFixed(4) + ' | Qty: ' + o.qty.toFixed(4) + '</div>';
+                        if (o.position_entry) {
+                            html += '<div style="color: #888; font-size: 8px; margin-bottom: 2px;">Entry: $' + o.position_entry.toFixed(4) + ' | SL: $' + (o.position_sl || 'N/A') + '</div>';
+                        }
+                        html += '<div style="display: flex; justify-content: space-between; align-items: center;">';
+                        html += '<span style="color: #555; font-size: 7px;">' + o.time + '</span>';
+                        html += "<button onclick=\"cancelOrder('" + o.symbol + "', '" + o.orderId + "')\" style=\"background: #ff6600; color: #fff; border: none; padding: 2px 6px; border-radius: 2px; cursor: pointer; font-size: 8px; font-weight: bold;\">Close</button>";
+                        html += '</div>';
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                }
+                
+                // Display SL orders (red)
+                if (slOrders.length > 0) {
+                    html += '<div style="margin-bottom: 0; padding: 4px 0;">';
+                    html += '<div style="color: #ff6666; font-size: 9px; font-weight: bold; margin-bottom: 4px;">🛑 STOP LOSS ORDERS (' + slOrders.length + ')</div>';
+                    slOrders.forEach(o => {
+                        const sideColor = o.side === 'BUY' ? '#00ff88' : '#ff4444';
+                        html += '<div style="border: 1px solid #5f1a1a; padding: 6px; margin-bottom: 4px; border-radius: 3px; background: rgba(50, 0, 0, 0.4); font-size: 9px;">';
+                        html += '<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">';
+                        html += '<span style="font-weight: bold; color: #ff6666;">' + o.symbol + '</span>';
+                        html += '<span style="color: ' + sideColor + '; font-weight: bold;">' + o.side + '</span>';
+                        html += '</div>';
+                        html += '<div style="color: #aaa; font-size: 8px; margin-bottom: 2px;">Trigger: $' + o.triggerPrice.toFixed(4) + ' | Qty: ' + o.qty.toFixed(4) + '</div>';
+                        if (o.position_entry) {
+                            html += '<div style="color: #888; font-size: 8px; margin-bottom: 2px;">Entry: $' + o.position_entry.toFixed(4) + ' | Loss: ' + ((o.position_entry - o.triggerPrice) / o.position_entry * 100).toFixed(2) + '%</div>';
+                        }
+                        html += '<div style="display: flex; justify-content: space-between; align-items: center;">';
+                        html += '<span style="color: #555; font-size: 7px;">' + o.time + '</span>';
+                        html += "<button onclick=\"cancelOrder('" + o.symbol + "', '" + o.orderId + "')\" style=\"background: #cc0000; color: #fff; border: none; padding: 2px 6px; border-radius: 2px; cursor: pointer; font-size: 8px; font-weight: bold;\">Close</button>";
+                        html += '</div>';
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                }
+                
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = '<div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">No TP1 or SL orders</div>';
+            }
+        })
+        .catch(function(err) {
+            console.error('Error fetching TP1/SL orders:', err);
+            container.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 40px 0; font-size: 10px;">Error loading TP1/SL orders</div>';
+        });
+    }
+
+    function updateConditionalOrders() {
+        // Delegates to updateTP1SLOrders — single source of truth for the TP1 & SL panel.
+        // All existing call sites (cancel callbacks, position refresh, timers) continue to work.
+        updateTP1SLOrders();
+    }
+
+    function cancelOrder(symbol, orderId) {
+        if (!confirm(`Cancel order ${orderId} for ${symbol}?`)) return;
+        
+        fetch('/api/cancel_conditional_order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: symbol, order_id: orderId })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                updateTP1SLOrders();
+                updateConditionalOrders();
+            } else {
+                alert(`Error: ${data.error}`);
+            }
+        })
+        .catch(err => alert(`Error: ${err.message}`));
+    }
+
+    function updateTradeHistory() {
+        const container = document.getElementById('trade_history');
+        if (!container) return;
+
+        if (!container.innerHTML || container.innerHTML.includes('No recent trades')) {
+            container.innerHTML = '<div style="text-align: center; color: #666; padding: 18px 0; font-size: 8px;">Loading trades...</div>';
+        }
+
+        const url = `/get_trade_history?fresh=1&_t=${Date.now()}`;
+        fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            const trades = Array.isArray(data.trades) ? data.trades : [];
+            if (trades.length > 0) {
+                let html = '';
+                trades.slice(0, 50).forEach(trade => {
+                    const pnlColor = trade.realized_pnl >= 0 ? '#00ff88' : '#ff4444';
+                    const hasLevels = (trade.sl_price && trade.sl_price > 0) || (trade.tp1_price && trade.tp1_price > 0) || (trade.tp2_price && trade.tp2_price > 0);
+                    const levelsLine = hasLevels
+                        ? `<div style="color: #81b8c5; font-size: 10px;">SL: ${trade.sl_price || '-'} | TP1: ${trade.tp1_price || '-'}${trade.tp1_qty_pct ? ` (${trade.tp1_qty_pct}%)` : ''} | TP2: ${trade.tp2_price || '-'} | Status: ${trade.position_status || 'open'}</div>`
+                        : '';
+                    html += `<div style="padding: 6px 0; border-bottom: 1px solid #333; font-size: 11px; line-height: 1.4;">
+                        <div><strong>${trade.time}</strong> | ${trade.side} ${trade.symbol}</div>
+                        <div>Price: $${trade.price.toFixed(4)} | Qty: ${trade.qty} | PnL: <span style="color: ${pnlColor};">${trade.realized_pnl.toFixed(3)}</span></div>
+                        ${levelsLine}
+                        <div style="color: #888; font-size: 10px;">Order: ${trade.order_id}</div>
+                    </div>`;
+                });
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = `<div style="text-align: center; color: #666; padding: 18px 0; font-size: 8px;">No recent trades</div>`;
+            }
+        })
+        .catch(err => {
+            console.error('Error fetching trade history:', err);
+            if (!container.innerHTML || container.innerHTML.includes('Loading trades...')) {
+                container.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 18px 0; font-size: 8px;">Trade history unavailable</div>';
+            }
+        });
+    }
+
+    function updateLiveTradeLog() {
+        fetch('/api/trade_logs')
+        .then(r => r.json())
+        .then(data => {
+            const container = document.getElementById('live_trade_log');
+            if (data.events && data.events.length > 0) {
+                let html = '';
+                data.events.forEach(event => {
+                    const eventColor = event.type === 'TRADE_OPEN' || event.type === 'TRAIL_SL' ? '#00ff88' : 
+                                      event.type === 'TRADE_CLOSE' ? '#ff4444' : 
+                                      event.type === 'SL_UPDATE' ? '#ffaa00' : '#ffffff';
+                    const pnlColor = event.pnl >= 0 ? '#00ff88' : '#ff4444';
+                    
+                    // ✅ Show PNL in live log with real-time updates
+                    let pnlDisplay = '';
+                    if (event.pnl !== undefined) {
+                        pnlDisplay = `<span style="color: ${pnlColor}; font-weight: bold; margin-left: 10px;"> 💰 PnL: $${event.pnl.toFixed(2)} ${event.pnl >= 0 ? '✓' : '✗'}</span>`;
+                    }
+                    
+                    html += `<div style="padding: 6px 0; border-bottom: 1px solid #333; font-size: 10px; color: ${eventColor}; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong style="color: #00d4ff;">${event.timestamp}</strong> | ${event.message}
+                        </div>
+                        ${pnlDisplay}
+                    </div>`;
+                });
+                container.innerHTML = html;
+                container.scrollTop = 0;
+            }
+        })
+        .catch(err => console.log('Live log update error:', err));
+    }
+
+    function clearTradeLog() {
+        fetch('/clear_trade_events', {method: 'POST'})
+        .then(() => {
+            document.getElementById('live_trade_log').innerHTML = '<div style="text-align: center; color: #888; padding-top: 60px;">Log cleared...</div>';
+        });
+    }
+
+    function validateFormInputs() {
+        const warnings = [];
+        const symbol = document.querySelector('select[name="symbol"]').value;
+        const side = document.getElementById('side_hidden').value;
+        const orderType = document.getElementById('order_type_select').value;
+        const entry = parseFloat(document.getElementById('entry_input').value) || 0;
+        const slType = document.querySelector('select[name="sl_type"]') ? document.querySelector('select[name="sl_type"]').value : 'SL % Movement';
+        const slValue = parseFloat(document.querySelector('input[name="sl_value"]').value) || 0;
+        const tp1Mode = document.querySelector('select[name="tp1_mode"]') ? document.querySelector('select[name="tp1_mode"]').value : 'TP1 Price';
+        const tp1Raw = parseFloat(document.querySelector('input[name="tp1"]').value) || 0;
+        const tp2 = parseFloat(document.querySelector('input[name="tp2"]').value) || 0;
+        let tp1 = tp1Raw;
+        if (tp1Mode === 'TP1 % Movement' && tp1Raw > 0 && entry > 0) {
+            tp1 = side === 'LONG' ? entry * (1 + tp1Raw / 100) : entry * (1 - tp1Raw / 100);
+        }
+        
+        // Validate SL
+        if (slValue <= 0) {
+            warnings.push('🛡️ Stop Loss is mandatory and must be greater than 0');
+        } else if (slType === 'SL Points' && entry > 0) {
+            if (side === 'LONG' && slValue >= entry) {
+                warnings.push('🛡️ For LONG trades, SL price must be below entry');
+            } else if (side === 'SHORT' && slValue <= entry) {
+                warnings.push('🛡️ For SHORT trades, SL price must be above entry');
+            }
+        }
+        
+        // Validate entry for LIMIT orders
+        if (orderType === 'LIMIT' && entry <= 0) {
+            warnings.push('💰 LIMIT orders require a valid entry price');
+        }
+        
+        // Validate TP levels (tp1 resolved to price when mode is % movement)
+        if (tp1 > 0 && entry > 0) {
+            if (side === 'LONG' && tp1 <= entry) {
+                warnings.push('🎯 TP1 must be above entry price for LONG trades');
+            } else if (side === 'SHORT' && tp1 >= entry) {
+                warnings.push('🎯 TP1 must be below entry price for SHORT trades');
+            }
+        }
+        
+        if (tp2 > 0) {
+            if (side === 'LONG' && tp2 <= entry) {
+                warnings.push('🎯 TP2 must be above entry price for LONG trades');
+            } else if (side === 'SHORT' && tp2 >= entry) {
+                warnings.push('🎯 TP2 must be below entry price for SHORT trades');
+            }
+        }
+        
+        // Check minimum order size
+        if (entry > 0) {
+            const minNotional = 5; // Binance minimum USDT
+            const minQty = Math.ceil((minNotional / Math.max(entry, 0.01)) * 10000) / 10000;
+            
+            // Get suggested quantity from hidden input (server-rendered)
+            const suggestedUnitsInput = document.getElementById('sizing_suggested_units');
+            const suggestedQty = suggestedUnitsInput ? parseFloat(suggestedUnitsInput.value) : 0;
+            
+            if (suggestedQty > 0 && suggestedQty < minQty) {
+                warnings.push(`📦 Order size (${suggestedQty.toFixed(6)}) below Binance minimum (${minQty.toFixed(6)} units or $${minNotional} USDT). Increase risk allocation or widen SL.`);
+            }
+        }
+        
+        // Show/hide warnings
+        const warningDiv = document.getElementById('validation-warnings');
+        const warningList = document.getElementById('warning-list');
+        
+        if (warnings.length > 0) {
+            warningList.innerHTML = warnings.map(w => `<div>• ${w}</div>`).join('');
+            warningDiv.style.display = 'block';
+        } else {
+            warningDiv.style.display = 'none';
+        }
+        
+        return warnings.length === 0;
+    }
+
+    function confirmTradeExecution() {
+        const symbol = document.querySelector('select[name="symbol"]').value;
+        const side = document.getElementById('side_hidden').value;
+        const entry = document.getElementById('entry_input').value;
+        const sl = document.querySelector('input[name="sl_value"]').value;
+        const slType = document.querySelector('select[name="sl_type"]').value;
+        const tp1Mode = document.querySelector('select[name="tp1_mode"]') ? document.querySelector('select[name="tp1_mode"]').value : 'TP1 Price';
+        const tp1Raw = document.querySelector('input[name="tp1"]').value;
+        const tp2 = document.querySelector('input[name="tp2"]').value;
+        const qty = document.querySelector('input[name="user_units"]').value || 'Auto';
+        const lev = document.querySelector('input[name="user_lev"]').value || 'Auto';
+        
+        // ✅ STRICT SL VALIDATION
+        if (!sl || parseFloat(sl) <= 0) {
+            alert('🚫 STOP LOSS MANDATORY!\n\nYou must enter a Stop Loss value:\n• SL % Movement: Enter percentage (e.g., 1 for 1%)\n• SL Points: Enter price level\n\nWithout SL, trades are NOT allowed.');
+            return false;
+        }
+        
+        let message = `🔥 CONFIRM TRADE EXECUTION:\n\n`;
+        message += `📊 ${symbol} ${side}\n`;
+        message += `💰 Entry: $${parseFloat(entry).toFixed(4)}\n`;
+        
+        const en = parseFloat(entry) || 0;
+        const slNum = parseFloat(sl) || 0;
+        // Show SL with correct unit based on SL type
+        if (slType === "SL % Movement") {
+            const slLong = en * (1 - slNum / 100);
+            const slShort = en * (1 + slNum / 100);
+            message += `🛡️ SL: ${slNum.toFixed(2)}% (≈$${slLong.toFixed(4)} LONG / ≈$${slShort.toFixed(4)} SHORT)\n`;
+        } else {
+            message += `🛡️ SL: $${slNum.toFixed(4)}\n`;
+        }
+        
+        if (tp1Raw && parseFloat(tp1Raw) > 0) {
+            let tp1Disp = parseFloat(tp1Raw);
+            if (tp1Mode === "TP1 % Movement" && en > 0) {
+                tp1Disp = side === 'LONG' ? en * (1 + tp1Disp / 100) : en * (1 - tp1Disp / 100);
+                message += `🎯 TP1: ${parseFloat(tp1Raw).toFixed(2)}% → $${tp1Disp.toFixed(4)}\n`;
+            } else {
+                message += `🎯 TP1: $${tp1Disp.toFixed(4)}\n`;
+            }
+        }
+        if (tp2 && parseFloat(tp2) > 0) message += `🎯 TP2: $${parseFloat(tp2).toFixed(4)}\n`;
+        message += `📦 Qty: ${qty}\n`;
+        message += `⚡ Leverage: ${lev}x\n\n`;
+        message += `⚠️ This will execute a REAL order on Binance!\n`;
+        message += `Are you sure you want to proceed?`;
+        
+        return confirm(message);
+    }
+
+
+    updateLivePrice = function(symbolOverride = null, forceRestart = false) {
+        const symbolSelect = document.querySelector('select[name="symbol"]');
+        const symbol = (symbolOverride || (symbolSelect ? symbolSelect.value : '') || '').trim().toUpperCase();
+
+        if (!symbol) {
+            return;
+        }
+
+        const resetBtn = document.getElementById('reset-live-btn');
+        const indicator = document.getElementById('live-indicator');
+        const socketState = priceWs ? priceWs.readyState : WebSocket.CLOSED;
+        const sameSymbol = priceWsSymbol === symbol;
+        const hasRecentTick = lastPriceMessageAt > 0 && (Date.now() - lastPriceMessageAt) < 6000;
+        const socketActive = socketState === WebSocket.OPEN || socketState === WebSocket.CONNECTING;
+
+        if (!forceRestart && sameSymbol && socketActive && (hasRecentTick || socketState === WebSocket.CONNECTING)) {
+            console.log(`Live feed already active for ${symbol}`);
+            return;
+        }
+
+        console.log(`Ensuring live price stream for ${symbol}`);
+        fetchLivePrice(symbol);
+
+        if (indicator) {
+            indicator.style.display = 'inline-block';
+        }
+        if (resetBtn) {
+            resetBtn.textContent = 'Live';
+        }
+    };
+
+    function closePosition(symbol) {
+        if(confirm(`Close ${symbol}?`)) {
+            fetch(`/close_position/${symbol}`, {method: 'POST'})
+            .then(r => r.json())
+            .then(data => { alert(data.message || 'Closed'); })
+            .then(updateLivePositions)
+            .then(() => setTimeout(updateConditionalOrders, 1500));
+        }
+    }
+
+    function closeAllPositions() {
+        if(confirm('Close ALL positions?')) {
+            fetch('/get_open_positions').then(r => r.json()).then(data => {
+                if (data.positions.length > 0) {
+                    Promise.all(data.positions.map(p => 
+                        fetch(`/close_position/${p.symbol}`, {method: 'POST'})
+                    )).then(() => {
+                        alert('All closed!');
+                        updateLivePositions();
+                    });
+                }
+            });
+        }
+    }
+
+    function partialClose(symbol) {
+        const percent = prompt(`Enter percent of ${symbol} position to close (10-100%)\n\nExample: 50 = close half the position\nExample: 25 = close quarter of the position`, '50');
+        if (!percent) return;
+        const closePercent = parseFloat(percent);
+        if (isNaN(closePercent) || closePercent <= 0 || closePercent > 100) {
+            return alert('❌ Invalid percentage! Enter a value between 1 and 100');
+        }
+
+        if (!confirm(`⚠️ CONFIRM PARTIAL CLOSE:\n\n📊 ${symbol}\n📦 Close: ${closePercent}% of position\n\nThis will reduce your position size!\nProceed?`)) {
+            return;
+        }
+
+        fetch('/partial_close', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({symbol: symbol, close_percent: closePercent})
+        }).then(r => r.json()).then(data => {
+            alert(data.message || 'Partial close requested');
+            updateLivePositions();
+            updateTradeHistory();
+        });
+    }
+
+    function moveTrailingSL(symbol) {
+        const currentSL = prompt(`Set NEW trailing SL move percent for ${symbol} (-1 to 0)\n\nCurrent: Move SL closer to price by X%\nExample: -0.3 = move SL 0.3% closer to current price\n\nEnter value (-1 to 0):`, '-0.3');
+        if (!currentSL) return;
+        const newPercent = parseFloat(currentSL);
+        if (isNaN(newPercent) || newPercent < -1 || newPercent > 0) {
+            return alert('❌ Invalid value! Trailing SL must be between -1 and 0 percent\n\nExample: -0.3 = move SL 0.3% closer to price');
+        }
+
+        if (!confirm(`⚠️ CONFIRM TRAILING SL UPDATE:\n\n📊 ${symbol}\n🎯 New trailing: ${newPercent}%\n\nThis will modify your stop loss!\nProceed?`)) {
+            return;
+        }
+
+        fetch('/update_sl', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({symbol: symbol, new_sl_percent: newPercent})
+        }).then(r => r.json()).then(data => {
+            alert(data.message || 'SL updated');
+            updateLivePositions();
+        });
+    }
+
+    function updateTradeLimits() {
+        fetch('/api/today_stats').then(r => r.json()).then(data => {
+            document.getElementById('total_trades_display').textContent = `${data.total_trades}/${data.max_trades}`;
+            const selectedSymbol = document.querySelector('select[name="symbol"]').value || '';
+            const symbolCount = data.symbol_trades && data.symbol_trades[selectedSymbol] ? data.symbol_trades[selectedSymbol] : 0;
+            const symbolDisplay = document.getElementById('symbol_trades_display');
+            if (symbolDisplay) {
+                symbolDisplay.textContent = `${symbolCount}/${data.max_per_symbol}`;
+            }
+        });
+    }
+
+    function updateRiskSizing() {
+        const slider = document.getElementById('risk_slider');
+        const pct = parseFloat(slider.value);
+        document.getElementById('risk_pct_display').textContent = pct.toFixed(1) + '%';
+        
+        // Recalc preview using server sizing logic approximation
+        const unutilizedEl = document.querySelector('#wallet-display input');
+        const unutilized = parseFloat(unutilizedEl ? unutilizedEl.value : 0) || 0;
+        const slValue = parseFloat(document.querySelector('input[name="sl_value"]').value) || 1;
+        const entry = parseFloat(document.getElementById('entry_input').value) || 60000;
+        
+        if (unutilized > 0 && slValue > 0 && entry > 0) {
+            const risk = unutilized * (pct / 100);
+            const sl_pct = Math.abs(slValue / entry) * 100;  // Approx SL%
+            const lev = Math.max(1, Math.floor(100 / (sl_pct + 0.2)));
+            const pos_value = (risk / (sl_pct / 100 + 0.002)) * 100;
+            const qty = pos_value / entry;
+            
+            document.getElementById('risk_amount').textContent = risk.toFixed(2);
+            document.getElementById('risk_qty').textContent = qty.toFixed(4);
+            document.getElementById('risk_lev').textContent = lev;
+            document.getElementById('risk-preview').style.display = 'block';
+        } else {
+            document.getElementById('risk-preview').style.display = 'none';
+        }
+    }
+
+    
+
+    function cancelConditionalOrder(orderId, symbol) {
+        if (!confirm('Cancel conditional order ' + orderId + ' for ' + symbol + '?')) return;
+        fetch('/api/cancel_conditional_order', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({order_id: orderId, symbol: symbol})
+        })
+        .then(r => r.json())
+        .then(data => {
+            alert(data.message || 'Order cancelled');
+            updateConditionalOrders();
+        });
+    }
+    // Auto refresh intervals - OPTIMIZED for performance
+    setInterval(updateLivePrice, 5000);     // Price 5s (was 1s - too frequent for external API)
+    setInterval(updateLivePositions, 5000); // Positions 5s (was 10s - user wants faster refresh)
+    setInterval(updateLiveDataOnly, 2000);  // ✅ LIVE Liquidation Prices: 2s (real-time updates)
+    setInterval(updateTradeHistory, 10000);  // History 10s (was 30s - user wants faster refresh)
+    setInterval(updateTradeLimits, 10000);  // Limits 10s (unchanged - local data)
+    setInterval(updateLiveTradeLog, 2000);  // Live log 2s (unchanged - local data)
+
+    function adminResetDailyTrades() {
+        if (confirm("Admin: Reset your daily trade count?")) {
+            fetch('/api/admin/reset_daily_trades', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                alert(data.message);
+                updateTradeLimits();
+            });
+        }
+    }
+    
+    // ✅ FIXED: Ensure updateLivePrice runs AFTER DOM is fully loaded with correct symbol
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(() => {
+            const symbolSelect = document.querySelector('select[name="symbol"]');
+            const entryInput = document.getElementById('entry_input');
+            if (symbolSelect && entryInput) {
+                const sym = (symbolSelect.value || '').trim().toUpperCase() || 'BTCUSDT';
+                entryInput.dataset.liveSymbol = sym;
+                entryInput.dataset.snapToLive = '1';
+                console.log('Initializing live price for: ' + sym);
+                fetchLivePrice(sym);
+            } else if (typeof fetchLivePrice === 'function') {
+                fetchLivePrice('BTCUSDT');
+            }
+        }, 300);
+    });
+
+    // Keep these but they now run AFTER DOMContentLoaded ensures symbol is ready
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(() => {
+            const sym = getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}';
+            updateLivePositions(sym, true);
+            updateConditionalOrders();
+            updateTradeHistory(sym);
+            updateTradeLimits();
+            updateLiveTradeLog();
+            updateEmbeddedCoinDetails(sym, true);
+        }, 200);
+    });
+    
+    // Form validation
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add validation listeners to key inputs
+        const inputs = [
+            'entry_input',
+            'input[name="sl_value"]',
+            'input[name="tp1"]',
+            'input[name="tp2"]',
+            'select[name="symbol"]',
+            '#order_type_select'
+        ];
+        
+        inputs.forEach(selector => {
+            const element = document.querySelector(selector);
+            if (element) {
+                element.addEventListener('input', validateFormInputs);
+                element.addEventListener('change', validateFormInputs);
+            }
+        });
+        
+        // Initial validation
+        setTimeout(validateFormInputs, 500);
+    });
+
+    
+    // ✅ Global variable for Binance WebSocket connection
+    let priceWs = null;
+    let priceWsSymbol = '';
+    let lastPriceMessageAt = 0;
+
+    // ✅ HYBRID APPROACH: Form reload for chart (reliable) + dynamic updates for data (fast)
+    function isValidSymbol(symbol) {
+        // Validate symbol format for Binance Futures
+        if (!symbol || typeof symbol !== 'string') return false;
+        symbol = symbol.trim().toUpperCase();
+        
+        // Must end with USDT
+        if (!symbol.endsWith('USDT')) {
+            console.warn(`⚠️ Symbol validation failed: ${symbol} doesn't end with USDT`);
+            return false;
+        }
+        
+        // Must be reasonable length (typically 6-15 chars for normal symbols)
+        if (symbol.length < 6 || symbol.length > 20) {
+            console.warn(`⚠️ Symbol validation failed: ${symbol} has invalid length ${symbol.length}`);
+            return false;
+        }
+        
+        // Must be alphanumeric only
+        if (!/^[A-Z0-9]+$/.test(symbol)) {
+            console.warn(`⚠️ Symbol validation failed: ${symbol} contains invalid characters`);
+            return false;
+        }
+        
+        return true;
+    }
+    
+    function changeSymbolDynamic(event) {
+        // Prevent default only to validate first
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+
+        const symbolSelect = document.querySelector('select[name="symbol"]');
+        const symbol = symbolSelect ? symbolSelect.value : null;
+        
+        if (!symbol || symbol.trim() === '') {
+            console.warn('⚠️ Invalid symbol for change:', symbol);
+            return false;
+        }
+
+        const cleanSymbol = symbol.trim().toUpperCase();
+        
+        // ✅ Validate symbol format before proceeding
+        if (!isValidSymbol(cleanSymbol)) {
+            console.error(`❌ [VALIDATION] Invalid symbol format: ${cleanSymbol}`);
+            alert(`⚠️ Invalid symbol: "${cleanSymbol}"\n\nPlease select a valid Binance Futures symbol like BTCUSDT, ETHUSDT, etc.`);
+            return false;
+        }
+        
+        console.log(`🔄 [SYMBOL CHANGE] Switching to: ${cleanSymbol}`);
+
+        // ✅ Validate against Binance Futures list before updating UI/chart
+        // Prevents TradingView "symbol doesn't exist" and Live price hanging on invalid symbols.
+        fetch(`/validate_symbol/${encodeURIComponent(cleanSymbol)}?_t=${Date.now()}`)
+            .then(r => r.json())
+            .then(v => {
+                if (!v || !v.valid || !v.tradeable) {
+                    const msg = (v && v.message) ? v.message : 'Symbol not tradeable';
+                    alert(`⚠️ ${msg}\n\nPick another symbol.`);
+
+                    // Revert dropdown to last valid selection
+                    if (symbolSelect) symbolSelect.value = lastValidSymbol;
+                    return;
+                }
+
+                // Mark as last-known-good only after Binance confirms it
+                lastValidSymbol = cleanSymbol;
+                const prevHidden = document.querySelector('input[name="prev_symbol"]');
+                if (prevHidden) prevHidden.value = cleanSymbol;
+
+                currentChartSymbol = cleanSymbol;
+                initializeTradingViewChart(cleanSymbol);
+
+                // ✅ HYBRID APPROACH:
+                // 1. Immediately update dynamic data (price, positions, analysis) without reload
+                console.log(`🔄 [HYBRID] Starting dynamic updates...`);
+                
+                setTimeout(() => {
+                    console.log(`🔄 [HYBRID-1] Fetching live price for: ${cleanSymbol}`);
+                    updateLivePrice(cleanSymbol, true);
+                }, 50);
+
+                setTimeout(() => {
+                    console.log(`🔄 [HYBRID-2] Updating coin analysis for: ${cleanSymbol}`);
+                    updateEmbeddedCoinDetails(cleanSymbol, true);
+                }, 100);
+
+                setTimeout(() => {
+                    console.log(`🔄 [HYBRID-3] Fetching coin details for: ${cleanSymbol}`);
+                    fetchCoinDetails(cleanSymbol);
+                }, 150);
+
+                setTimeout(() => {
+                    console.log(`🔄 [HYBRID-4] Updating positions for: ${cleanSymbol}`);
+                    // Force fresh positions (server supports fresh=1)
+                    updateLivePositions(cleanSymbol, true);
+                }, 200);
+
+                // ✅ Ensure recent trades updates immediately on symbol change
+                setTimeout(() => {
+                    console.log(`🔄 [HYBRID-6] Updating trade history for: ${cleanSymbol}`);
+                    updateTradeHistory(cleanSymbol);
+                }, 220);
+
+                setTimeout(() => {
+                    console.log(`🔄 [HYBRID-5] Calculating sizing for: ${cleanSymbol}`);
+                    updatePositionSizing(cleanSymbol);
+                }, 250);
+
+                // 2. Update symbol labels immediately
+                document.querySelectorAll('#embed-modal-symbol').forEach(el => el.textContent = cleanSymbol);
+                const symbolTradeLabel = document.getElementById('symbol_trades_label');
+                if (symbolTradeLabel) symbolTradeLabel.textContent = cleanSymbol;
+                
+                console.log(`✅ [HYBRID] Dynamic updates complete (no reload).`);
+            })
+            .catch(err => {
+                console.error('❌ Symbol validation failed:', err);
+                if (symbolSelect) symbolSelect.value = lastValidSymbol;
+            });
+        
+        return false;
+    }
+
+    // ✅ FETCH LIVE PRICE (Now utilizing WebSocket for instant, lag-free updates)
+    function fetchLivePrice(symbol = null) {
+        const entryInput = document.getElementById('entry_input');
+        const indicator = document.getElementById('reset-live-btn');
+        
+        const targetSymbol = (symbol || getSelectedSymbol() || 'BTCUSDT').trim().toUpperCase();
+        
+        console.log(`📡 [fetchLivePrice] Starting for symbol: ${targetSymbol}`);
+        
+        if (!targetSymbol || !entryInput) {
+            console.error(`❌ [fetchLivePrice] Missing targetSymbol or entryInput`);
+            return;
+        }
+
+        // Close any existing WebSocket to prevent old coins from fighting new coins for the input box
+        if (priceWs) {
+            console.log(`🔄 [fetchLivePrice] Closing old WebSocket...`);
+            priceWs.close();
+        }
+
+        // Set UI loading state
+        entryInput.dataset.liveSymbol = targetSymbol.toUpperCase();
+        entryInput.value = "Loading...";
+        entryInput.style.color = '#ffaa00';
+        
+        console.log(`🔄 [fetchLivePrice] Opening WebSocket for: ${targetSymbol}`);
+
+        // Use the Binance Futures mark-price stream for dependable updates on every contract
+        const wsSymbol = targetSymbol.toLowerCase();
+        const wsUrl = `wss://fstream.binance.com/stream?streams=${wsSymbol}@bookTicker/${wsSymbol}@markPrice@1s`;
+        console.log(`📡 [fetchLivePrice] WebSocket URL: ${wsUrl}`);
+        
+        let wsTimeout = null;
+        let wsOpened = false;
+        let wsReceivedData = false;
+        priceWsSymbol = targetSymbol;
+        
+        priceWs = new WebSocket(wsUrl);
+
+        priceWs.onopen = () => {
+            wsOpened = true;
+            console.log(`✅ [fetchLivePrice] WebSocket connected for ${targetSymbol}`);
+            // If the socket opens but no mark price arrives, fall back to REST instead of hanging forever.
+            wsTimeout = setTimeout(() => {
+                if (!wsReceivedData) {
+                    console.warn(`⏱️ [fetchLivePrice] No futures ticker received for ${targetSymbol} - trying REST API`);
+                    priceWs.close();
+                    fetchLivePriceViaREST(targetSymbol, entryInput, indicator);
+                }
+            }, 3000);
+        };
+
+        priceWs.onmessage = (event) => {
+            try {
+                wsReceivedData = true;
+                lastPriceMessageAt = Date.now();
+                if (wsTimeout) clearTimeout(wsTimeout);
+                
+                const payload = JSON.parse(event.data);
+                const data = payload.data || payload;
+                let parsedPrice = NaN;
+                const bid = parseFloat(data.b);
+                const ask = parseFloat(data.a);
+                if (Number.isFinite(bid) && bid > 0 && Number.isFinite(ask) && ask > 0) {
+                    parsedPrice = (bid + ask) / 2;
+                }
+                if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+                    parsedPrice = parseFloat(data.p ?? data.c);
+                }
+                if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+                    console.warn(`⚠️ [fetchLivePrice] Invalid futures ticker payload for ${targetSymbol}:`, data);
+                    return;
+                }
+                const currentPrice = parsedPrice.toFixed(8);
+
+                console.log(`📊 [fetchLivePrice] Got price for ${targetSymbol}: ${currentPrice}`);
+
+                // Only update if the user hasn't switched coins again mid-stream
+                if (entryInput.dataset.liveSymbol === targetSymbol.toUpperCase()) {
+                    // Always remember the latest market price so the indicator can show Δ
+                    entryInput.dataset.livePrice = String(parsedPrice);
+
+                    // Snap entry field to the live price ONLY on first tick or when user clicked "Live"
+                    const shouldSnap = entryInput.dataset.snapToLive === '1'
+                        || !entryInput.dataset.userEntry
+                        || parseFloat(entryInput.dataset.userEntry) <= 0;
+
+                    if (shouldSnap) {
+                        entryInput.value = currentPrice;
+                        entryInput.dataset.userEntry = currentPrice;
+                        entryInput.dataset.snapToLive = '0';
+                        entryInput.style.color = '#00ff88';
+
+                        if (typeof updatePositionSizing === 'function') {
+                            updatePositionSizing(targetSymbol);
+                        }
+
+                        setTimeout(() => {
+                            if (entryInput.dataset.liveSymbol === targetSymbol.toUpperCase()) {
+                                entryInput.style.color = '';
+                            }
+                        }, 300);
+                    }
+
+                    // Update the small live-price indicator + delta next to the field
+                    if (typeof refreshLivePriceIndicator === 'function') {
+                        refreshLivePriceIndicator(parsedPrice);
+                    }
+
+                    if (indicator) {
+                        indicator.style.background = '#00ff88';
+                        indicator.style.color = '#000';
+                        indicator.textContent = '✅ Live';
+                        setTimeout(() => {
+                            indicator.style.background = '';
+                            indicator.style.color = '';
+                            indicator.textContent = '🔄 Live Price';
+                        }, 2000);
+                    }
+                } else {
+                    console.log(`ℹ️ [fetchLivePrice] Ignoring price update - symbol changed to ${entryInput.dataset.liveSymbol}`);
+                }
+            } catch (err) {
+                console.error(`❌ [fetchLivePrice] Error parsing message:`, err);
+            }
+        };
+
+        priceWs.onerror = (err) => {
+            wsOpened = false;
+            if (priceWsSymbol === targetSymbol) {
+                priceWsSymbol = '';
+            }
+            if (wsTimeout) clearTimeout(wsTimeout);
+            console.error(`❌ [fetchLivePrice] WebSocket error for ${targetSymbol}:`, err);
+            
+            // Try REST API as fallback
+            priceWs.close();
+            fetchLivePriceViaREST(targetSymbol, entryInput, indicator);
+        };
+
+        priceWs.onclose = () => {
+            const shouldFallback = wsOpened && !wsReceivedData && entryInput.dataset.liveSymbol === targetSymbol.toUpperCase();
+            wsOpened = false;
+            if (priceWsSymbol === targetSymbol) {
+                priceWsSymbol = '';
+            }
+            if (wsTimeout) clearTimeout(wsTimeout);
+            console.log(`🔄 [fetchLivePrice] WebSocket closed for ${targetSymbol}`);
+
+            if (shouldFallback) {
+                console.log(`🔁 [fetchLivePrice] Falling back to REST after empty futures stream for ${targetSymbol}`);
+                fetchLivePriceViaREST(targetSymbol, entryInput, indicator);
+            }
+        };
+    }
+
+
+
+    // NOTE: The broken onSymbolChange / #symbol-select listener that lived
+    // here has been removed. It referenced element IDs that do not exist in
+    // this template (positions-box, trades-box, analysis-box, symbol-select)
+    // and threw a JS error on every symbol change, which prevented the real
+    // changeSymbolDynamic() chain (positions / trades / analysis) from
+    // running until the 5s/30s background setInterval timers ticked.
+    // The working flow lives in changeSymbolDynamic() above and its
+    // override near the bottom of this file.
+
+
+    
+    // ✅ FALLBACK: Fetch price via REST API when WebSocket fails
+    function fetchLivePriceViaREST(symbol, entryInput, indicator) {
+        if (!symbol || !entryInput) return;
+        
+        console.log(`📡 [fetchLivePriceViaREST] Fetching ${symbol} via REST API...`);
+        
+        fetch(`/get_live_price/${encodeURIComponent(symbol)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (getSelectedSymbol() && getSelectedSymbol() !== symbol.toUpperCase()) {
+                    console.log(`ℹ️ [fetchLivePriceViaREST] Ignoring stale price for ${symbol}`);
+                    return;
+                }
+
+                if (data.price && data.price > 0) {
+                    console.log(`✅ [fetchLivePriceViaREST] Got price: ${data.price}`);
+                    const livePx = parseFloat(data.price);
+                    entryInput.dataset.livePrice = String(livePx);
+                    entryInput.dataset.liveSymbol = symbol.toUpperCase();
+                    lastPriceMessageAt = Date.now();
+                    priceWsSymbol = symbol.toUpperCase();
+
+                    const shouldSnap = entryInput.dataset.snapToLive === '1'
+                        || !entryInput.dataset.userEntry
+                        || parseFloat(entryInput.dataset.userEntry) <= 0;
+                    if (shouldSnap) {
+                        entryInput.value = livePx.toFixed(8);
+                        entryInput.dataset.userEntry = entryInput.value;
+                        entryInput.dataset.snapToLive = '0';
+                        entryInput.style.color = '#00d4ff';
+                    }
+
+                    if (typeof refreshLivePriceIndicator === 'function') {
+                        refreshLivePriceIndicator(livePx);
+                    }
+
+                    if (indicator) {
+                        indicator.style.background = '#00d4ff';
+                        indicator.style.color = '#000';
+                        indicator.textContent = '🔄 REST';
+                        setTimeout(() => {
+                            indicator.style.background = '';
+                            indicator.style.color = '';
+                            indicator.textContent = '🔄 Live Price';
+                        }, 2000);
+                    }
+                } else {
+                    console.error(`❌ [fetchLivePriceViaREST] Invalid price: ${data.price}`);
+                    if (indicator) indicator.textContent = '❌ Error';
+                }
+            })
+            .catch(err => {
+                console.error(`❌ [fetchLivePriceViaREST] Failed:`, err);
+                entryInput.value = 'Error';
+                entryInput.style.color = '#ff4444';
+                if (indicator) indicator.textContent = '❌ Error';
+            });
+    }
+
+    // ✅ Update the small live-price indicator (price + Δ vs. entry) next to Entry Price
+    function refreshLivePriceIndicator(livePxArg) {
+        try {
+            const entryInput = document.getElementById('entry_input');
+            const valEl = document.getElementById('live-price-value');
+            const deltaEl = document.getElementById('live-price-delta');
+            if (!entryInput || !valEl || !deltaEl) return;
+
+            const livePx = (livePxArg !== undefined && livePxArg !== null)
+                ? parseFloat(livePxArg)
+                : parseFloat(entryInput.dataset.livePrice || '0');
+            const entryPx = parseFloat(entryInput.value) || parseFloat(entryInput.dataset.userEntry || '0') || 0;
+
+            if (!Number.isFinite(livePx) || livePx <= 0) {
+                valEl.textContent = '--';
+                deltaEl.textContent = 'Δ --';
+                deltaEl.style.color = '#9fdcff';
+                return;
+            }
+
+            // Adaptive precision so small-priced coins still show meaningful digits
+            const decimals = livePx >= 100 ? 2 : livePx >= 1 ? 4 : 6;
+            valEl.textContent = livePx.toFixed(decimals);
+
+            if (entryPx > 0) {
+                const diff = livePx - entryPx;
+                const pct = (diff / entryPx) * 100;
+                const sign = diff > 0 ? '+' : '';
+                deltaEl.textContent = `Δ ${sign}${diff.toFixed(decimals)} (${sign}${pct.toFixed(2)}%)`;
+                deltaEl.style.color = diff > 0 ? '#00ff88' : diff < 0 ? '#ff5577' : '#9fdcff';
+            } else {
+                deltaEl.textContent = 'Δ --';
+                deltaEl.style.color = '#9fdcff';
+            }
+        } catch (e) {
+            console.warn('refreshLivePriceIndicator failed:', e);
+        }
+    }
+
+    // ✅ FETCH COIN DETAILS FOR SELECTED SYMBOL
+    function fetchCoinDetails(symbol = null) {
+        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
+        
+        if (!targetSymbol) return;
+        
+        console.log(`📊 Fetching coin details for: ${targetSymbol}`);
+        
+        fetch(`/api/coin-details/${encodeURIComponent(targetSymbol)}`)
+        .then(r => r.json())
+        .then(data => {
+            if (getSelectedSymbol() && getSelectedSymbol() !== targetSymbol) {
+                console.log(`ℹ️ Ignoring stale coin details for ${targetSymbol}`);
+                return;
+            }
+
+            if (data.success) {
+                // Update max leverage badge
+                const maxLev = data.max_leverage || 125;
+                const maxLevElements = document.querySelectorAll('#max-lev-value, #modal-max-lev');
+                maxLevElements.forEach(el => el.textContent = maxLev + 'x');
+                
+                const levBadge = document.getElementById('lev-badge');
+                if (levBadge) levBadge.textContent = `Max: ${maxLev}x`;
+                
+                // Update suggested leverage
+                const suggLev = data.suggested_leverage || 45;
+                const suggLevElements = document.querySelectorAll('#sugg-lev-value, #modal-sugg-lev');
+                suggLevElements.forEach(el => el.textContent = suggLev + 'x');
+                
+                // Update recommendation text
+                const rec = data.recommendation || 'Safe trading recommended';
+                const recElements = document.querySelectorAll('#lev-recommendation, #modal-rec');
+                recElements.forEach(el => el.textContent = rec);
+                
+                console.log(`✅ Coin details updated: ${targetSymbol}`);
+            }
+        }).catch(err => {
+            console.error(`❌ Coin details fetch failed:`, err);
+        });
+    }
+
+    // ✅ UPDATE POSITION SIZING
+    function updatePositionSizing(symbol = null) {
+        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
+        
+        if (!targetSymbol) return;
+        
+        console.log(`📐 Recalculating sizing for: ${targetSymbol}`);
+        
+        const entryInput = document.getElementById('entry_input');
+        const entryPrice = entryInput ? parseFloat(entryInput.value) || 0 : 0;
+        const slTypeElem = document.querySelector('select[name="sl_type"]');
+        const slValueElem = document.querySelector('input[name="sl_value"]');
+        const slType = slTypeElem ? slTypeElem.value : 'SL % Movement';
+        const slValue = slValueElem ? parseFloat(slValueElem.value) || 1.5 : 1.5;
+        const side = getCurrentSide();
+        
+        if (entryPrice <= 0) return;
+        
+        fetch(`/api/calculate-sizing?symbol=${encodeURIComponent(targetSymbol)}&entry=${entryPrice}&sl_type=${encodeURIComponent(slType)}&sl_value=${slValue}&side=${side}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                if (document.getElementById('sizing_units')) document.getElementById('sizing_units').textContent = (data.suggested_units || 0).toFixed(2);
+                if (document.getElementById('sizing_lev')) document.getElementById('sizing_lev').textContent = (data.suggested_leverage || 1).toFixed(1) + 'x';
+                if (document.getElementById('sizing_ratio')) document.getElementById('sizing_ratio').textContent = (data.margin_ratio || 0).toFixed(2) + '%';
+                if (document.getElementById('sizing_liq')) document.getElementById('sizing_liq').textContent = '$' + (data.liquidation_price || 0).toFixed(2);
+                console.log(`✅ Sizing updated for ${targetSymbol}`);
+            }
+        }).catch(err => {
+            console.log(`ℹ️ Sizing calculation skipped (normal on fresh load): ${err.message}`);
+        });
+    }
+
+    // ✅ UPDATED: updateLivePositions NOW ACCEPTS OPTIONAL SYMBOL PARAMETER
+    function updateLivePositions(symbol = null, forceFresh = false) {
+        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
+        const container = document.getElementById('live_positions');
+        
+        if (!container) return;
+        
+        console.log(`📍 Fetching positions for: ${targetSymbol || 'all'}`);
+        
+        // Construct URL with optional symbol filter
+        let url = '/get_open_positions';
+        const qp = [];
+        if (forceFresh) qp.push('fresh=1');
+        qp.push(`_t=${Date.now()}`);
+        url += '?' + qp.join('&');
+        
+        fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            const positions = data.positions || [];
+            if (positions && positions.length > 0) {
+                let html = '';
+                positions.forEach(pos => {
+                    const pnlColor = parseFloat(pos.unrealizedPnL || pos.unrealized_pnl || 0) >= 0 ? '#00ff88' : '#ff6b6b';
+                    const pnlAmount = parseFloat(pos.unrealizedPnL || pos.unrealized_pnl || 0);
+                    html += `
+                        <div style="padding: 6px; background: rgba(0,212,255,0.05); border: 1px solid rgba(0,212,255,0.2); border-radius: 4px; margin-bottom: 4px; cursor: pointer;" onclick="showCoinDetails('${pos.symbol}')">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="color: #00ffcc; font-weight: bold; font-size: 10px;">${pos.symbol}</span>
+                                <span style="color: ${pnlColor}; font-size: 10px; font-weight: bold;">$${pnlAmount.toFixed(2)}</span>
+                            </div>
+                            <div style="font-size: 8px; color: #81b8c5; margin-top: 2px;">
+                                ${pos.side} | ${pos.quantity} @ ${pos.entryPrice}
+                            </div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = '<div style="color: #81b8c5; font-size: 9px; text-align: center; padding: 20px;">✅ No open positions' + (targetSymbol ? ' for ' + targetSymbol : '') + '</div>';
+            }
+        }).catch(err => {
+            console.error(`❌ Failed to fetch positions:`, err);
+            if (container) {
+                container.innerHTML = '<div style="color: #ff6b6b; font-size: 9px;">❌ Error loading positions</div>';
+            }
+        });
+    }
+
+
+    // ✅ SHOW COIN DETAILS IN MODAL (WITH REAL-TIME DATA)
+    function showCoinDetails() {
+        console.log('🔍 showCoinDetails() called');
+        try {
+            // Safely get form values with fallbacks
+            const symbol = getSelectedSymbol() || 'BTCUSDT';
+            
+            const sl_typeElem = document.querySelector('select[name="sl_type"]');
+            const sl_type = sl_typeElem ? sl_typeElem.value : 'SL % Movement';
+            
+            const sl_valueElem = document.querySelector('input[name="sl_value"]');
+            const sl_value = (sl_valueElem && sl_valueElem.value) ? sl_valueElem.value : '1.5';
+            
+            const side = getCurrentSide();
+            
+            console.log('📊 Form values:', {symbol, sl_type, sl_value, side});
+            
+            if (!symbol) {
+                alert('❌ No symbol selected! Please select a coin.');
+                return;
+            }
+            
+            // Show loading state
+            const modal = document.getElementById('coin-details-modal');
+            if (!modal) {
+                console.error('❌ Modal element not found!');
+                alert('❌ Modal element not found! Check browser console.');
+                return;
+            }
+            
+            console.log('✅ Modal found, opening...');
+            document.getElementById('modal-symbol').textContent = '⏳ ' + symbol;
+            document.getElementById('modal-max-lev').textContent = '...';
+            document.getElementById('modal-sugg-lev').textContent = '...';
+            document.getElementById('modal-rec').innerHTML = '⏳ Fetching live data...';
+            document.getElementById('modal-position-details').innerHTML = '<div style="color: #888; font-size: 11px; padding: 8px; text-align: center;">⏳ Loading position data...</div>';
+            
+            // Show modal with display block first, then flex
+            modal.style.display = 'block';
+            setTimeout(() => {
+                modal.style.display = 'flex';
+                console.log('✅ Modal displayed');
+            }, 10);
+            
+            // Fetch with SL parameters for real-time calculation
+            const fetchUrl = `/api/coin-details/${symbol}?sl_type=${encodeURIComponent(sl_type)}&sl_value=${encodeURIComponent(sl_value)}&side=${encodeURIComponent(side)}`;
+            console.log('🔗 Fetching:', fetchUrl);
+            
+            fetch(fetchUrl)
+                .then(r => {
+                    console.log('📡 Response status:', r.status);
+                    return r.json();
+                })
+                .then(data => {
+                    console.log('📦 API Data received:', data);
+                    try {
+                        if (data && data.success) {
+                            const pos = data.position;
+                            
+                            // Update basic info with REAL data
+                            document.getElementById('modal-symbol').textContent = symbol;
+                            document.getElementById('modal-max-lev').textContent = data.max_leverage || '125';
+                            document.getElementById('modal-sugg-lev').textContent = data.suggested_leverage || '45';
+                            
+                            // Show recommendations based on max leverage
+                            let recommendations = '';
+                            const maxLev = data.max_leverage || 125;
+                            if (maxLev <= 20) {
+                                recommendations = '🔴 Low leverage - Use 5-10% SL';
+                            } else if (maxLev <= 50) {
+                                recommendations = '🟡 Medium leverage - Use 2-5% SL';
+                            } else {
+                                recommendations = '🟢 High leverage - Use 1-2% SL';
+                            }
+                            if (data.sl_percent) {
+                                recommendations += ` | Current SL: ${data.sl_percent}%`;
+                            }
+                            document.getElementById('modal-rec').innerHTML = recommendations;
+                            
+                            // Show position details if open
+                            const posDetailsDiv = document.getElementById('modal-position-details');
+                            if (pos && typeof pos === 'object' && Object.keys(pos).length > 0) {
+                                try {
+                                    // Format data with defaults
+                                    const size = parseFloat(pos.amount || pos.positionAmt || 0).toFixed(5);
+                                    const entryPrice = parseFloat(pos.entry_price || pos.avgPrice || 0).toFixed(8);
+                                    const markPrice = parseFloat(pos.mark_price || data.current_price || 0).toFixed(8);
+                                    const liqPrice = parseFloat(pos.liquidation_price || pos.liquidationPrice || 0).toFixed(8);
+                                    const unrealizedPnL = parseFloat(pos.unrealized_pnl || pos.unrealizedProfit || 0).toFixed(2);
+                                    const roi = parseFloat(pos.dashboard_roi_percent || pos.roi_percent || 0).toFixed(2);
+                                    const margin = parseFloat(pos.margin_usdt || pos.notional || 0).toFixed(2);
+                                    const marginRatio = parseFloat(pos.dashboard_margin_ratio || pos.margin_ratio || 0).toFixed(2);
+                                    
+                                    const pnlColor = unrealizedPnL >= 0 ? '#00ff88' : '#ff4444';
+                                    const roiColor = roi >= 0 ? '#00ff88' : '#ff4444';
+                                    
+                                    // ✅ BUILD CALCULATION BREAKDOWN HTML
+                                    let breakdownHTML = `
+                                        <div style="background: #1a1a2e; padding: 10px; border-radius: 4px; margin-bottom: 10px; font-size: 11px; border-left: 3px solid #ff9800;">
+                                            <strong style="color: #00d4ff; display: block; margin-bottom: 8px;">📊 EXACT COIN DETAILS</strong>
+                                            
+                                            <div style="background: #0d1419; padding: 6px; border-radius: 3px; margin-bottom: 8px;">
+                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Entry Price:</strong> $${entryPrice}</p>
+                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Mark Price:</strong> $${markPrice}</p>
+                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Liquidation Price:</strong> $${liqPrice}</p>
+                                            </div>
+                                            
+                                            <div style="background: #0d1419; padding: 6px; border-radius: 3px; margin-bottom: 8px;">
+                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Position Size:</strong> ${size} units</p>
+                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Margin Used:</strong> $${margin}</p>
+                                            </div>
+                                            
+                                            <div style="background: #0d261a; padding: 8px; border-radius: 3px; margin-bottom: 8px; border: 1px solid #00ff88;">
+                                                <p style="margin: 0 0 6px 0; color: #00ff88; font-weight: bold;">📈 ROI BREAKDOWN</p>`;
+                                    
+                                    if (data.calculation_breakdown && data.calculation_breakdown.roi) {
+                                        const roi_calc = data.calculation_breakdown.roi;
+                                        breakdownHTML += `
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Base ROI:</strong> <span style="color: #00ff88;">${roi_calc.base_percent.toFixed(4)}%</span></p>
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Leverage:</strong> <span style="color: #ffaa00;">${roi_calc.leverage}x</span></p>
+                                                <p style="margin: 4px 0; padding: 6px; background: #0a1a0f; border-radius: 2px; color: #fff; font-weight: bold;">
+                                                    Calculation: ${roi_calc.base_percent.toFixed(4)}% × ${roi_calc.leverage}x = <span style="color: ${roiColor};">${roi_calc.calculated_percent.toFixed(2)}%</span>
+                                                </p>
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Actual ROI:</strong> <span style="color: ${roiColor};">${roi >= 0 ? '+' : ''}${roi}%</span></p>
+                                                <p style="margin: 4px 0; color: #888; font-size: 10px; font-style: italic;">Dashboard shows: ${roi}% (based on ${roi_calc.leverage}x leverage)</p>`;
+                                    } else {
+                                        breakdownHTML += `
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">ROI:</strong> <span style="color: ${roiColor};">${roi >= 0 ? '+' : ''}${roi}%</span></p>`;
+                                    }
+                                    
+                                    breakdownHTML += `
+                                            </div>
+                                            
+                                            <div style="background: #1a0d0d; padding: 8px; border-radius: 3px; margin-bottom: 8px; border: 1px solid #ff9800;">
+                                                <p style="margin: 0 0 6px 0; color: #ff9800; font-weight: bold;">⚠️ MARGIN RATIO BREAKDOWN</p>`;
+                                    
+                                    if (data.calculation_breakdown && data.calculation_breakdown.margin_ratio) {
+                                        const margin_calc = data.calculation_breakdown.margin_ratio;
+                                        breakdownHTML += `
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Base Margin Ratio:</strong> <span style="color: #ff9800;">${margin_calc.base_percent.toFixed(4)}%</span></p>
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Leverage:</strong> <span style="color: #ffaa00;">${margin_calc.leverage}x</span></p>
+                                                <p style="margin: 4px 0; padding: 6px; background: #260a0a; border-radius: 2px; color: #fff; font-weight: bold;">
+                                                    Calculation: ${margin_calc.base_percent.toFixed(4)}% × ${margin_calc.leverage}x = <span style="color: #ff9800;">${margin_calc.calculated_percent.toFixed(2)}%</span>
+                                                </p>
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Actual Margin Ratio:</strong> <span style="color: #ff9800;">${marginRatio}%</span></p>
+                                                <p style="margin: 4px 0; color: #888; font-size: 10px; font-style: italic;">Dashboard shows: ${marginRatio}% (based on ${margin_calc.leverage}x leverage)</p>`;
+                                    } else {
+                                        breakdownHTML += `
+                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Margin Ratio:</strong> <span style="color: #ff9800;">${marginRatio}%</span></p>`;
+                                    }
+                                    
+                                    breakdownHTML += `
+                                            </div>
+                                            
+                                            <div style="background: #0d1419; padding: 6px; border-radius: 3px; border-top: 2px solid #333;">
+                                                <p style="margin: 4px 0; display: flex; justify-content: space-between;">
+                                                    <span style="color: #aaa;">Unrealized PnL:</span> <strong style="color: ${pnlColor};font-size:12px;">$${unrealizedPnL}</strong>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    `;
+                                    
+                            posDetailsDiv.innerHTML = breakdownHTML;
+                                } catch (parseErr) {
+                                    console.error('Position parsing error:', parseErr);
+                                    posDetailsDiv.innerHTML = '<div style="color: #ff6b6b; font-size: 11px;">⚠️ Position data format error</div>';
+                                }
+                            } else {
+                                posDetailsDiv.innerHTML = '<div style="color: #888; font-size: 11px; padding: 8px; text-align: center;">✅ No open position for this symbol</div>';
+                            }
+                            posDetailsDiv.style.display = 'block';
+                            console.log('✅ Modal updated successfully');
+                        } else {
+                            document.getElementById('modal-rec').innerHTML = '❌ ' + (data.message || 'Error fetching data');
+                            console.error('API error:', data);
+                        }
+                    } catch (err) {
+                        console.error('Data processing error:', err);
+                        document.getElementById('modal-rec').innerHTML = '❌ Processing error: ' + err.message;
+                    }
+                })
+                .catch(err => {
+                    console.error('Fetch error:', err);
+                    document.getElementById('modal-rec').innerHTML = '❌ Network error: ' + err.message;
+                });
+        } catch (e) {
+            console.error('showCoinDetails error:', e);
+            alert('❌ Error: ' + e.message);
+        }
+    }
+
+    // ✅ EDIT LEVERAGE FROM LIVE POSITIONS
+    function editLeverageMod(symbolOverride = null) {
+        const symbol = symbolOverride || (document.getElementById('modal-symbol') ? document.getElementById('modal-symbol').textContent : getSelectedSymbol());
+        const newLeverage = prompt(`Enter new leverage for ${symbol} (1-125x):`);
+        if (newLeverage && !isNaN(newLeverage)) {
+            const lev = parseInt(newLeverage);
+            if (lev >= 1 && lev <= 125) {
+                // Show loading state
+                console.log(`Changing leverage for ${symbol} to ${lev}x...`);
+                
+                fetch('/api/change_leverage', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol: symbol, leverage: lev })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(`✅ Successfully changed ${symbol} leverage to ${lev}x`);
+                        updateLivePositions(symbol, true); // Refresh positions
+                    } else {
+                        alert(`❌ Failed to change leverage: ${data.error || 'Unknown error'}`);
+                    }
+                })
+                .catch(err => {
+                    console.error('Leverage change error:', err);
+                    alert('❌ Error changing leverage. Check console for details.');
+                });
+            } else {
+                alert('❌ Leverage must be between 1-125x');
+            }
+        }
+    }
+
+    // ✅ EDIT TP/SL FROM MODAL
+    function editTPSLMod() {
+        const symbol = document.getElementById('modal-symbol').textContent;
+        const tpPrice = prompt(`Enter Take Profit price for ${symbol}:`);
+        if (tpPrice && !isNaN(tpPrice)) {
+            const slPrice = prompt(`Enter Stop Loss price for ${symbol}:`);
+            if (slPrice && !isNaN(slPrice)) {
+                alert(`✅ Would set TP: $${tpPrice}, SL: $${slPrice} for ${symbol}. (Integration needed)`);
+                // TODO: Add API call to set TP/SL
+            }
+        }
+    }
+
+    // ✅ CLOSE POSITION FROM MODAL
+    function closePosModal() {
+        const symbol = document.getElementById('modal-symbol').textContent;
+        if (confirm(`⚠️ Close entire ${symbol} position?`)) {
+            alert(`✅ Would close ${symbol} position. (Integration needed)`);
+            // TODO: Add API call to close position
+        }
+    }
+
+    function refreshSelectedSymbolPanels(symbol, forceFresh = false) {
+        const activeSymbol = (symbol || getSelectedSymbol() || '').trim().toUpperCase();
+        if (!activeSymbol) return;
+
+        const positionsContainer = document.getElementById('live_positions');
+        const tradesContainer = document.getElementById('trade_history');
+        const header = document.getElementById('embed-modal-symbol');
+        const prevSymbolInput = document.querySelector('input[name="prev_symbol"]');
+
+        if (prevSymbolInput) {
+            prevSymbolInput.value = activeSymbol;
+        }
+        if (header) {
+            header.textContent = activeSymbol;
+        }
+        if (positionsContainer) {
+            positionsContainer.innerHTML = `<div style="text-align: center; color: #666; padding: 20px 12px; font-size: 9px;">Loading positions for ${activeSymbol}...</div>`;
+        }
+        if (tradesContainer) {
+            tradesContainer.innerHTML = `<div style="text-align: center; color: #666; padding: 18px 0; font-size: 8px;">Loading ${activeSymbol} trades...</div>`;
+        }
+
+        updateLivePrice(activeSymbol, true);
+        updateEmbeddedCoinDetails(activeSymbol, forceFresh);
+        fetchCoinDetails(activeSymbol);
+        updatePositionSizing(activeSymbol);
+        updateLivePositions(activeSymbol, forceFresh);
+        updateTradeHistory(activeSymbol);
+        updateConditionalOrders();
+        updateTradeLimits();
+    }
+
+    updateLivePositions = function(symbol = null, forceFresh = false) {
+        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
+        const container = document.getElementById('live_positions');
+        const headerEl = document.getElementById('position_header');
+
+        if (!container) return;
+
+        let url = '/get_open_positions';
+        const params = [];
+        if (forceFresh) params.push('fresh=1');
+        params.push(`_t=${Date.now()}`);
+        url += `?${params.join('&')}`;
+
+        fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (targetSymbol && getSelectedSymbol() !== targetSymbol) {
+                return;
+            }
+
+            const positions = Array.isArray(data.positions) ? data.positions : [];
+            currentPositions = {};
+
+            positions.forEach(pos => {
+                currentPositions[pos.symbol] = {
+                    symbol: pos.symbol,
+                    side: pos.side,
+                    amount: parseFloat(pos.amount ?? pos.quantity ?? pos.positionAmt ?? 0),
+                    size_usdt: parseFloat(pos.size_usdt ?? pos.notional ?? 0),
+                    margin_usdt: parseFloat(pos.margin_usdt ?? pos.initialMargin ?? 0),
+                    margin_ratio: parseFloat(pos.margin_ratio ?? 0),
+                    dashboard_margin_ratio: parseFloat(pos.dashboard_margin_ratio ?? pos.margin_ratio ?? 0),
+                    entry_price: parseFloat(pos.entry_price ?? pos.entryPrice ?? 0),
+                    mark_price: parseFloat(pos.mark_price ?? pos.markPrice ?? 0),
+                    unrealized_pnl: parseFloat(pos.unrealized_pnl ?? pos.unrealizedPnL ?? 0),
+                    roi_percent: parseFloat(pos.roi_percent ?? 0),
+                    dashboard_roi_percent: parseFloat(pos.dashboard_roi_percent ?? pos.roi_percent ?? 0),
+                    leverage: parseFloat(pos.leverage ?? 0),
+                    liquidation_price: parseFloat(pos.liquidation_price ?? pos.liquidationPrice ?? 0),
+                    open_orders: Array.isArray(pos.open_orders) ? pos.open_orders : [],
+                    timestamp: pos.timestamp || ''
+                };
+            });
+
+            if (positions.length > 0) {
+                renderPositions();
+                updateLiveDataOnly();
+                updateConditionalOrders();
+            } else {
+                currentPositions = {};
+                if (headerEl) {
+                    headerEl.textContent = 'LIVE POSITIONS (0)';
+                }
+                container.innerHTML = `<div style="text-align: center; color: #81b8c5; padding: 20px 12px; font-size: 9px;">No open positions for ${targetSymbol}</div>`;
+            }
+        }).catch(err => {
+            console.error('Failed to fetch positions:', err);
+            currentPositions = {};
+            if (headerEl) {
+                headerEl.textContent = 'LIVE POSITIONS (0)';
+            }
+            container.innerHTML = '<div style="color: #ff6b6b; font-size: 9px; text-align: center; padding: 20px 12px;">Error loading positions</div>';
+        });
+    };
+
+    changeSymbolDynamic = function(event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+
+        const symbolSelect = document.querySelector('select[name="symbol"]');
+        const cleanSymbol = ((symbolSelect ? symbolSelect.value : '') || '').trim().toUpperCase();
+
+        if (!isValidSymbol(cleanSymbol)) {
+            alert(`Invalid symbol: ${cleanSymbol}`);
+            return false;
+        }
+
+        currentChartSymbol = cleanSymbol;
+        initializeTradingViewChart(cleanSymbol);
+        window.history.replaceState({}, '', `/index?symbol=${encodeURIComponent(cleanSymbol)}`);
+        refreshSelectedSymbolPanels(cleanSymbol, true);
+        return false;
+    };
+
+    // ✅ CLOSE COIN DETAILS MODAL
+    function closeCoinModal() {
+        document.getElementById('coin-details-modal').style.display = 'none';
+    }
+
+    // Close modal when clicking outside
+    // ✅ INITIALIZE ON PAGE LOAD
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('✅ Page loaded, initializing dynamic functions');
+            updateLivePositions();
+            updateTradeHistory();
+            updateTP1SLOrders();
+            refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
+        });
+    } else {
+        updateLivePositions();
+        updateTradeHistory();
+        updateTP1SLOrders();
+        refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
+    }
+
+    // ✅ AUTO-REFRESH TIMERS (Background updates while user trades)
+    // Refresh positions every 5 seconds
+    setInterval(() => {
+        updateLivePositions();
+    }, 5000);
+
+    // Refresh price every 10 seconds only if the current feed has gone stale
+    setInterval(() => {
+        updateLivePrice();
+    }, 10000);
+
+    // Refresh coin details (leverage, etc) every 30 seconds
+    setInterval(() => {
+        fetchCoinDetails();
+        updateEmbeddedCoinDetails();
+        updateTradeHistory();
+    }, 30000);
+
+    // Refresh TP1 and SL orders every 5 seconds
+    setInterval(updateTP1SLOrders, 5000);
+    
+    // Also refresh all conditional orders for backup
+    setInterval(updateConditionalOrders, 10000);
+
+    window.onclick = function(event) {
+        const modal = document.getElementById('coin-details-modal');
+        if (event.target === modal && modal.style.display === 'flex') {
+            modal.style.display = 'none';
+        }
+    }
+</script>
+
+<div id="coin-details-modal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.7);" onclick="if(event.target.id === 'coin-details-modal') closeCoinModal()">
+    <div style="display:flex; align-items:center; justify-content:center; width:100%; height:100%;">
+        <div style="background-color: #0d1117; padding: 20px; border: 2px solid #00d4ff; border-radius: 8px; width: 90%; max-width: 600px; color: #fff; max-height: 90vh; overflow-y: auto; box-shadow: 0 0 30px rgba(0, 212, 255, 0.3);" onclick="event.stopPropagation();">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #00d4ff; padding-bottom: 10px; margin-bottom: 15px;">
+            <h3 style="color: #00d4ff; margin: 0; font-size: 16px;">ℹ️ <span id="modal-symbol" style="color: #00ff88;">{{ selected_symbol or 'BTCUSDT' }}</span></h3>
+            <span onclick="closeCoinModal()" style="color: #ff6b6b; font-size: 24px; font-weight: bold; cursor: pointer; line-height: 1;">&times;</span>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+            <div style="background: #1a1a2e; padding: 10px; border-radius: 6px; border-left: 3px solid #00ff88;">
+                <p style="margin: 0; font-size: 11px; color: #aaa;">Max Leverage</p>
+                <p style="margin: 4px 0; font-size: 22px; color: #00ff88; font-weight: bold;"><span id="modal-max-lev">-</span>x</p>
+            </div>
+            
+            <div style="background: #1a1a2e; padding: 10px; border-radius: 6px; border-left: 3px solid #ffaa00;">
+                <p style="margin: 0; font-size: 11px; color: #aaa;">Suggested Safe Lev</p>
+                <p style="margin: 4px 0; font-size: 22px; color: #ffaa00; font-weight: bold;"><span id="modal-sugg-lev">45</span>x</p>
+            </div>
+        </div>
+        
+        <div id="modal-position-details" style="margin-bottom: 10px; display: none;">
+            </div>
+        
+        <div id="modal-action-buttons" style="display: grid; gap: 8px; margin-bottom: 10px; grid-template-columns: 1fr 1fr 1fr;">
+            <button onclick="editLeverageMod()" style="padding: 8px; background: #ffaa00; color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.2s; white-space: nowrap;"><i icon="⚙️"></i> Leverage</button>
+            <button onclick="editTPSLMod()" style="padding: 8px; background: #00d4ff; color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.2s; white-space: nowrap;"><i icon="🎯"></i> TP/SL</button>
+            <button onclick="closePosModal()" style="padding: 8px; background: #ff6b6b; color: #fff; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.2s; white-space: nowrap;"><i icon="❌"></i> Close</button>
+        </div>
+        
+        <div style="background: #0d2a3a; padding: 10px; border-radius: 6px; border-left: 3px solid #00d4ff; margin-bottom: 10px;">
+            <p style="margin: 0; font-size: 11px; color: #aaa;">📌 Leverage Recommendations:</p>
+            <p style="margin: 4px 0; font-size: 12px; color: #fff;" id="modal-rec">Loading...</p>
+        </div>
+        
+        <button onclick="closeCoinModal()" style="width: 100%; padding: 10px; background: #00d4ff; color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
+            ✓ Close
+        </button>
+        </div>
+    </div>
+</div>
+</body>
+</html>
 </div>
 </body>
 </html>
