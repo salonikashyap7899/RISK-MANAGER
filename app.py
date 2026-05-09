@@ -1055,7 +1055,11 @@ def change_leverage():
 @app.route('/api/conditional_orders')
 @login_required
 def api_conditional_orders():
-    orders = logic.get_all_open_conditional_orders(current_user.id)
+    try:
+        orders = logic.get_all_open_conditional_orders(current_user.id)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e),
+                        "conditional_orders": [], "basic_orders": []})
     # Split by Binance's Conditional vs Basic tab classification:
     # Conditional = TAKE_PROFIT_MARKET, STOP_MARKET, TAKE_PROFIT, STOP, TRAILING_STOP_MARKET (TP1, SL)
     # Basic       = LIMIT, LIMIT_MAKER (TP2)
@@ -1074,8 +1078,13 @@ def api_tp1_and_sl_orders():
     Fetch ONLY TP1 and SL conditional orders with position context.
     """
     from conditional_orders_enhancement import get_tp1_and_sl_orders
-    result = get_tp1_and_sl_orders(current_user.id)
+    try:
+        result = get_tp1_and_sl_orders(current_user.id)
+    except Exception as e:
+        result = {"success": False, "error": str(e),
+                  "tp1_orders": [], "sl_orders": []}
     return jsonify(result)
+
 
 @app.route('/api/debug_conditional_orders')
 @login_required
