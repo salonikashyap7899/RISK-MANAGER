@@ -1004,8 +1004,7 @@
             });
         });
     }
-
-    function updateTP1SLOrders() {
+function updateTP1SLOrders() {
         const container = document.getElementById('conditional_orders_left');
         const header = document.getElementById('conditional_header_left');
         if (!container) return;
@@ -1013,32 +1012,31 @@
         fetch('/api/tp1_and_sl_orders')
         .then(r => r.json())
         .then(data => {
-            const tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders : [];
-            const slOrders  = Array.isArray(data.sl_orders)  ? data.sl_orders  : [];
-            const totalOrders = tp1Orders.length + slOrders.length;
+            const tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders :[];
+            const tp2Orders = Array.isArray(data.tp2_orders) ? data.tp2_orders :[];
+            const slOrders  = Array.isArray(data.sl_orders)  ? data.sl_orders  :[];
+            const totalOrders = tp1Orders.length + tp2Orders.length + slOrders.length;
 
-            if (header) header.textContent = '🎯 TP1 & SL (' + totalOrders + ')';
+            if (header) header.textContent = '🎯 TP1, TP2 & SL (' + totalOrders + ')';
 
             if (totalOrders === 0) {
-                container.innerHTML = '<div style="text-align:center;color:#444;padding:40px 0;font-size:10px;">No TP1 or SL orders</div>';
+                container.innerHTML = '<div style="text-align:center;color:#444;padding:40px 0;font-size:10px;">No TP1, TP2 or SL orders</div>';
                 return;
             }
 
             // ── helper: build one Binance-style card ──────────────────────────
-            function buildCard(o, isTP1) {
-                const trigger  = (o.triggerPrice && o.triggerPrice > 0) ? parseFloat(o.triggerPrice) : 0;
+            function buildCard(o, orderTypeLabel) {
+                const trigger  = (o.triggerPrice && o.triggerPrice > 0) ? parseFloat(o.triggerPrice) : (o.price && o.price > 0 ? parseFloat(o.price) : 0);
                 const qty      = (o.qty && o.qty > 0) ? parseFloat(o.qty) : 0;
                 const side     = (o.side || '').toUpperCase();          // BUY / SELL
                 const typeRaw  = (o.type || '').toUpperCase();
 
-                // ── row 1: symbol + Cancel button ────────────────────────────
-                // ── row 2: order-type label (red/orange) + date ──────────────
-                // ── rows 3-5: Amount / Price / Conditions / Reduce Only ──────
-
                 // Human-readable type string matching Binance UI
                 let typeLabel;
-                if (isTP1) {
+                if (orderTypeLabel === 'TP1') {
                     typeLabel = 'Take Profit Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
+                } else if (orderTypeLabel === 'TP2') {
+                    typeLabel = 'Limit (TP2) / ' + (side === 'BUY' ? 'Buy' : 'Sell');
                 } else {
                     if (typeRaw.includes('TRAILING')) {
                         typeLabel = 'Trailing Stop Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
@@ -1050,14 +1048,15 @@
                 // Condition arrow: TP1 SELL triggers when Mark Price ≥ trigger
                 //                  SL  SELL triggers when Mark Price ≤ trigger
                 // For BUY legs it flips, but your trades are SELL reduce-only
-                const condSymbol = isTP1 ? '≥' : '≤';
+                const isTP = (orderTypeLabel === 'TP1' || orderTypeLabel === 'TP2');
+                const condSymbol = isTP ? '≥' : '≤';
                 const triggerStr = trigger > 0 ? '$' + trigger.toFixed(trigger < 1 ? 7 : 2) : 'Market';
                 const amtStr     = qty > 0     ? qty.toFixed(qty < 1 ? 5 : 4)               : 'Close All';
 
                 // card border / bg colour
-                const borderColor = isTP1 ? '#1a7a4a' : '#7a1a1a';
-                const bgColor     = isTP1 ? 'rgba(0,40,20,0.55)' : 'rgba(40,0,0,0.55)';
-                const labelColor  = isTP1 ? '#0ecb81' : '#f6465d';   // Binance green / red
+                const borderColor = isTP ? '#1a7a4a' : '#7a1a1a';
+                const bgColor     = isTP ? 'rgba(0,40,20,0.55)' : 'rgba(40,0,0,0.55)';
+                const labelColor  = isTP ? '#0ecb81' : '#f6465d';   // Binance green / red
 
                 let c = '';
                 c += '<div style="border:1px solid ' + borderColor + ';border-radius:5px;background:' + bgColor + ';padding:7px 8px;margin-bottom:7px;">';
@@ -1087,8 +1086,8 @@
                 }
 
                 c += row('Amount (USDT)', amtStr);
-                c += row('Price', 'Market', '#ccc');
-                c += row('Conditions', 'Mark Price ' + condSymbol + ' ' + triggerStr, '#f0b90b');
+                c += row('Price', orderTypeLabel === 'TP2' ? triggerStr : 'Market', '#ccc');
+                c += row('Conditions', orderTypeLabel === 'TP2' ? '-' : ('Mark Price ' + condSymbol + ' ' + triggerStr), '#f0b90b');
                 c += row('Reduce Only', 'True', '#ccc');
 
                 c += '</div>';
@@ -1099,21 +1098,28 @@
             let html = '';
 
             // TP1 cards
-            tp1Orders.forEach(o => { html += buildCard(o, true); });
+            tp1Orders.forEach(o => { html += buildCard(o, 'TP1'); });
+            
+            if (tp1Orders.length > 0 && tp2Orders.length > 0) {
+                html += '<div style="border-top:1px dashed #333;margin:4px 0 8px;"></div>';
+            }
+            
+            // TP2 cards
+            tp2Orders.forEach(o => { html += buildCard(o, 'TP2'); });
 
-            // Separator between TP1 and SL groups if both exist
-            if (tp1Orders.length > 0 && slOrders.length > 0) {
+            // Separator between TP1/TP2 and SL groups if both exist
+            if ((tp1Orders.length > 0 || tp2Orders.length > 0) && slOrders.length > 0) {
                 html += '<div style="border-top:1px dashed #333;margin:4px 0 8px;"></div>';
             }
 
             // SL cards
-            slOrders.forEach(o => { html += buildCard(o, false); });
+            slOrders.forEach(o => { html += buildCard(o, 'SL'); });
 
             container.innerHTML = html;
         })
         .catch(function(err) {
-            console.error('Error fetching TP1/SL orders:', err);
-            container.innerHTML = '<div style="text-align:center;color:#ff4444;padding:40px 0;font-size:10px;">Error loading TP1/SL orders</div>';
+            console.error('Error fetching TP1/TP2/SL orders:', err);
+            container.innerHTML = '<div style="text-align:center;color:#ff4444;padding:40px 0;font-size:10px;">Error loading orders</div>';
         });
     }
 
@@ -1597,11 +1603,6 @@
             updateLiveTradeLog();
             updateEmbeddedCoinDetails(sym, true);
         }, 200);
-        // FIX: After LONG/SHORT form submit the page reloads.
-        // Binance takes 1-3s to register new conditional orders.
-        // Two extra fetches at 1.5s and 3.5s populate the box without needing manual Refresh.
-        setTimeout(() => updateTP1SLOrders(), 1500);
-        setTimeout(() => updateTP1SLOrders(), 3500);
     });
     
     // Form validation
@@ -2485,9 +2486,6 @@
                     headerEl.textContent = 'LIVE POSITIONS (0)';
                 }
                 container.innerHTML = `<div style="text-align: center; color: #81b8c5; padding: 20px 12px; font-size: 9px;">No open positions for ${targetSymbol}</div>`;
-                // ✅ FIX: Still refresh TP1/SL box even when no positions open
-                // This ensures orphaned conditional orders stay visible after a trade closes
-                updateTP1SLOrders();
             }
         }).catch(err => {
             console.error('Failed to fetch positions:', err);
@@ -2613,120 +2611,5 @@
         </button>
         </div>
     </div>
-<script>
-async function updateTP1SLOrders() {
-    try {
-        const res = await fetch('/api/tp1-sl-orders');
-        const data = await res.json();
-
-        const container = document.getElementById('conditional_orders_left');
-        const header = document.getElementById('conditional_header_left');
-
-        if (!data.success) {
-            container.innerHTML = `
-                <div style="color:red;padding:10px;">
-                    Failed to fetch orders
-                </div>
-            `;
-            return;
-        }
-
-        const tp1Orders = data.tp1_orders || [];
-        const slOrders = data.sl_orders || [];
-
-        const allOrders = [...tp1Orders, ...slOrders];
-
-        header.innerHTML = `🎯 TP1 & SL (${allOrders.length})`;
-
-        if (allOrders.length === 0) {
-            container.innerHTML = `
-                <div style="text-align:center;color:#666;padding:20px;">
-                    No TP1 / SL orders
-                </div>
-            `;
-            return;
-        }
-
-        let html = '';
-
-        allOrders.forEach(order => {
-
-            const isTP = order.label === 'TP1';
-
-            html += `
-                <div style="
-                    border:1px solid ${isTP ? '#00d084' : '#ff4d4f'};
-                    border-radius:6px;
-                    padding:6px;
-                    margin-bottom:6px;
-                    background:#111;
-                ">
-
-                    <div style="
-                        display:flex;
-                        justify-content:space-between;
-                        margin-bottom:4px;
-                    ">
-                        <strong style="color:white;">
-                            ${order.symbol}
-                        </strong>
-
-                        <span style="
-                            color:${isTP ? '#00d084' : '#ff4d4f'};
-                            font-weight:bold;
-                        ">
-                            ${order.label}
-                        </span>
-                    </div>
-
-                    <div style="font-size:8px;color:#bbb;">
-                        Side: ${order.side}
-                    </div>
-
-                    <div style="font-size:8px;color:#bbb;">
-                        Type: ${order.type}
-                    </div>
-
-                    <div style="font-size:8px;color:#bbb;">
-                        Trigger: ${order.triggerPrice}
-                    </div>
-
-                    <div style="font-size:8px;color:#bbb;">
-                        Qty: ${order.qty}
-                    </div>
-
-                    <div style="font-size:8px;color:#00d4ff;">
-                        Entry: ${order.position_entry || '-'}
-                    </div>
-
-                    <div style="font-size:8px;color:#ffaa00;">
-                        TP1: ${order.position_tp1 || '-'}
-                    </div>
-
-                    <div style="font-size:8px;color:#ff4d4f;">
-                        SL: ${order.position_sl || '-'}
-                    </div>
-
-                    <div style="font-size:8px;color:#888;margin-top:4px;">
-                        ${order.position_status || ''}
-                    </div>
-                </div>
-            `;
-        });
-
-        container.innerHTML = html;
-
-    } catch (err) {
-        console.error('TP1/SL Orders Error:', err);
-    }
-}
-
-/* Initial load */
-updateTP1SLOrders();
-
-/* Auto refresh every 5 sec */
-setInterval(updateTP1SLOrders, 5000);
-</script>
-
 </body>
-    </html>
+</html>
