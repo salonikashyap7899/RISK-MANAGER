@@ -525,18 +525,18 @@
                 </div>
             </div>
 
-            <div class="row">
-                <div class="col" style="flex: 1;">
-                    <label style="font-size: 10px;">Pos Override</label>
-                    <input type="number" name="user_units" step="any" style="font-size: 10px;" title="Suggested: {{sizing.suggested_units}}">
-                    <small style="font-size: 8px;">Sug: {{sizing.suggested_units}}</small>
-                </div>
-                <div class="col" style="flex: 1.1;">
-                    <label style="font-size: 10px;">Lev Override</label>
-                    <input type="number" name="user_lev" step="any" style="font-size: 10px;" title="Suggested: {{sizing.suggested_leverage}}x | Max: {{sizing.exchange_max_leverage | default('-')}}x">
-                    <small style="font-size: 8px;">Sug: {{sizing.suggested_leverage}}x</small>
-                </div>
-            </div>
+<div class="row">
+    <div class="col" style="flex: 1;">
+        <label style="font-size: 10px;">Pos Override</label>
+        <input type="number" name="user_units" step="any" style="font-size: 10px;" title="Suggested: {{sizing.suggested_units}}">
+        <small style="font-size: 8px;">Sug: <span id="sizing_units">{{ sizing.suggested_units | default('0') }}</span></small>
+    </div>
+    <div class="col" style="flex: 1.1;">
+        <label style="font-size: 10px;">Lev Override</label>
+        <input type="number" name="user_lev" step="any" style="font-size: 10px;" title="Suggested: {{sizing.suggested_leverage}}x | Max: {{sizing.exchange_max_leverage | default('-')}}x">
+        <small style="font-size: 8px;">Sug: <span id="sizing_lev">{{ sizing.suggested_leverage | default('1') }}</span>x</small>
+    </div>
+</div>
 
             <button type="submit" name="place_order" class="place" data-testid="execute-order-button"
                     {% if default_sl_value <= 0 %} disabled style="filter: grayscale(1); padding: 2px 8px; min-height: 20px; font-size: 8px;" {% endif %}
@@ -819,55 +819,34 @@
     });
     
     // Live Updates - Enhanced with real-time liquidation prices
-    function updateLivePositions(symbol = null, forceFresh = false) {
-        const targetSymbol = (symbol || getSelectedSymbol() || 'BTCUSDT').trim().toUpperCase();
-        const container = document.getElementById('live_positions');
-        const headerEl = document.getElementById('position_header');
-
-        if (!container) return;
-
-        let url = '/get_open_positions';
-        const params =[];
-        if (forceFresh) params.push('fresh=1');
-        params.push(`_t=${Date.now()}`);
-        url += `?${params.join('&')}`;
-
-        fetch(url)
+   // ✅ UPDATE POSITION SIZING
+    function updatePositionSizing(symbol = null) {
+        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
+        
+        if (!targetSymbol) return;
+        
+        const entryInput = document.getElementById('entry_input');
+        const entryPrice = entryInput ? parseFloat(entryInput.value) || 0 : 0;
+        const slTypeElem = document.querySelector('select[name="sl_type"]');
+        const slValueElem = document.querySelector('input[name="sl_value"]');
+        const slType = slTypeElem ? slTypeElem.value : 'SL % Movement';
+        const slValue = slValueElem ? parseFloat(slValueElem.value) || 1.5 : 1.5;
+        const side = getCurrentSide();
+        
+        if (entryPrice <= 0) return;
+        
+        fetch(`/api/calculate-sizing?symbol=${encodeURIComponent(targetSymbol)}&entry=${entryPrice}&sl_type=${encodeURIComponent(slType)}&sl_value=${slValue}&side=${side}`)
         .then(r => r.json())
         .then(data => {
-            // Drop updates if the user navigated away
-            if (targetSymbol && getSelectedSymbol() !== targetSymbol) {
-                return;
-            }
-
-            const positions = Array.isArray(data.positions) ? data.positions :[];
-            currentPositions = {};
-
-            positions.forEach(pos => {
-                // Ensure leverage is correctly typed, fallback to 0/null for loading state
-                pos.leverage = pos.leverage ? parseFloat(pos.leverage) : 0;
-                currentPositions[pos.symbol] = pos;
-            });
-
-            if (positions.length > 0) {
-                renderPositions();
-                updateLiveDataOnly();
-                updateTP1SLOrders();
-            } else {
-                currentPositions = {};
-                if (headerEl) {
-                    headerEl.textContent = '📍 LIVE POSITIONS (0)';
-                }
-                container.innerHTML = `<div style="text-align: center; color: #81b8c5; padding: 20px 12px; font-size: 9px;">No open positions for ${targetSymbol}</div>`;
+            if (data.success) {
+                // FIXED: Now targets the span IDs correctly
+                if (document.getElementById('sizing_units')) document.getElementById('sizing_units').textContent = (data.suggested_units || 0).toFixed(2);
+                if (document.getElementById('sizing_lev')) document.getElementById('sizing_lev').textContent = parseInt(data.suggested_leverage || 1);
             }
         }).catch(err => {
-            console.error('Failed to fetch positions:', err);
-            if (!container.innerHTML || container.innerHTML.includes('No open positions')) {
-                container.innerHTML = '<div style="color: #ff6b6b; font-size: 9px; text-align: center; padding: 20px 12px;">Error loading positions</div>';
-            }
+            console.log(`ℹ️ Sizing calculation skipped (normal on fresh load): ${err.message}`);
         });
     }
-    
     // Fetch ONLY liquidation prices live (NO cache) - run more frequently
     function updateLiveDataOnly() {
         fetch('/api/liquidation_prices')
