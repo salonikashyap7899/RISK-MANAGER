@@ -29,8 +29,7 @@ _virtual_guard_last_run = {}
 # Prevents the duplicate UI pollers from hammering Binance and triggering -1003 IP bans.
 _conditional_cache = {}          # {user_id: (ts_ms, [orders])}
 _conditional_ban_until = 0       # ms epoch; while now < this, skip the call
-CONDITIONAL_CACHE_MS = 10000
-
+CONDITIONAL_CACHE_MS = 2500
 
 # Known leverage limits for common coins (updated based on Binance data)
 # These serve as fallback when API fails
@@ -579,11 +578,9 @@ def get_all_open_conditional_orders(user_id=None):
     now_ms = int(time.time() * 1000)
 
     # Serve from short TTL cache when available — kills duplicate-poll storms.
-    # NOTE: cache is used for both non-empty AND empty results to prevent API hammering.
     cached = _conditional_cache.get(user_id)
     if cached and (now_ms - cached[0]) < CONDITIONAL_CACHE_MS:
         return list(cached[1])
-
 
     # If Binance has banned us, don't issue more requests until the window passes.
     if now_ms < _conditional_ban_until:
@@ -610,14 +607,6 @@ def get_all_open_conditional_orders(user_id=None):
                 except Exception:
                     _conditional_ban_until = now_ms + 60_000
                 return list(cached[1]) if cached else []
-            # Fallback: try raw API if the method fails for other reasons
-            try:
-                resp = client._request_futures_api('get', 'openOrders', True, data={'recvWindow': 10000})
-                if isinstance(resp, list):
-                    all_orders = resp
-                    print(f"[DEBUG] Raw API fallback open orders count: {len(all_orders)}")
-            except Exception as e2:
-                print(f"[DEBUG] Raw API fallback also failed: {e2}")
 
 
         conditional_types = [
@@ -646,12 +635,12 @@ def get_all_open_conditional_orders(user_id=None):
                 elif 'STOP' in o_type or 'STOP_LOSS' in o_type:
                     label = 'SL'
                 
-                oid = str(o.get('orderId') or '')
-                if oid and oid not in seen_ids:
+                oid = str(o.get('orderId', ''))
+                if oid not in seen_ids:
                     seen_ids.add(oid)
                     qty = float(o.get('origQty', 0))
                     conditional_orders.append({
-                        'orderId': oid,
+                        'orderId': o.get('orderId'),
                         'symbol': o.get('symbol'),
                         'type': o_type,
                         'label': label,
@@ -666,60 +655,60 @@ def get_all_open_conditional_orders(user_id=None):
 
         # --- Fetch algo/conditional orders (TP1 lives here) ---
         try:
-            algo_orders = []
-
-            # Method 1: standard python-binance method
+            algo_resp = None
             if hasattr(client, 'futures_get_algo_orders'):
                 try:
-                    resp = client.futures_get_algo_orders(recvWindow=10000)
-                    if resp:
-                        algo_orders = resp if isinstance(resp, list) else resp.get('orders', [])
-                        print(f"[DEBUG] Algo orders via futures_get_algo_orders: {len(algo_orders)}")
+                    algo_resp = client.futures_get_algo_orders(recvWindow=10000)
                 except Exception as e1:
                     print(f"[DEBUG] futures_get_algo_orders failed: {e1}")
-
-            # Method 2: fallback to raw request if Method 1 failed or returned nothing
-            if not algo_orders and hasattr(client, '_request_futures_api'):
+            
+            if algo_resp is None and hasattr(client, '_request_futures_api'):
                 try:
-                    resp = client._request_futures_api('get', 'algoOrder/openOrders', True, data={'recvWindow': 10000})
-                    if resp:
-                        algo_orders = resp if isinstance(resp, list) else resp.get('orders', [])
-                        print(f"[DEBUG] Algo orders via _request_futures_api: {len(algo_orders)}")
+                    algo_resp = client._request_futures_api('get', 'algoOrder/openOrders', True, data={'recvWindow': 10000})
                 except Exception as e2:
                     print(f"[DEBUG] _request_futures_api algo failed: {e2}")
+            
+            if algo_resp is not None:
+                algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
+                print(f"[DEBUG] Algo open orders count: {len(algo_orders)}")
+                
+                for o in algo_orders:
+                    o_type = (o.get('type') or o.get('algoType') or '').upper()
+                    algo_id = str(o.get('algoId') or o.get('orderId') or '')
+                    trigger_price = float(o.get('triggerPrice') or o.get('stopPrice') or 0)
+                    qty = float(o.get('qty') or o.get('origQty') or 0)
+                    book_time = o.get('bookTime') or o.get('time') or 0
 
-            for o in algo_orders:
-                o_type = (o.get('type') or o.get('algoType') or '').upper()
-                algo_id = str(o.get('algoId') or o.get('orderId') or '')
-                trigger_price = float(o.get('triggerPrice') or o.get('stopPrice') or 0)
-                qty = float(o.get('qty') or o.get('origQty') or 0)
-                book_time = o.get('bookTime') or o.get('time') or 0
-
-                label = 'SL'
-                if 'TAKE_PROFIT' in o_type:
-                    label = 'TP1'
-                elif 'TRAILING' in o_type:
-                    label = 'Trail SL'
-                elif 'STOP' in o_type or 'STOP_LOSS' in o_type:
+                    # Better labeling for TP1 vs SL
                     label = 'SL'
+                    if 'TAKE_PROFIT' in o_type:
+                        label = 'TP1'
+                    elif 'TRAILING' in o_type:
+                        label = 'Trail SL'
+                    elif 'STOP' in o_type or 'STOP_LOSS' in o_type:
+                        label = 'SL'
 
-                if algo_id not in seen_ids:
-                    seen_ids.add(algo_id)
-                    conditional_orders.append({
-                        'orderId': algo_id,
-                        'symbol': o.get('symbol'),
-                        'type': o_type,
-                        'label': label,
-                        'side': o.get('side'),
-                        'stopPrice': trigger_price,
-                        'price': float(o.get('price') or 0),
-                        'origQty': qty,
-                        'time': datetime.fromtimestamp(int(book_time) / 1000).strftime('%Y-%m-%d %H:%M:%S') if book_time else 'N/A',
-                        'reduceOnly': o.get('reduceOnly', True),
-                        'source': 'algo'
-                    })
+                    if algo_id not in seen_ids:
+                        seen_ids.add(algo_id)
+                        conditional_orders.append({
+                            'orderId': algo_id,
+                            'symbol': o.get('symbol'),
+                            'type': o_type,
+                            'label': label,
+                            'side': o.get('side'),
+                            'stopPrice': trigger_price,
+                            'price': float(o.get('price') or 0),
+                            'origQty': qty,
+                            'time': datetime.fromtimestamp(int(book_time) / 1000).strftime('%Y-%m-%d %H:%M:%S') if book_time else 'N/A',
+                            'reduceOnly': o.get('reduceOnly', True),
+                            'source': 'algo'
+                        })
         except Exception as algo_err:
-            print(f"[DEBUG] Algo orders fetch failed (non-fatal): {algo_err}")
+            from binance.exceptions import BinanceAPIException
+            if isinstance(algo_err, BinanceAPIException) and algo_err.code == -4120:
+                print(f"[DEBUG] Algo orders not supported (-4120), using regular orders only")
+            else:
+                print(f"[DEBUG] Algo orders fetch failed (non-fatal): {algo_err}")
 
         # Sort by time descending
         conditional_orders.sort(key=lambda x: x['time'], reverse=True)
