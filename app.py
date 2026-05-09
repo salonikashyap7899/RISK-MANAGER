@@ -1076,48 +1076,14 @@ def api_conditional_orders():
 def api_tp1_and_sl_orders():
     """
     Fetch ONLY TP1 and SL conditional orders with position context.
-    Falls back to raw conditional orders if the enhancement returns nothing.
     """
     from conditional_orders_enhancement import get_tp1_and_sl_orders
     try:
         result = get_tp1_and_sl_orders(current_user.id)
     except Exception as e:
         result = {"success": False, "error": str(e),
-                  "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
-
-    # Fallback: if enhancement returned no orders at all, try splitting raw conditional orders directly
-    total = len(result.get('tp1_orders', [])) + len(result.get('tp2_orders', [])) + len(result.get('sl_orders', []))
-    if total == 0 and result.get('success', True):
-        try:
-            raw = logic.get_all_open_conditional_orders(current_user.id)
-            CONDITIONAL_TYPES = {'TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'STOP_MARKET', 'STOP', 'TRAILING_STOP_MARKET', 'STOP_LOSS', 'STOP_LOSS_LIMIT'}
-            tp1_orders, tp2_orders, sl_orders = [], [], []
-            for o in raw:
-                o_type = o.get('type', '').upper()
-                label = o.get('label', '').upper()
-                item = {
-                    'orderId': o.get('orderId'),
-                    'symbol': o.get('symbol'),
-                    'side': o.get('side'),
-                    'type': o_type,
-                    'label': label,
-                    'triggerPrice': o.get('stopPrice', 0),
-                    'price': o.get('price', 0),
-                    'qty': o.get('origQty', 0),
-                    'time': o.get('time', 'N/A'),
-                    'source': o.get('source', 'regular'),
-                }
-                if label == 'TP1' or 'TAKE_PROFIT' in o_type:
-                    tp1_orders.append(item)
-                elif label == 'SL' or 'STOP' in o_type or 'TRAILING' in o_type:
-                    sl_orders.append(item)
-            result = {"success": True, "tp1_orders": tp1_orders, "tp2_orders": tp2_orders, "sl_orders": sl_orders, "_source": "raw_fallback"}
-        except Exception as fe:
-            print(f"[tp1_and_sl_orders] fallback also failed: {fe}")
-
+                  "tp1_orders": [], "sl_orders": []}
     return jsonify(result)
-
-
 
 
 @app.route('/api/debug_conditional_orders')
@@ -1131,13 +1097,6 @@ def api_debug_conditional_orders():
     """
     raw = logic.get_all_open_conditional_orders(current_user.id)
     return jsonify({"count": len(raw), "orders": raw})
-
-@app.route('/api/debug_tp1_sl')
-@login_required
-def api_debug_tp1_sl():
-    from conditional_orders_enhancement import get_tp1_and_sl_orders
-    result = get_tp1_and_sl_orders(current_user.id)
-    return jsonify(result)
 
 @app.route('/api/cancel_conditional_order', methods=['POST'])
 @login_required
