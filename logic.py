@@ -29,7 +29,7 @@ _virtual_guard_last_run = {}
 # Prevents the duplicate UI pollers from hammering Binance and triggering -1003 IP bans.
 _conditional_cache = {}          # {user_id: (ts_ms, [orders])}
 _conditional_ban_until = 0       # ms epoch; while now < this, skip the call
-CONDITIONAL_CACHE_MS = 2500
+CONDITIONAL_CACHE_MS = 10000
 
 # Known leverage limits for common coins (updated based on Binance data)
 # These serve as fallback when API fails
@@ -579,7 +579,7 @@ def get_all_open_conditional_orders(user_id=None):
 
     # Serve from short TTL cache when available — kills duplicate-poll storms.
     cached = _conditional_cache.get(user_id)
-    if cached and (now_ms - cached[0]) < CONDITIONAL_CACHE_MS:
+    if cached and (now_ms - cached[0]) < CONDITIONAL_CACHE_MS and len(cached[1]) > 0:
         return list(cached[1])
 
     # If Binance has banned us, don't issue more requests until the window passes.
