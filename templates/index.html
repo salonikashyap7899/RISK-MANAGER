@@ -1597,6 +1597,11 @@
             updateLiveTradeLog();
             updateEmbeddedCoinDetails(sym, true);
         }, 200);
+        // FIX: After LONG/SHORT form submit the page reloads.
+        // Binance takes 1-3s to register new conditional orders.
+        // Two extra fetches at 1.5s and 3.5s populate the box without needing manual Refresh.
+        setTimeout(() => updateTP1SLOrders(), 1500);
+        setTimeout(() => updateTP1SLOrders(), 3500);
     });
     
     // Form validation
@@ -2480,6 +2485,9 @@
                     headerEl.textContent = 'LIVE POSITIONS (0)';
                 }
                 container.innerHTML = `<div style="text-align: center; color: #81b8c5; padding: 20px 12px; font-size: 9px;">No open positions for ${targetSymbol}</div>`;
+                // ✅ FIX: Still refresh TP1/SL box even when no positions open
+                // This ensures orphaned conditional orders stay visible after a trade closes
+                updateTP1SLOrders();
             }
         }).catch(err => {
             console.error('Failed to fetch positions:', err);
@@ -2606,4 +2614,4 @@
         </div>
     </div>
 </body>
-</html>
+    </html>
