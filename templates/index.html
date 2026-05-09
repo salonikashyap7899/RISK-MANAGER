@@ -965,46 +965,8 @@
     }
     
     // Fetch TP/SL data from database and display it
-    function fetchAndDisplayTPSLData() {
-        fetch('/get_user_trade_positions')
-        .then(r => r.json())
-        .then(data => {
-            if (data.positions && data.positions.length > 0) {
-                data.positions.forEach(pos => {
-                    const tpSlElement = document.getElementById(`tp_sl_details_${pos.symbol}`);
-                    if (tpSlElement) {
-                        let tpSlHtml = '';
-                        tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #ff6464;">🛑 SL:</strong> $${pos.sl_price.toFixed(4)}</div>`;
-                        if (pos.current_sl && pos.current_sl !== pos.sl_price) {
-                            tpSlHtml += `<div style="margin-bottom: 3px; font-size: 8px; color: #ffaa00;"><strong>Current SL:</strong> $${pos.current_sl.toFixed(4)}</div>`;
-                        }
-                        if (pos.tp1_price > 0) {
-                            tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #00ff88;">🎯 TP1:</strong> $${pos.tp1_price.toFixed(4)} (${pos.tp1_qty_pct}%)</div>`;
-                        }
-                        if (pos.tp2_price > 0) {
-                            tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #00ff88;">🎯 TP2:</strong> $${pos.tp2_price.toFixed(4)} (Remainder)</div>`;
-                        }
-                        if (!tpSlHtml) {
-                            tpSlHtml = '<div style="color: #666;">No TP/SL set</div>';
-                        }
-                        tpSlElement.innerHTML = tpSlHtml;
-                    }
-                });
-            }
-        })
-        .catch(err => {
-            console.log('Error fetching TP/SL data:', err);
-            // Gracefully hide TP/SL sections if fetch fails
-            const allPositions = Object.keys(currentPositions);
-            allPositions.forEach(symbol => {
-                const tpSlElement = document.getElementById(`tp_sl_details_${symbol}`);
-                if (tpSlElement) {
-                    tpSlElement.innerHTML = '<div style="color: #666; font-size: 8px;">TP/SL data unavailable</div>';
-                }
-            });
-        });
-    }
-function updateTP1SLOrders() {
+   Now let me improve the frontend's `updateTP1SLOrders()` so the user sees the actual error instead of a generic "Error loading orders", and so the panel header reflects state correctly:
+Action: file_editor str_replace /app/project/fixed/index.html --old-str "function updateTP1SLOrders() {
         const container = document.getElementById('conditional_orders_left');
         const header = document.getElementById('conditional_header_left');
         if (!container) return;
@@ -1020,7 +982,7 @@ function updateTP1SLOrders() {
             if (header) header.textContent = '🎯 TP1, TP2 & SL (' + totalOrders + ')';
 
             if (totalOrders === 0) {
-                container.innerHTML = '<div style="text-align:center;color:#444;padding:40px 0;font-size:10px;">No TP1, TP2 or SL orders</div>';
+                container.innerHTML = '<div style=\"text-align:center;color:#444;padding:40px 0;font-size:10px;\">No TP1, TP2 or SL orders</div>';
                 return;
             }
 
@@ -1059,29 +1021,29 @@ function updateTP1SLOrders() {
                 const labelColor  = isTP ? '#0ecb81' : '#f6465d';   // Binance green / red
 
                 let c = '';
-                c += '<div style="border:1px solid ' + borderColor + ';border-radius:5px;background:' + bgColor + ';padding:7px 8px;margin-bottom:7px;">';
+                c += '<div style=\"border:1px solid ' + borderColor + ';border-radius:5px;background:' + bgColor + ';padding:7px 8px;margin-bottom:7px;\">';
 
                 // Row 1 – symbol + Cancel
-                c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">';
-                c +=   '<span style="font-weight:bold;color:#e9fbff;font-size:10px;">' + (o.symbol || '—') + ' <span style="color:#888;font-weight:normal;font-size:8px;">Perp</span></span>';
-                c +=   '<button onclick="cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')" '
-                     + 'style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
+                c += '<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;\">';
+                c +=   '<span style=\"font-weight:bold;color:#e9fbff;font-size:10px;\">' + (o.symbol || '—') + ' <span style=\"color:#888;font-weight:normal;font-size:8px;\">Perp</span></span>';
+                c +=   '<button onclick=\"cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')\" '
+                     + 'style=\"background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;\">Cancel</button>';
                 c += '</div>';
 
                 // Row 2 – type label + date
-                c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">';
-                c +=   '<span style="color:' + labelColor + ';font-size:8.5px;font-weight:600;">' + typeLabel + '</span>';
-                c +=   '<span style="color:#666;font-size:7.5px;">' + (o.time || '') + '</span>';
+                c += '<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;\">';
+                c +=   '<span style=\"color:' + labelColor + ';font-size:8.5px;font-weight:600;\">' + typeLabel + '</span>';
+                c +=   '<span style=\"color:#666;font-size:7.5px;\">' + (o.time || '') + '</span>';
                 c += '</div>';
 
                 // Divider
-                c += '<div style="border-top:1px solid #2a2a2a;margin-bottom:5px;"></div>';
+                c += '<div style=\"border-top:1px solid #2a2a2a;margin-bottom:5px;\"></div>';
 
                 // Data rows – mirroring Binance layout (label left, value right)
                 function row(label, value, valColor) {
-                    return '<div style="display:flex;justify-content:space-between;margin-bottom:3px;">'
-                         + '<span style="color:#888;font-size:8px;">' + label + '</span>'
-                         + '<span style="color:' + (valColor || '#ccc') + ';font-size:8px;">' + value + '</span>'
+                    return '<div style=\"display:flex;justify-content:space-between;margin-bottom:3px;\">'
+                         + '<span style=\"color:#888;font-size:8px;\">' + label + '</span>'
+                         + '<span style=\"color:' + (valColor || '#ccc') + ';font-size:8px;\">' + value + '</span>'
                          + '</div>';
                 }
 
@@ -1101,7 +1063,7 @@ function updateTP1SLOrders() {
             tp1Orders.forEach(o => { html += buildCard(o, 'TP1'); });
             
             if (tp1Orders.length > 0 && tp2Orders.length > 0) {
-                html += '<div style="border-top:1px dashed #333;margin:4px 0 8px;"></div>';
+                html += '<div style=\"border-top:1px dashed #333;margin:4px 0 8px;\"></div>';
             }
             
             // TP2 cards
@@ -1109,7 +1071,7 @@ function updateTP1SLOrders() {
 
             // Separator between TP1/TP2 and SL groups if both exist
             if ((tp1Orders.length > 0 || tp2Orders.length > 0) && slOrders.length > 0) {
-                html += '<div style="border-top:1px dashed #333;margin:4px 0 8px;"></div>';
+                html += '<div style=\"border-top:1px dashed #333;margin:4px 0 8px;\"></div>';
             }
 
             // SL cards
@@ -1119,9 +1081,160 @@ function updateTP1SLOrders() {
         })
         .catch(function(err) {
             console.error('Error fetching TP1/TP2/SL orders:', err);
-            container.innerHTML = '<div style="text-align:center;color:#ff4444;padding:40px 0;font-size:10px;">Error loading orders</div>';
+            container.innerHTML = '<div style=\"text-align:center;color:#ff4444;padding:40px 0;font-size:10px;\">Error loading orders</div>';
         });
-    }
+    }" --new-str "function updateTP1SLOrders() {
+        const container = document.getElementById('conditional_orders_left');
+        const header = document.getElementById('conditional_header_left');
+        if (!container) return;
+
+        fetch('/api/tp1_and_sl_orders', { credentials: 'same-origin' })
+        .then(r => r.text().then(txt => {
+            // Defensive parse: if the server returned HTML (e.g. login redirect)
+            // we want to surface a meaningful error, not a generic \"Error loading orders\".
+            try { return JSON.parse(txt); }
+            catch (e) {
+                console.error('TP1/SL endpoint did not return JSON:', txt.slice(0, 200));
+                throw new Error('Server returned non-JSON response (status ' + r.status + ')');
+            }
+        }))
+        .then(data => {
+            const tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders :[];
+            const tp2Orders = Array.isArray(data.tp2_orders) ? data.tp2_orders :[];
+            const slOrders  = Array.isArray(data.sl_orders)  ? data.sl_orders  :[];
+            const totalOrders = tp1Orders.length + tp2Orders.length + slOrders.length;
+
+            if (header) header.textContent = '🎯 TP1, TP2 & SL (' + totalOrders + ')';
+
+            // If backend reported an error but still returned JSON, show it.
+            if (data.success === false && data.error) {
+                container.innerHTML = '<div style=\"text-align:center;color:#ff8844;padding:20px 6px;font-size:9px;line-height:1.4;\">'
+                    + '<div style=\"font-weight:bold;margin-bottom:4px;\">⚠️ Backend error</div>'
+                    + '<div style=\"color:#aaa;font-size:8px;word-break:break-word;\">' + String(data.error).replace(/</g,'&lt;') + '</div>'
+                    + '</div>';
+                return;
+            }
+
+            if (totalOrders === 0) {
+                container.innerHTML = '<div style=\"text-align:center;color:#444;padding:40px 0;font-size:10px;\">No TP1, TP2 or SL orders</div>';
+                return;
+            }
+
+            // ── helper: build one Binance-style card ──────────────────────────
+            function buildCard(o, orderTypeLabel) {
+                const trigger  = (o.triggerPrice && o.triggerPrice > 0) ? parseFloat(o.triggerPrice) : (o.price && o.price > 0 ? parseFloat(o.price) : 0);
+                const qty      = (o.qty && o.qty > 0) ? parseFloat(o.qty) : 0;
+                const side     = (o.side || '').toUpperCase();          // BUY / SELL
+                const typeRaw  = (o.type || '').toUpperCase();
+
+                // Human-readable type string matching Binance UI
+                let typeLabel;
+                if (orderTypeLabel === 'TP1') {
+                    typeLabel = 'Take Profit Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
+                } else if (orderTypeLabel === 'TP2') {
+                    typeLabel = 'Limit (TP2) / ' + (side === 'BUY' ? 'Buy' : 'Sell');
+                } else {
+                    if (typeRaw.includes('TRAILING')) {
+                        typeLabel = 'Trailing Stop Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
+                    } else {
+                        typeLabel = 'Stop Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
+                    }
+                }
+
+                // Condition arrow: TP1 SELL triggers when Mark Price ≥ trigger
+                //                  SL  SELL triggers when Mark Price ≤ trigger
+                // For BUY legs it flips, but your trades are SELL reduce-only
+                const isTP = (orderTypeLabel === 'TP1' || orderTypeLabel === 'TP2');
+                const condSymbol = isTP ? '≥' : '≤';
+                const triggerStr = trigger > 0 ? '$' + trigger.toFixed(trigger < 1 ? 7 : 2) : 'Market';
+                const amtStr     = qty > 0     ? qty.toFixed(qty < 1 ? 5 : 4)               : 'Close All';
+
+                // card border / bg colour
+                const borderColor = isTP ? '#1a7a4a' : '#7a1a1a';
+                const bgColor     = isTP ? 'rgba(0,40,20,0.55)' : 'rgba(40,0,0,0.55)';
+                const labelColor  = isTP ? '#0ecb81' : '#f6465d';   // Binance green / red
+
+                let c = '';
+                c += '<div data-testid=\"cond-order-' + (o.orderId || '') + '\" style=\"border:1px solid ' + borderColor + ';border-radius:5px;background:' + bgColor + ';padding:7px 8px;margin-bottom:7px;\">';
+
+                // Row 1 – symbol + Cancel
+                c += '<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;\">';
+                c +=   '<span style=\"font-weight:bold;color:#e9fbff;font-size:10px;\">' + (o.symbol || '—') + ' <span style=\"color:#888;font-weight:normal;font-size:8px;\">Perp</span></span>';
+                c +=   '<button data-testid=\"cancel-' + (o.orderId || '') + '\" onclick=\"cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')\" '
+                     + 'style=\"background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;\">Cancel</button>';
+                c += '</div>';
+
+                // Row 2 – type label + date
+                c += '<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;\">';
+                c +=   '<span style=\"color:' + labelColor + ';font-size:8.5px;font-weight:600;\">' + typeLabel + '</span>';
+                c +=   '<span style=\"color:#666;font-size:7.5px;\">' + (o.time || '') + '</span>';
+                c += '</div>';
+
+                // Divider
+                c += '<div style=\"border-top:1px solid #2a2a2a;margin-bottom:5px;\"></div>';
+
+                // Data rows – mirroring Binance layout (label left, value right)
+                function row(label, value, valColor) {
+                    return '<div style=\"display:flex;justify-content:space-between;margin-bottom:3px;\">'
+                         + '<span style=\"color:#888;font-size:8px;\">' + label + '</span>'
+                         + '<span style=\"color:' + (valColor || '#ccc') + ';font-size:8px;\">' + value + '</span>'
+                         + '</div>';
+                }
+
+                c += row('Amount (USDT)', amtStr);
+                c += row('Price', orderTypeLabel === 'TP2' ? triggerStr : 'Market', '#ccc');
+                c += row('Conditions', orderTypeLabel === 'TP2' ? '-' : ('Mark Price ' + condSymbol + ' ' + triggerStr), '#f0b90b');
+                c += row('Reduce Only', o.reduceOnly === false ? 'False' : 'True', '#ccc');
+
+                // Position context (entry / SL / TP) — only when DB has the position
+                if (o.position_entry || o.position_sl || o.position_tp1 || o.position_tp2) {
+                    c += '<div style=\"border-top:1px dashed #2a2a2a;margin:4px 0 3px;\"></div>';
+                    if (o.position_entry) c += row('Pos Entry', '$' + Number(o.position_entry).toFixed(o.position_entry < 1 ? 7 : 4), '#9aa');
+                    if (o.position_tp1)   c += row('Pos TP1',   '$' + Number(o.position_tp1).toFixed(o.position_tp1 < 1 ? 7 : 4), '#0ecb81');
+                    if (o.position_tp2)   c += row('Pos TP2',   '$' + Number(o.position_tp2).toFixed(o.position_tp2 < 1 ? 7 : 4), '#0ecb81');
+                    if (o.position_sl)    c += row('Pos SL',    '$' + Number(o.position_sl).toFixed(o.position_sl < 1 ? 7 : 4), '#f6465d');
+                    if (o.position_status && o.position_status !== 'unknown') {
+                        c += row('Pos Status', String(o.position_status).toUpperCase(),
+                                 o.position_status === 'open' ? '#0ecb81' : '#888');
+                    }
+                }
+
+                c += '</div>';
+                return c;
+            }
+            // ─────────────────────────────────────────────────────────────────
+
+            let html = '';
+
+            // TP1 cards
+            tp1Orders.forEach(o => { html += buildCard(o, 'TP1'); });
+
+            if (tp1Orders.length > 0 && tp2Orders.length > 0) {
+                html += '<div style=\"border-top:1px dashed #333;margin:4px 0 8px;\"></div>';
+            }
+
+            // TP2 cards
+            tp2Orders.forEach(o => { html += buildCard(o, 'TP2'); });
+
+            // Separator between TP1/TP2 and SL groups if both exist
+            if ((tp1Orders.length > 0 || tp2Orders.length > 0) && slOrders.length > 0) {
+                html += '<div style=\"border-top:1px dashed #333;margin:4px 0 8px;\"></div>';
+            }
+
+            // SL cards
+            slOrders.forEach(o => { html += buildCard(o, 'SL'); });
+
+            container.innerHTML = html;
+        })
+        .catch(function(err) {
+            console.error('Error fetching TP1/TP2/SL orders:', err);
+            const msg = (err && err.message) ? err.message : 'Network error';
+            container.innerHTML = '<div data-testid=\"cond-load-error\" style=\"text-align:center;color:#ff4444;padding:20px 6px;font-size:9px;line-height:1.4;\">'
+                + '<div style=\"font-weight:bold;margin-bottom:4px;\">Error loading orders</div>'
+                + '<div style=\"color:#aaa;font-size:8px;\">' + String(msg).replace(/</g,'&lt;') + '</div>'
+                + '</div>';
+        });
+    }"
 
     function updateConditionalOrders() {
         const container = document.getElementById('conditional_orders_left');
