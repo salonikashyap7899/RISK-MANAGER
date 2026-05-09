@@ -1082,8 +1082,10 @@ def api_tp1_and_sl_orders():
         result = get_tp1_and_sl_orders(current_user.id)
     except Exception as e:
         result = {"success": False, "error": str(e),
-                  "tp1_orders": [], "sl_orders": []}
+                  "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
     return jsonify(result)
+
+
 
 
 @app.route('/api/debug_conditional_orders')
