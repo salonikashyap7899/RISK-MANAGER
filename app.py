@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from models import db, User, ExchangeConnection, SubscriptionHistory, TradeDailyStats, TradeLog
 from flask import jsonify, request, session
+from conditional_orders_enhancement import get_tp1_and_sl_orders
 from logic import select_symbol
 import logic
 import config
@@ -448,6 +449,25 @@ def get_liquidation_prices_api():
     except Exception as e:
         print(f"Error fetching liquidation prices: {e}")
         return jsonify({"success": False, "error": str(e)})
+@app.route("/api/tp1-sl-orders")
+@login_required
+def api_tp1_sl_orders():
+    """
+    Fetch TP1 + SL conditional orders for dashboard box
+    """
+    try:
+        data = get_tp1_and_sl_orders(current_user.id)
+        return jsonify(data)
+
+    except Exception as e:
+        print(f"❌ TP1/SL fetch error: {e}")
+        return jsonify({
+            "success": False,
+            "tp1_orders": [],
+            "sl_orders": [],
+            "error": str(e)
+        }), 500
+
 
 @app.route("/get_trade_history")
 @login_required
