@@ -426,7 +426,7 @@
             <div class="status" style="padding: 4px; margin: 4px 0;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <strong style="font-size: 9px;">📊 Daily Limits:</strong>
-                    {% if user.is_admin or user.email in['admin@mindriskcontrol.com', 'test@test.com'] %}
+                    {% if user.is_admin or user.email in ['admin@mindriskcontrol.com', 'test@test.com'] %}
                     <button type="button" onclick="adminResetDailyTrades()" style="background: #ff4444; color: white; border: none; padding: 1px 4px; border-radius: 2px; font-size: 7px; cursor: pointer;">Reset Admin</button>
                     {% endif %}
                 </div>
@@ -822,55 +822,34 @@
     });
     
     // Live Updates - Enhanced with real-time liquidation prices
-    function updateLivePositions(symbol = null, forceFresh = false) {
-        const targetSymbol = (symbol || getSelectedSymbol() || 'BTCUSDT').trim().toUpperCase();
-        const container = document.getElementById('live_positions');
-        const headerEl = document.getElementById('position_header');
-
-        if (!container) return;
-
-        let url = '/get_open_positions';
-        const params =[];
-        if (forceFresh) params.push('fresh=1');
-        params.push(`_t=${Date.now()}`);
-        url += `?${params.join('&')}`;
-
-        fetch(url)
+   // ✅ UPDATE POSITION SIZING
+    function updatePositionSizing(symbol = null) {
+        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
+        
+        if (!targetSymbol) return;
+        
+        const entryInput = document.getElementById('entry_input');
+        const entryPrice = entryInput ? parseFloat(entryInput.value) || 0 : 0;
+        const slTypeElem = document.querySelector('select[name="sl_type"]');
+        const slValueElem = document.querySelector('input[name="sl_value"]');
+        const slType = slTypeElem ? slTypeElem.value : 'SL % Movement';
+        const slValue = slValueElem ? parseFloat(slValueElem.value) || 1.5 : 1.5;
+        const side = getCurrentSide();
+        
+        if (entryPrice <= 0) return;
+        
+        fetch(`/api/calculate-sizing?symbol=${encodeURIComponent(targetSymbol)}&entry=${entryPrice}&sl_type=${encodeURIComponent(slType)}&sl_value=${slValue}&side=${side}`)
         .then(r => r.json())
         .then(data => {
-            // Drop updates if the user navigated away
-            if (targetSymbol && getSelectedSymbol() !== targetSymbol) {
-                return;
-            }
-
-            const positions = Array.isArray(data.positions) ? data.positions :[];
-            currentPositions = {};
-
-            positions.forEach(pos => {
-                // Ensure leverage is correctly typed, fallback to 0/null for loading state
-                pos.leverage = pos.leverage ? parseFloat(pos.leverage) : 0;
-                currentPositions[pos.symbol] = pos;
-            });
-
-            if (positions.length > 0) {
-                renderPositions();
-                updateLiveDataOnly();
-                updateTP1SLOrders();
-            } else {
-                currentPositions = {};
-                if (headerEl) {
-                    headerEl.textContent = '📍 LIVE POSITIONS (0)';
-                }
-                container.innerHTML = `<div style="text-align: center; color: #81b8c5; padding: 20px 12px; font-size: 9px;">No open positions for ${targetSymbol}</div>`;
+            if (data.success) {
+                // FIXED: Now targets the span IDs correctly
+                if (document.getElementById('sizing_units')) document.getElementById('sizing_units').textContent = (data.suggested_units || 0).toFixed(2);
+                if (document.getElementById('sizing_lev')) document.getElementById('sizing_lev').textContent = parseInt(data.suggested_leverage || 1);
             }
         }).catch(err => {
-            console.error('Failed to fetch positions:', err);
-            if (!container.innerHTML || container.innerHTML.includes('No open positions')) {
-                container.innerHTML = '<div style="color: #ff6b6b; font-size: 9px; text-align: center; padding: 20px 12px;">Error loading positions</div>';
-            }
+            console.log(`ℹ️ Sizing calculation skipped (normal on fresh load): ${err.message}`);
         });
     }
-    
     // Fetch ONLY liquidation prices live (NO cache) - run more frequently
     function updateLiveDataOnly() {
         fetch('/api/liquidation_prices')
@@ -1151,6 +1130,10 @@
     }
 
     function cancelOrder(symbol, orderId) {
+        if (String(orderId).startsWith('virtual_')) {
+            alert('This is a Virtual Order managed by the server (Binance rejected the initial placement, usually due to < 5 USDT minimum size).\n\nTo edit or remove it, please use the "⚙️ TP/SL" button on your active position card instead.');
+            return;
+        }
         if (!confirm(`Cancel order ${orderId} for ${symbol}?`)) return;
         
         fetch('/api/cancel_conditional_order', {
@@ -1790,7 +1773,7 @@
                 }
                 const currentPrice = parsedPrice.toFixed(8);
 
-                console.log(`📊 [fetchLivePrice] Got price for ${targetSymbol}: ${currentPrice}`);
+                console.log(`📊[fetchLivePrice] Got price for ${targetSymbol}: ${currentPrice}`);
 
                 // Only update if the user hasn't switched coins again mid-stream
                 if (entryInput.dataset.liveSymbol === targetSymbol.toUpperCase()) {
@@ -1886,7 +1869,7 @@
                 }
 
                 if (data.price && data.price > 0) {
-                    console.log(`✅[fetchLivePriceViaREST] Got price: ${data.price}`);
+                    console.log(`✅ [fetchLivePriceViaREST] Got price: ${data.price}`);
                     const livePx = parseFloat(data.price);
                     entryInput.dataset.livePrice = String(livePx);
                     entryInput.dataset.liveSymbol = symbol.toUpperCase();
