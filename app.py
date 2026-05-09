@@ -1075,15 +1075,65 @@ def api_conditional_orders():
 @login_required
 def api_tp1_and_sl_orders():
     """
-    Fetch ONLY TP1 and SL conditional orders with position context.
+    Fetch ONLY TP1, TP2 and SL conditional orders with:
+    - Live current prices
+    - Position context (entry, TP, SL levels)
+    - Real-time update capability
     """
     from conditional_orders_enhancement import get_tp1_and_sl_orders
     try:
+        print(f"[API] Fetching TP1/TP2/SL orders for user {current_user.id}...")
         result = get_tp1_and_sl_orders(current_user.id)
+        
+        if result.get('success'):
+            print(f"[API] ✅ Successfully fetched orders. TP1: {len(result.get('tp1_orders', []))}, TP2: {len(result.get('tp2_orders', []))}, SL: {len(result.get('sl_orders', []))}")
+        else:
+            print(f"[API] ❌ Error: {result.get('error')}")
+        
+        return jsonify(result)
     except Exception as e:
-        result = {"success": False, "error": str(e),
-                  "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
-    return jsonify(result)
+        import traceback
+        traceback.print_exc()
+        error_msg = f"API Error: {str(e)}"
+        print(f"[API] ❌ Exception: {error_msg}")
+        return jsonify({
+            "success": False, 
+            "error": error_msg,
+            "tp1_orders": [], 
+            "tp2_orders": [], 
+            "sl_orders": []
+        }), 500
+ 
+ 
+# ✅ NEW: Dedicated endpoint for fetching LIVE PRICE for a symbol
+@app.route('/api/get_live_price')
+@login_required
+def api_get_live_price():
+    """
+    Fetch live price for a specific symbol.
+    Query params: symbol=BTCUSDT
+    """
+    symbol = request.args.get('symbol', '').strip().upper()
+    
+    if not symbol:
+        return jsonify({"success": False, "error": "Symbol required"}), 400
+    
+    try:
+        price = logic.get_live_price(symbol, current_user.id)
+        return jsonify({
+            "success": True,
+            "symbol": symbol,
+            "price": price,
+            "timestamp": time.time()
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "symbol": symbol
+        }), 500
+ 
+
 
 
 
@@ -1103,6 +1153,7 @@ def api_debug_conditional_orders():
 @app.route('/api/debug_tp1_sl')
 @login_required
 def api_debug_tp1_sl():
+    """Debug: See raw TP1/TP2/SL order data with live prices"""
     from conditional_orders_enhancement import get_tp1_and_sl_orders
     result = get_tp1_and_sl_orders(current_user.id)
     return jsonify(result)
