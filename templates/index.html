@@ -1328,7 +1328,8 @@ function updateTP1SLOrders() {
         const hasRecentTick = lastPriceMessageAt > 0 && (Date.now() - lastPriceMessageAt) < 6000;
         const socketActive = socketState === WebSocket.OPEN || socketState === WebSocket.CONNECTING;
 
-        if (!forceRestart && sameSymbol && socketActive && (hasRecentTick || socketState === WebSocket.CONNECTING)) {
+        const socketStale = lastPriceMessageAt > 0 && (Date.now() - lastPriceMessageAt) > 6000;
+        if (!forceRestart && sameSymbol && socketActive && hasRecentTick && !socketStale) {
             console.log(`Live feed already active for ${symbol}`);
             return;
         }

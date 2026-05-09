@@ -21,12 +21,17 @@ def get_tp1_and_sl_orders(user_id):
             symbol = o.get('symbol', '')
 
             is_tp2 = (label == 'TP2')
-            is_tp1 = (label == 'TP1') or ('TAKE_PROFIT' in order_type and not is_tp2)
+            is_tp1 = (
+                label == 'TP1'
+                or 'TAKE_PROFIT' in order_type
+                or order_type in ('VP', 'TAKE_PROFIT_MARKET', 'TAKE_PROFIT_LIMIT')
+            ) and not is_tp2
             is_trail = ('TRAILING' in order_type) or (label == 'TRAIL SL')
             is_sl = (label == 'SL') or is_trail or (
                 ('STOP' in order_type or 'STOP_LOSS' in order_type)
                 and 'TRAILING' not in order_type
-                and label not in ('TP1', 'TP2')
+                and not is_tp1
+                and not is_tp2
             )
 
             if not (is_tp1 or is_tp2 or is_sl):

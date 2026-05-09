@@ -29,7 +29,7 @@ _virtual_guard_last_run = {}
 # Prevents the duplicate UI pollers from hammering Binance and triggering -1003 IP bans.
 _conditional_cache = {}          # {user_id: (ts_ms, [orders])}
 _conditional_ban_until = 0       # ms epoch; while now < this, skip the call
-CONDITIONAL_CACHE_MS = 10000
+CONDITIONAL_CACHE_MS = 8000
 
 
 # Known leverage limits for common coins (updated based on Binance data)
@@ -630,11 +630,12 @@ def get_all_open_conditional_orders(user_id=None):
             if o_type in conditional_types or has_stop_price or has_activate_price:
                 # Better labeling for TP1 vs SL
                 label = 'SL'
-                if 'TAKE_PROFIT' in o_type:
+                o_type_check = o_type.upper()
+                if 'TAKE_PROFIT' in o_type_check or o_type_check in ('VP', 'TAKE_PROFIT_MARKET', 'TAKE_PROFIT_LIMIT'):
                     label = 'TP1'
-                elif 'TRAILING' in o_type:
+                elif 'TRAILING' in o_type_check:
                     label = 'Trail SL'
-                elif 'STOP' in o_type or 'STOP_LOSS' in o_type:
+                elif 'STOP' in o_type_check or 'STOP_LOSS' in o_type_check:
                     label = 'SL'
                 
                 oid = str(o.get('orderId') or '')
@@ -687,11 +688,12 @@ def get_all_open_conditional_orders(user_id=None):
                 book_time = o.get('bookTime') or o.get('time') or 0
 
                 label = 'SL'
-                if 'TAKE_PROFIT' in o_type:
+                o_type_check = o_type.upper()
+                if 'TAKE_PROFIT' in o_type_check or o_type_check in ('VP', 'TAKE_PROFIT_MARKET', 'TAKE_PROFIT_LIMIT'):
                     label = 'TP1'
-                elif 'TRAILING' in o_type:
+                elif 'TRAILING' in o_type_check:
                     label = 'Trail SL'
-                elif 'STOP' in o_type or 'STOP_LOSS' in o_type:
+                elif 'STOP' in o_type_check or 'STOP_LOSS' in o_type_check:
                     label = 'SL'
 
                 if algo_id not in seen_ids:
