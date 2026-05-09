@@ -1,7 +1,6 @@
 import logic
 from models import TradePosition, db
 
-
 def get_tp1_and_sl_orders(user_id):
     """
     Fetch TP1 and SL conditional orders with position context.
@@ -23,10 +22,15 @@ def get_tp1_and_sl_orders(user_id):
             .limit(20)
             .all()
         )
-        pos_map = {p.symbol: p for p in db_positions}
+        
+        # FIX: Ensure we keep the NEWEST position for each symbol
+        pos_map = {}
+        for p in db_positions:
+            if p.symbol not in pos_map:
+                pos_map[p.symbol] = p
 
         tp1_orders = []
-        sl_orders = []
+        sl_orders =[]
 
         for o in all_conditional:
             order_type = o.get('type', '').upper()
@@ -79,5 +83,5 @@ def get_tp1_and_sl_orders(user_id):
             "success": False,
             "error": str(e),
             "tp1_orders": [],
-            "sl_orders": [],
+            "sl_orders":[],
         }
