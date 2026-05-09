@@ -1075,14 +1075,26 @@ def api_conditional_orders():
 @login_required
 def api_tp1_and_sl_orders():
     """
-    Fetch ONLY TP1 and SL conditional orders with position context.
+    Fetch TP1, TP2 and SL conditional orders for the user's dashboard panel,
+    each enriched with position context (entry/SL/TP1/TP2) from the local DB.
+
+    This endpoint MUST always return JSON 200 — never an HTML 500 — because the
+    frontend only shows "Error loading orders" when JSON parsing fails.
     """
-    from conditional_orders_enhancement import get_tp1_and_sl_orders
     try:
+        # Import is inside the try-block on purpose: if the helper module ever
+        # has a SyntaxError or ImportError, we still return valid JSON.
+        from conditional_orders_enhancement import get_tp1_and_sl_orders
         result = get_tp1_and_sl_orders(current_user.id)
     except Exception as e:
-        result = {"success": False, "error": str(e),
-                  "tp1_orders": [], "sl_orders": []}
+        print(f"[ERROR] /api/tp1_and_sl_orders: {e}")
+        result = {
+            "success": False,
+            "error": str(e),
+            "tp1_orders": [],
+            "tp2_orders": [],
+            "sl_orders": [],
+        }
     return jsonify(result)
 
 
