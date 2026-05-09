@@ -1005,101 +1005,231 @@
         });
     }
 function updateTP1SLOrders() {
-    var container = document.getElementById('conditional_orders_left');
-    var header = document.getElementById('conditional_header_left');
-    if (!container) return;
+        const container = document.getElementById('conditional_orders_left');
+        const header = document.getElementById('conditional_header_left');
+        if (!container) return;
 
-    fetch('/api/tp1_and_sl_orders?_t=' + Date.now())
-    .then(function(r) {
-        if (!r.ok) throw new Error('HTTP error: ' + r.status);
-        return r.json();
-    })
-    .then(function(data) {
-        if (!data || data.success === false) {
-            console.warn('[TP1SL] API error:', data ? data.error : 'no data');
-            container.innerHTML = '<div style="text-align:center;color:#ff4444;padding:40px 0;font-size:10px;">Error: ' + (data && data.error ? data.error : 'Could not load orders') + '</div>';
-            return;
-        }
-        var tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders : [];
-        var tp2Orders = Array.isArray(data.tp2_orders) ? data.tp2_orders : [];
-        var slOrders  = Array.isArray(data.sl_orders)  ? data.sl_orders  : [];
-        var totalOrders = tp1Orders.length + tp2Orders.length + slOrders.length;
+        fetch('/api/tp1_and_sl_orders')
+        .then(r => r.json())
+        .then(data => {
+            const tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders :[];
+            const tp2Orders = Array.isArray(data.tp2_orders) ? data.tp2_orders :[];
+            const slOrders  = Array.isArray(data.sl_orders)  ? data.sl_orders  :[];
+            const totalOrders = tp1Orders.length + tp2Orders.length + slOrders.length;
 
-        if (header) header.textContent = '\uD83C\uDFAF TP1, TP2 & SL (' + totalOrders + ')';
+            if (header) header.textContent = '🎯 TP1, TP2 & SL (' + totalOrders + ')';
 
-        if (totalOrders === 0) {
-            container.innerHTML = '<div style="text-align:center;color:#444;padding:30px 0;font-size:10px;">No TP1, TP2 or SL orders found<br>' +
-                '<small style="color:#333;font-size:8.5px;display:block;margin-top:6px;">Orders appear here when a trade has active TP/SL on Binance Futures</small>' +
-                '<button onclick="fetch(\'/api/debug_conditional_orders\').then(r=>r.json()).then(d=>alert(\'Raw Binance orders found: \'+(d.count||0)+\'\\n\'+JSON.stringify(d.orders||[],null,2).slice(0,800)))" ' +
-                'style="margin-top:8px;background:rgba(255,170,0,0.1);color:#ffaa00;border:1px solid #ffaa00;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:8px;">🔍 Debug Binance Orders</button>' +
-                '</div>';
-            return;
-        }
+            if (totalOrders === 0) {
+                container.innerHTML = '<div style="text-align:center;color:#444;padding:40px 0;font-size:10px;">No TP1, TP2 or SL orders</div>';
+                return;
+            }
 
-        function buildCard(o, orderTypeLabel) {
-            var trigger = (o.triggerPrice && o.triggerPrice > 0) ? parseFloat(o.triggerPrice) : (o.price && o.price > 0 ? parseFloat(o.price) : 0);
-            var qty = (o.qty && o.qty > 0) ? parseFloat(o.qty) : 0;
-            var side = (o.side || '').toUpperCase();
-            var typeRaw = (o.type || '').toUpperCase();
-            var typeLabel;
-            if (orderTypeLabel === 'TP1') {
-                typeLabel = 'Take Profit Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
-            } else if (orderTypeLabel === 'TP2') {
-                typeLabel = 'Limit (TP2) / ' + (side === 'BUY' ? 'Buy' : 'Sell');
-            } else {
-                if (typeRaw.indexOf('TRAILING') !== -1) {
-                    typeLabel = 'Trailing Stop Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
+            // ── helper: build one Binance-style card ──────────────────────────
+            function buildCard(o, orderTypeLabel) {
+                const trigger  = (o.triggerPrice && o.triggerPrice > 0) ? parseFloat(o.triggerPrice) : (o.price && o.price > 0 ? parseFloat(o.price) : 0);
+                const qty      = (o.qty && o.qty > 0) ? parseFloat(o.qty) : 0;
+                const side     = (o.side || '').toUpperCase();          // BUY / SELL
+                const typeRaw  = (o.type || '').toUpperCase();
+
+                // Human-readable type string matching Binance UI
+                let typeLabel;
+                if (orderTypeLabel === 'TP1') {
+                    typeLabel = 'Take Profit Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
+                } else if (orderTypeLabel === 'TP2') {
+                    typeLabel = 'Limit (TP2) / ' + (side === 'BUY' ? 'Buy' : 'Sell');
                 } else {
-                    typeLabel = 'Stop Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
+                    if (typeRaw.includes('TRAILING')) {
+                        typeLabel = 'Trailing Stop Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
+                    } else {
+                        typeLabel = 'Stop Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
+                    }
                 }
+
+                // Condition arrow: TP1 SELL triggers when Mark Price ≥ trigger
+                //                  SL  SELL triggers when Mark Price ≤ trigger
+                // For BUY legs it flips, but your trades are SELL reduce-only
+                const isTP = (orderTypeLabel === 'TP1' || orderTypeLabel === 'TP2');
+                const condSymbol = isTP ? '≥' : '≤';
+                const triggerStr = trigger > 0 ? '$' + trigger.toFixed(trigger < 1 ? 7 : 2) : 'Market';
+                const amtStr     = qty > 0     ? qty.toFixed(qty < 1 ? 5 : 4)               : 'Close All';
+
+                // card border / bg colour
+                const borderColor = isTP ? '#1a7a4a' : '#7a1a1a';
+                const bgColor     = isTP ? 'rgba(0,40,20,0.55)' : 'rgba(40,0,0,0.55)';
+                const labelColor  = isTP ? '#0ecb81' : '#f6465d';   // Binance green / red
+
+                let c = '';
+                c += '<div style="border:1px solid ' + borderColor + ';border-radius:5px;background:' + bgColor + ';padding:7px 8px;margin-bottom:7px;">';
+
+                // Row 1 – symbol + Cancel
+                c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">';
+                c +=   '<span style="font-weight:bold;color:#e9fbff;font-size:10px;">' + (o.symbol || '—') + ' <span style="color:#888;font-weight:normal;font-size:8px;">Perp</span></span>';
+                c +=   '<button onclick="cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')" '
+                     + 'style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
+                c += '</div>';
+
+                // Row 2 – type label + date
+                c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">';
+                c +=   '<span style="color:' + labelColor + ';font-size:8.5px;font-weight:600;">' + typeLabel + '</span>';
+                c +=   '<span style="color:#666;font-size:7.5px;">' + (o.time || '') + '</span>';
+                c += '</div>';
+
+                // Divider
+                c += '<div style="border-top:1px solid #2a2a2a;margin-bottom:5px;"></div>';
+
+                // Data rows – mirroring Binance layout (label left, value right)
+                function row(label, value, valColor) {
+                    return '<div style="display:flex;justify-content:space-between;margin-bottom:3px;">'
+                         + '<span style="color:#888;font-size:8px;">' + label + '</span>'
+                         + '<span style="color:' + (valColor || '#ccc') + ';font-size:8px;">' + value + '</span>'
+                         + '</div>';
+                }
+
+                c += row('Amount (USDT)', amtStr);
+                c += row('Price', orderTypeLabel === 'TP2' ? triggerStr : 'Market', '#ccc');
+                c += row('Conditions', orderTypeLabel === 'TP2' ? '-' : ('Mark Price ' + condSymbol + ' ' + triggerStr), '#f0b90b');
+                c += row('Reduce Only', 'True', '#ccc');
+
+                c += '</div>';
+                return c;
             }
-            var isTP = (orderTypeLabel === 'TP1' || orderTypeLabel === 'TP2');
-            var condSymbol = isTP ? '\u2265' : '\u2264';
-            var triggerStr = trigger > 0 ? '$' + trigger.toFixed(trigger < 1 ? 7 : 2) : 'Market';
-            var amtStr = qty > 0 ? qty.toFixed(qty < 1 ? 5 : 4) : 'Close All';
-            var borderColor = isTP ? '#1a7a4a' : '#7a1a1a';
-            var bgColor = isTP ? 'rgba(0,40,20,0.55)' : 'rgba(40,0,0,0.55)';
-            var labelColor = isTP ? '#0ecb81' : '#f6465d';
-            var c = '';
-            c += '<div style="border:1px solid ' + borderColor + ';border-radius:5px;background:' + bgColor + ';padding:7px 8px;margin-bottom:7px;">';
-            c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">';
-            c += '<span style="font-weight:bold;color:#e9fbff;font-size:10px;">' + (o.symbol || '\u2014') + ' <span style="color:#888;font-weight:normal;font-size:8px;">Perp</span></span>';
-            c += '<button onclick="cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')" style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
-            c += '</div>';
-            c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">';
-            c += '<span style="color:' + labelColor + ';font-size:8.5px;font-weight:600;">' + typeLabel + '</span>';
-            c += '<span style="color:#666;font-size:7.5px;">' + (o.time || '') + '</span>';
-            c += '</div>';
-            c += '<div style="border-top:1px solid #2a2a2a;margin-bottom:5px;"></div>';
-            function row(lbl, val, vc) {
-                return '<div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="color:#888;font-size:8px;">' + lbl + '</span><span style="color:' + (vc || '#ccc') + ';font-size:8px;">' + val + '</span></div>';
+            // ─────────────────────────────────────────────────────────────────
+
+            let html = '';
+
+            // TP1 cards
+            tp1Orders.forEach(o => { html += buildCard(o, 'TP1'); });
+            
+            if (tp1Orders.length > 0 && tp2Orders.length > 0) {
+                html += '<div style="border-top:1px dashed #333;margin:4px 0 8px;"></div>';
             }
-            c += row('Amount', amtStr);
-            c += row('Price', orderTypeLabel === 'TP2' ? triggerStr : 'Market', '#ccc');
-            c += row('Conditions', orderTypeLabel === 'TP2' ? '-' : ('Mark Price ' + condSymbol + ' ' + triggerStr), '#f0b90b');
-            c += row('Reduce Only', 'True', '#ccc');
-            c += '</div>';
-            return c;
+            
+            // TP2 cards
+            tp2Orders.forEach(o => { html += buildCard(o, 'TP2'); });
+
+            // Separator between TP1/TP2 and SL groups if both exist
+            if ((tp1Orders.length > 0 || tp2Orders.length > 0) && slOrders.length > 0) {
+                html += '<div style="border-top:1px dashed #333;margin:4px 0 8px;"></div>';
+            }
+
+            // SL cards
+            slOrders.forEach(o => { html += buildCard(o, 'SL'); });
+
+            container.innerHTML = html;
+        })
+        .catch(function(err) {
+            console.error('Error fetching TP1/TP2/SL orders:', err);
+            container.innerHTML = '<div style="text-align:center;color:#ff4444;padding:40px 0;font-size:10px;">Error loading orders</div>';
+        });
+    }
+
+    function updateConditionalOrders() {
+        const container = document.getElementById('conditional_orders_left');
+        const header = document.getElementById('conditional_header_left');
+        if (!container) return;
+
+        fetch('/api/conditional_orders')
+        .then(r => r.json())
+        .then(data => {
+            // API returns conditional_orders (algo/TP1) and basic_orders (SL/TP2/regular)
+            const conditionalOrders = Array.isArray(data.conditional_orders) ? data.conditional_orders : [];
+            const basicOrders = Array.isArray(data.basic_orders) ? data.basic_orders : [];
+            const orders = [...conditionalOrders]; // Only show Binance-conditional orders (TP1, SL) not basic (TP2)
+            if (header) header.textContent = 'CONDITIONAL ORDERS (' + orders.length + ')';
+
+            if (orders.length > 0) {
+                let html = '';
+                orders.forEach(o => {
+                    const sideColor = o.side === 'BUY' ? '#00ff88' : '#ff4444';
+                    const typeLabel = (o.type || '').replace(/_/g, ' ');
+                    const displayPrice = o.stopPrice > 0 ? o.stopPrice.toFixed(4) : (o.price > 0 ? o.price.toFixed(4) : 'N/A');
+                    html += '<div style="border: 1px solid #333; padding: 8px; margin-bottom: 6px; border-radius: 4px; background: rgba(20, 20, 20, 0.6); font-size: 10px;">';
+                    html += '<div style="display: flex; justify-content: space-between; margin-bottom: 4px; border-bottom: 1px solid #222; padding-bottom: 4px;">';
+                    html += '<span style="font-weight: bold; color: #e9fbff;">' + o.symbol + '</span>';
+                    html += '<span style="color: ' + sideColor + '; font-weight: bold;">' + o.side + '</span>';
+                    html += '</div>';
+                    html += '<div style="color: #ffaa00; font-size: 9px; margin-bottom: 4px; font-weight: bold;">' + (o.label || typeLabel) + '</div>';
+                    html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; color: #aaa; font-size: 9px;">';
+                    html += '<div>Qty: <span style="color: #fff;">' + o.origQty + '</span></div>';
+                    html += '<div>Price: <span style="color: #fff;">$' + displayPrice + '</span></div>';
+                    html += '</div>';
+                    html += '<div style="display: flex; justify-content: space-between; align-items: center;">';
+                    html += '<span style="color: #555; font-size: 8px;">' + o.time + '</span>';
+                    html += "<button onclick=\"cancelOrder('" + o.symbol + "', '" + o.orderId + "')\" style=\"background: #cc0000; color: #fff; border: none; padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 9px; font-weight: bold;\">Cancel</button>";
+                    html += '</div>';
+                    html += '</div>';
+                });
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = '<div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">No conditional orders</div>';
+            }
+        })
+        .catch(function(err) {
+            console.error('Error fetching conditional orders:', err);
+            container.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 40px 0; font-size: 10px;">Error loading orders</div>';
+        });
+    }
+
+    function cancelOrder(symbol, orderId) {
+        if (!confirm(`Cancel order ${orderId} for ${symbol}?`)) return;
+        
+        fetch('/api/cancel_conditional_order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: symbol, order_id: orderId })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                updateTP1SLOrders();
+                updateTP1SLOrders();
+            } else {
+                alert(`Error: ${data.message || data.error || 'Unknown error'}`);
+            }
+        })
+        .catch(err => alert(`Error: ${err.message}`));
+    }
+
+    function updateTradeHistory() {
+        const container = document.getElementById('trade_history');
+        if (!container) return;
+
+        if (!container.innerHTML || container.innerHTML.includes('No recent trades')) {
+            container.innerHTML = '<div style="text-align: center; color: #666; padding: 18px 0; font-size: 8px;">Loading trades...</div>';
         }
 
-        var html = '';
-        tp1Orders.forEach(function(o) { html += buildCard(o, 'TP1'); });
-        if (tp1Orders.length > 0 && tp2Orders.length > 0) {
-            html += '<div style="border-top:1px dashed #333;margin:4px 0 8px;"></div>';
-        }
-        tp2Orders.forEach(function(o) { html += buildCard(o, 'TP2'); });
-        if ((tp1Orders.length > 0 || tp2Orders.length > 0) && slOrders.length > 0) {
-            html += '<div style="border-top:1px dashed #333;margin:4px 0 8px;"></div>';
-        }
-        slOrders.forEach(function(o) { html += buildCard(o, 'SL'); });
-        container.innerHTML = html;
-    })
-    .catch(function(err) {
-        console.error('[TP1SL] Fetch error:', err);
-        if (container) container.innerHTML = '<div style="text-align:center;color:#ff4444;padding:40px 0;font-size:10px;">Error loading orders. Check console.</div>';
-    });
-}
-
+        const url = `/get_trade_history?fresh=1&_t=${Date.now()}`;
+        fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            const trades = Array.isArray(data.trades) ? data.trades : [];
+            if (trades.length > 0) {
+                let html = '';
+                trades.slice(0, 50).forEach(trade => {
+                    const pnlColor = trade.realized_pnl >= 0 ? '#00ff88' : '#ff4444';
+                    const hasLevels = (trade.sl_price && trade.sl_price > 0) || (trade.tp1_price && trade.tp1_price > 0) || (trade.tp2_price && trade.tp2_price > 0);
+                    const levelsLine = hasLevels
+                        ? `<div style="color: #81b8c5; font-size: 10px;">SL: ${trade.sl_price || '-'} | TP1: ${trade.tp1_price || '-'}${trade.tp1_qty_pct ? ` (${trade.tp1_qty_pct}%)` : ''} | TP2: ${trade.tp2_price || '-'} | Status: ${trade.position_status || 'open'}</div>`
+                        : '';
+                    html += `<div style="padding: 6px 0; border-bottom: 1px solid #333; font-size: 11px; line-height: 1.4;">
+                        <div><strong>${trade.time}</strong> | ${trade.side} ${trade.symbol}</div>
+                        <div>Price: $${trade.price.toFixed(4)} | Qty: ${trade.qty} | PnL: <span style="color: ${pnlColor};">${trade.realized_pnl.toFixed(3)}</span></div>
+                        ${levelsLine}
+                        <div style="color: #888; font-size: 10px;">Order: ${trade.order_id}</div>
+                    </div>`;
+                });
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = `<div style="text-align: center; color: #666; padding: 18px 0; font-size: 8px;">No recent trades</div>`;
+            }
+        })
+        .catch(err => {
+            console.error('Error fetching trade history:', err);
+            if (!container.innerHTML || container.innerHTML.includes('Loading trades...')) {
+                container.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 18px 0; font-size: 8px;">Trade history unavailable</div>';
+            }
+        });
+    }
 
     function updateLiveTradeLog() {
         fetch('/api/trade_logs')
@@ -1645,15 +1775,10 @@ function updateTP1SLOrders() {
             return;
         }
 
-        // Close any existing WebSocket and REST poll to prevent old coins from fighting new coins
+        // Close any existing WebSocket to prevent old coins from fighting new coins for the input box
         if (priceWs) {
             console.log(`🔄 [fetchLivePrice] Closing old WebSocket...`);
             priceWs.close();
-        }
-        // Cancel any running REST fallback poll for the previous symbol
-        if (typeof _restPollTimer !== 'undefined' && _restPollTimer) {
-            clearTimeout(_restPollTimer);
-            _restPollTimer = null;
         }
 
         // Set UI loading state
@@ -1664,9 +1789,8 @@ function updateTP1SLOrders() {
         console.log(`🔄 [fetchLivePrice] Opening WebSocket for: ${targetSymbol}`);
 
         // Use the Binance Futures mark-price stream for dependable updates on every contract
-        // FIXED: combined streams use comma-separated list, not slash-separated
         const wsSymbol = targetSymbol.toLowerCase();
-        const wsUrl = `wss://fstream.binance.com/stream?streams=${wsSymbol}@bookTicker,${wsSymbol}@markPrice@1s`;
+        const wsUrl = `wss://fstream.binance.com/stream?streams=${wsSymbol}@bookTicker/${wsSymbol}@markPrice@1s`;
         console.log(`📡 [fetchLivePrice] WebSocket URL: ${wsUrl}`);
         
         let wsTimeout = null;
@@ -1807,94 +1931,62 @@ function updateTP1SLOrders() {
 
     
     // ✅ FALLBACK: Fetch price via REST API when WebSocket fails
-    // Keeps polling every 5s so price stays fresh even when WS is unavailable
-    let _restPollTimer = null;
-    function fetchLivePriceViaREST(symbol, entryInput, indicator, keepPolling = true) {
+    function fetchLivePriceViaREST(symbol, entryInput, indicator) {
         if (!symbol || !entryInput) return;
-
-        // Stop any previous REST poll for a different symbol
-        if (_restPollTimer) { clearTimeout(_restPollTimer); _restPollTimer = null; }
-
+        
         console.log(`📡 [fetchLivePriceViaREST] Fetching ${symbol} via REST API...`);
+        
+        fetch(`/get_live_price/${encodeURIComponent(symbol)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (getSelectedSymbol() && getSelectedSymbol() !== symbol.toUpperCase()) {
+                    console.log(`ℹ️ [fetchLivePriceViaREST] Ignoring stale price for ${symbol}`);
+                    return;
+                }
 
-        function doFetch() {
-            // If a live WebSocket is now active for this symbol, stop REST polling
-            if (priceWs && priceWs.readyState === WebSocket.OPEN && priceWsSymbol === symbol.toUpperCase()
-                && lastPriceMessageAt > 0 && (Date.now() - lastPriceMessageAt) < 6000) {
-                console.log(`ℹ️ [fetchLivePriceViaREST] WS active again — stopping REST poll for ${symbol}`);
-                return;
-            }
+                if (data.price && data.price > 0) {
+                    console.log(`✅ [fetchLivePriceViaREST] Got price: ${data.price}`);
+                    const livePx = parseFloat(data.price);
+                    entryInput.dataset.livePrice = String(livePx);
+                    entryInput.dataset.liveSymbol = symbol.toUpperCase();
+                    lastPriceMessageAt = Date.now();
+                    priceWsSymbol = symbol.toUpperCase();
 
-            const currentSym = getSelectedSymbol();
-            if (currentSym && currentSym !== symbol.toUpperCase()) {
-                console.log(`ℹ️ [fetchLivePriceViaREST] Symbol changed to ${currentSym} — stopping REST poll for ${symbol}`);
-                return;
-            }
-
-            fetch(`/get_live_price/${encodeURIComponent(symbol)}`)
-                .then(r => r.json())
-                .then(data => {
-                    const currentSym2 = getSelectedSymbol();
-                    if (currentSym2 && currentSym2 !== symbol.toUpperCase()) return; // stale
-
-                    if (data.price && data.price > 0) {
-                        console.log(`✅ [fetchLivePriceViaREST] Got price: ${data.price}`);
-                        const livePx = parseFloat(data.price);
-                        entryInput.dataset.livePrice = String(livePx);
-                        entryInput.dataset.liveSymbol = symbol.toUpperCase();
-                        lastPriceMessageAt = Date.now();
-                        priceWsSymbol = symbol.toUpperCase();
-
-                        const shouldSnap = entryInput.dataset.snapToLive === '1'
-                            || !entryInput.dataset.userEntry
-                            || parseFloat(entryInput.dataset.userEntry) <= 0;
-                        if (shouldSnap) {
-                            entryInput.value = livePx.toFixed(8);
-                            entryInput.dataset.userEntry = entryInput.value;
-                            entryInput.dataset.snapToLive = '0';
-                            entryInput.style.color = '#00d4ff';
-                        }
-
-                        if (typeof refreshLivePriceIndicator === 'function') {
-                            refreshLivePriceIndicator(livePx);
-                        }
-
-                        if (indicator) {
-                            indicator.style.background = '#00d4ff';
-                            indicator.style.color = '#000';
-                            indicator.textContent = '🔄 REST';
-                            setTimeout(() => {
-                                if (entryInput.dataset.liveSymbol === symbol.toUpperCase()) {
-                                    indicator.style.background = '';
-                                    indicator.style.color = '';
-                                    indicator.textContent = '🔄 Live Price';
-                                }
-                            }, 2000);
-                        }
-                    } else {
-                        console.error(`❌ [fetchLivePriceViaREST] Invalid price: ${data.price}`);
-                        if (indicator) indicator.textContent = '❌ No Price';
+                    const shouldSnap = entryInput.dataset.snapToLive === '1'
+                        || !entryInput.dataset.userEntry
+                        || parseFloat(entryInput.dataset.userEntry) <= 0;
+                    if (shouldSnap) {
+                        entryInput.value = livePx.toFixed(8);
+                        entryInput.dataset.userEntry = entryInput.value;
+                        entryInput.dataset.snapToLive = '0';
+                        entryInput.style.color = '#00d4ff';
                     }
 
-                    // Schedule next poll if still needed
-                    if (keepPolling) {
-                        _restPollTimer = setTimeout(doFetch, 5000);
+                    if (typeof refreshLivePriceIndicator === 'function') {
+                        refreshLivePriceIndicator(livePx);
                     }
-                })
-                .catch(err => {
-                    console.error(`❌ [fetchLivePriceViaREST] Failed:`, err);
-                    if (entryInput.dataset.liveSymbol === symbol.toUpperCase()) {
-                        entryInput.style.color = '#ff4444';
-                    }
-                    if (indicator) indicator.textContent = '❌ Retrying...';
-                    // Retry after 5s even on error
-                    if (keepPolling) {
-                        _restPollTimer = setTimeout(doFetch, 5000);
-                    }
-                });
-        }
 
-        doFetch();
+                    if (indicator) {
+                        indicator.style.background = '#00d4ff';
+                        indicator.style.color = '#000';
+                        indicator.textContent = '🔄 REST';
+                        setTimeout(() => {
+                            indicator.style.background = '';
+                            indicator.style.color = '';
+                            indicator.textContent = '🔄 Live Price';
+                        }, 2000);
+                    }
+                } else {
+                    console.error(`❌ [fetchLivePriceViaREST] Invalid price: ${data.price}`);
+                    if (indicator) indicator.textContent = '❌ Error';
+                }
+            })
+            .catch(err => {
+                console.error(`❌ [fetchLivePriceViaREST] Failed:`, err);
+                entryInput.value = 'Error';
+                entryInput.style.color = '#ff4444';
+                if (indicator) indicator.textContent = '❌ Error';
+            });
     }
 
     // ✅ Update the small live-price indicator (price + Δ vs. entry) next to Entry Price
