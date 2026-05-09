@@ -29,7 +29,7 @@ _virtual_guard_last_run = {}
 # Prevents the duplicate UI pollers from hammering Binance and triggering -1003 IP bans.
 _conditional_cache = {}          # {user_id: (ts_ms, [orders])}
 _conditional_ban_until = 0       # ms epoch; while now < this, skip the call
-CONDITIONAL_CACHE_MS = 8000
+CONDITIONAL_CACHE_MS = 10000
 
 
 # Known leverage limits for common coins (updated based on Binance data)
@@ -579,8 +579,9 @@ def get_all_open_conditional_orders(user_id=None):
     now_ms = int(time.time() * 1000)
 
     # Serve from short TTL cache when available — kills duplicate-poll storms.
+    # NOTE: cache is used for both non-empty AND empty results to prevent API hammering.
     cached = _conditional_cache.get(user_id)
-    if cached and (now_ms - cached[0]) < CONDITIONAL_CACHE_MS and len(cached[1]) > 0:
+    if cached and (now_ms - cached[0]) < CONDITIONAL_CACHE_MS:
         return list(cached[1])
 
 
@@ -609,6 +610,14 @@ def get_all_open_conditional_orders(user_id=None):
                 except Exception:
                     _conditional_ban_until = now_ms + 60_000
                 return list(cached[1]) if cached else []
+            # Fallback: try raw API if the method fails for other reasons
+            try:
+                resp = client._request_futures_api('get', 'openOrders', True, data={'recvWindow': 10000})
+                if isinstance(resp, list):
+                    all_orders = resp
+                    print(f"[DEBUG] Raw API fallback open orders count: {len(all_orders)}")
+            except Exception as e2:
+                print(f"[DEBUG] Raw API fallback also failed: {e2}")
 
 
         conditional_types = [
@@ -630,12 +639,11 @@ def get_all_open_conditional_orders(user_id=None):
             if o_type in conditional_types or has_stop_price or has_activate_price:
                 # Better labeling for TP1 vs SL
                 label = 'SL'
-                o_type_check = o_type.upper()
-                if 'TAKE_PROFIT' in o_type_check or o_type_check in ('VP', 'TAKE_PROFIT_MARKET', 'TAKE_PROFIT_LIMIT'):
+                if 'TAKE_PROFIT' in o_type:
                     label = 'TP1'
-                elif 'TRAILING' in o_type_check:
+                elif 'TRAILING' in o_type:
                     label = 'Trail SL'
-                elif 'STOP' in o_type_check or 'STOP_LOSS' in o_type_check:
+                elif 'STOP' in o_type or 'STOP_LOSS' in o_type:
                     label = 'SL'
                 
                 oid = str(o.get('orderId') or '')
@@ -688,12 +696,11 @@ def get_all_open_conditional_orders(user_id=None):
                 book_time = o.get('bookTime') or o.get('time') or 0
 
                 label = 'SL'
-                o_type_check = o_type.upper()
-                if 'TAKE_PROFIT' in o_type_check or o_type_check in ('VP', 'TAKE_PROFIT_MARKET', 'TAKE_PROFIT_LIMIT'):
+                if 'TAKE_PROFIT' in o_type:
                     label = 'TP1'
-                elif 'TRAILING' in o_type_check:
+                elif 'TRAILING' in o_type:
                     label = 'Trail SL'
-                elif 'STOP' in o_type_check or 'STOP_LOSS' in o_type_check:
+                elif 'STOP' in o_type or 'STOP_LOSS' in o_type:
                     label = 'SL'
 
                 if algo_id not in seen_ids:
