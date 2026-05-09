@@ -10,17 +10,21 @@ def get_tp1_and_sl_orders(user_id):
     TP1 = TAKE_PROFIT_MARKET or TAKE_PROFIT type orders (conditional tab on Binance)
     SL  = STOP_MARKET or STOP type orders (conditional tab on Binance)
     TP2 = basic LIMIT order — intentionally excluded here
+
+    FIX: No longer filters by symbol — shows ALL open TP1/SL orders across all symbols.
+    DB position context is added where available (may be None for symbols not in DB).
     """
     try:
         # Step 1: Get all conditional orders already labeled by logic.py
         all_conditional = logic.get_all_open_conditional_orders(user_id)
 
-        # Step 2: Get DB positions for entry/sl/tp1 context (last 20, keyed by symbol)
+        # Step 2: Get DB positions for entry/sl/tp1 context (last 50, keyed by symbol)
+        # Increased from 20 to 50 — if you trade many symbols, 20 was silently dropping context
         db_positions = (
             TradePosition.query
             .filter_by(user_id=user_id)
             .order_by(TradePosition.created_at.desc())
-            .limit(20)
+            .limit(50)
             .all()
         )
         pos_map = {p.symbol: p for p in db_positions}
@@ -43,7 +47,8 @@ def get_tp1_and_sl_orders(user_id):
             if not is_tp1 and not is_sl:
                 continue  # skip TP2, trailing stops, etc.
 
-            # Build context dict with position info from DB
+            # Build context dict — DB position data added where available
+            # If no DB record for this symbol, position fields are None (not an error)
             db_pos = pos_map.get(symbol)
             context = {
                 'orderId': o.get('orderId'),
@@ -55,7 +60,7 @@ def get_tp1_and_sl_orders(user_id):
                 'qty': o.get('origQty', 0),
                 'time': o.get('time', 'N/A'),
                 'source': o.get('source', 'regular'),
-                # Position context from DB (may be None if no DB record)
+                # Position context from DB (None if no DB record for this symbol)
                 'position_entry': float(db_pos.entry_price) if db_pos and db_pos.entry_price else None,
                 'position_sl': float(db_pos.sl_price) if db_pos and db_pos.sl_price else None,
                 'position_tp1': float(db_pos.tp1_price) if db_pos and db_pos.tp1_price else None,
