@@ -1032,11 +1032,29 @@ function updateTP1SLOrders() {
             return;
         }
 
+        // ✅ ADDED: Helper function to format prices properly
+        function formatPrice(price, minDecimals) {
+            if (!price || price === 0) return 'N/A';
+            price = parseFloat(price);
+            if (price < 1) {
+                return '$' + price.toFixed(minDecimals || 7);
+            } else {
+                return '$' + price.toFixed(minDecimals || 2);
+            }
+        }
+
         function buildCard(o, orderTypeLabel) {
             var trigger = (o.triggerPrice && o.triggerPrice > 0) ? parseFloat(o.triggerPrice) : (o.price && o.price > 0 ? parseFloat(o.price) : 0);
             var qty = (o.qty && o.qty > 0) ? parseFloat(o.qty) : 0;
+            var currentPrice = (o.current_price && o.current_price > 0) ? parseFloat(o.current_price) : 0;  // ✅ ADDED: Live price
             var side = (o.side || '').toUpperCase();
             var typeRaw = (o.type || '').toUpperCase();
+            
+            // ✅ ADDED: Position entry, TP, SL details
+            var posEntry = o.position_entry ? parseFloat(o.position_entry) : null;
+            var posSL = o.position_sl ? parseFloat(o.position_sl) : null;
+            var posTP1 = o.position_tp1 ? parseFloat(o.position_tp1) : null;
+            var posTP2 = o.position_tp2 ? parseFloat(o.position_tp2) : null;
             var typeLabel;
             if (orderTypeLabel === 'TP1') {
                 typeLabel = 'Take Profit Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
@@ -1068,12 +1086,41 @@ function updateTP1SLOrders() {
             c += '</div>';
             c += '<div style="border-top:1px solid #2a2a2a;margin-bottom:5px;"></div>';
             function row(lbl, val, vc) {
-                return '<div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="color:#888;font-size:8px;">' + lbl + '</span><span style="color:' + (vc || '#ccc') + ';font-size:8px;">' + val + '</span></div>';
+                return '<div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="color:#888;font-size:8px;">' + lbl + '</span><span style="color:' + (vc || '#ccc') + ';font-size:8px;font-weight:500;">' + val + '</span></div>';
             }
+            
+            // ✅ ADDED: Current price display
+            c += row('Current Price', formatPrice(currentPrice, currentPrice < 1 ? 7 : 2), '#f0b90b');
+            
+            // ✅ ADDED: Price distance calculation
+            var priceDistance = '';
+            var distanceColor = '#888';
+            if (currentPrice > 0 && trigger > 0) {
+                var priceDiff = ((trigger - currentPrice) / currentPrice * 100).toFixed(2);
+                if (isTP && priceDiff > 0) {
+                    distanceColor = '#0ecb81'; // TP is above current price
+                } else if (!isTP && priceDiff < 0) {
+                    distanceColor = '#f6465d'; // SL is below current price
+                }
+                priceDistance = priceDiff + '%';
+                c += row('Distance', priceDistance, distanceColor);
+            }
+            
             c += row('Amount', amtStr);
             c += row('Price', orderTypeLabel === 'TP2' ? triggerStr : 'Market', '#ccc');
             c += row('Conditions', orderTypeLabel === 'TP2' ? '-' : ('Mark Price ' + condSymbol + ' ' + triggerStr), '#f0b90b');
             c += row('Reduce Only', 'True', '#ccc');
+            
+            // ✅ ADDED: Position details section if available
+            if (posEntry || posSL || posTP1 || posTP2) {
+                c += '<div style="border-top:1px dashed #333;margin:5px 0 5px;"></div>';
+                c += '<span style="color:#666;font-size:7px;font-weight:bold;">Position Levels:</span>';
+                if (posEntry) c += row('Entry', formatPrice(posEntry, posEntry < 1 ? 7 : 2), '#b8a6db');
+                if (posTP1) c += row('TP1', formatPrice(posTP1, posTP1 < 1 ? 7 : 2), '#0ecb81');
+                if (posTP2) c += row('TP2', formatPrice(posTP2, posTP2 < 1 ? 7 : 2), '#0ecb81');
+                if (posSL) c += row('SL', formatPrice(posSL, posSL < 1 ? 7 : 2), '#f6465d');
+            }
+            
             c += '</div>';
             return c;
         }
@@ -2478,4 +2525,4 @@ function updateTP1SLOrders() {
         </div>
     </div>
 </body>
-</html>
+    </html>
