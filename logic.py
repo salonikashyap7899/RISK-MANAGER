@@ -25,6 +25,12 @@ _last_call_time = 0
 CACHE_DURATION = 5
 _virtual_guard_last_run = {}
 
+# TTL cache + ban-aware short-circuit for conditional-orders endpoint.
+# Prevents the duplicate UI pollers from hammering Binance and triggering -1003 IP bans.
+_conditional_cache = {}          # {user_id: (ts_ms, [orders])}
+_conditional_ban_until = 0       # ms epoch; while now < this, skip the call
+CONDITIONAL_CACHE_MS = 2500
+
 # Known leverage limits for common coins (updated based on Binance data)
 # These serve as fallback when API fails
 KNOWN_LEVERAGE_MAP = {
@@ -568,6 +574,18 @@ def cancel_open_order(symbol, order_id, user_id=None):
         return {"success": False, "message": str(e)}
 
 def get_all_open_conditional_orders(user_id=None):
+    global _conditional_ban_until
+    now_ms = int(time.time() * 1000)
+
+    # Serve from short TTL cache when available — kills duplicate-poll storms.
+    cached = _conditional_cache.get(user_id)
+    if cached and (now_ms - cached[0]) < CONDITIONAL_CACHE_MS:
+        return list(cached[1])
+
+    # If Binance has banned us, don't issue more requests until the window passes.
+    if now_ms < _conditional_ban_until:
+        return list(cached[1]) if cached else []
+
     try:
         client = get_client(user_id)
         if client is None:
@@ -580,7 +598,16 @@ def get_all_open_conditional_orders(user_id=None):
             print(f"[DEBUG] Raw regular open orders: {all_orders}")
             print(f"[DEBUG] Regular open orders count: {len(all_orders)}")
         except Exception as e:
+            msg = str(e)
             print(f"[DEBUG] Error fetching regular open orders: {e}")
+            # Honour Binance IP-ban so we stop hammering and extending the ban.
+            if "-1003" in msg and "banned until" in msg:
+                try:
+                    _conditional_ban_until = int(msg.split("banned until")[1].split(".")[0].strip())
+                except Exception:
+                    _conditional_ban_until = now_ms + 60_000
+                return list(cached[1]) if cached else []
+
 
         conditional_types = [
             'STOP', 'STOP_MARKET',
@@ -686,6 +713,7 @@ def get_all_open_conditional_orders(user_id=None):
         # Sort by time descending
         conditional_orders.sort(key=lambda x: x['time'], reverse=True)
         print(f"[DEBUG] Final conditional_orders to return: {conditional_orders}")
+        _conditional_cache[user_id] = (now_ms, list(conditional_orders))
         return conditional_orders
 
     except Exception as e:
