@@ -354,8 +354,6 @@
             }
         }
 </style>
-
-
 </head>
 <body>
 <div class="container">
@@ -822,6 +820,34 @@
     });
     
     // Live Updates - Enhanced with real-time liquidation prices
+   // ✅ UPDATE POSITION SIZING
+    function updatePositionSizing(symbol = null) {
+        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
+        
+        if (!targetSymbol) return;
+        
+        const entryInput = document.getElementById('entry_input');
+        const entryPrice = entryInput ? parseFloat(entryInput.value) || 0 : 0;
+        const slTypeElem = document.querySelector('select[name="sl_type"]');
+        const slValueElem = document.querySelector('input[name="sl_value"]');
+        const slType = slTypeElem ? slTypeElem.value : 'SL % Movement';
+        const slValue = slValueElem ? parseFloat(slValueElem.value) || 1.5 : 1.5;
+        const side = getCurrentSide();
+        
+        if (entryPrice <= 0) return;
+        
+        fetch(`/api/calculate-sizing?symbol=${encodeURIComponent(targetSymbol)}&entry=${entryPrice}&sl_type=${encodeURIComponent(slType)}&sl_value=${slValue}&side=${side}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                if (document.getElementById('sizing_units')) document.getElementById('sizing_units').textContent = (data.suggested_units || 0).toFixed(2);
+                if (document.getElementById('sizing_lev')) document.getElementById('sizing_lev').textContent = parseInt(data.suggested_leverage || 1);
+            }
+        }).catch(err => {
+            console.log(`ℹ️ Sizing calculation skipped (normal on fresh load): ${err.message}`);
+        });
+    }
+    
     function updateLivePositions(symbol = null, forceFresh = false) {
         const targetSymbol = (symbol || getSelectedSymbol() || 'BTCUSDT').trim().toUpperCase();
         const container = document.getElementById('live_positions');
@@ -1040,70 +1066,48 @@
         .then(r => r.json())
         .then(data => {
             const tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders :[];
-            const tp2Orders = Array.isArray(data.tp2_orders) ? data.tp2_orders :[];
             const slOrders  = Array.isArray(data.sl_orders)  ? data.sl_orders  :[];
-            const totalOrders = tp1Orders.length + tp2Orders.length + slOrders.length;
+            const totalOrders = tp1Orders.length + slOrders.length;
 
-            if (header) header.textContent = '🎯 TP1, TP2 & SL (' + totalOrders + ')';
+            if (header) header.textContent = '🎨 TP1 & SL (' + totalOrders + ')';
 
             if (totalOrders === 0) {
-                container.innerHTML = '<div style="text-align:center;color:#444;padding:40px 0;font-size:10px;">No TP1, TP2 or SL orders</div>';
+                container.innerHTML = '<div style="text-align:center;color:#444;padding:40px 0;font-size:10px;">No conditional orders</div>';
                 return;
             }
 
-            // ── helper: build one Binance-style card ──────────────────────────
             function buildCard(o, orderTypeLabel) {
-                const trigger  = (o.triggerPrice && o.triggerPrice > 0) ? parseFloat(o.triggerPrice) : (o.price && o.price > 0 ? parseFloat(o.price) : 0);
-                const qty      = (o.qty && o.qty > 0) ? parseFloat(o.qty) : 0;
-                const side     = (o.side || '').toUpperCase();          // BUY / SELL
+                const trigger  = parseFloat(o.triggerPrice || 0);
+                const qty      = parseFloat(o.qty || 0);
+                const side     = (o.side || '').toUpperCase();
                 const typeRaw  = (o.type || '').toUpperCase();
 
-                // Human-readable type string matching Binance UI
-                let typeLabel;
-                if (orderTypeLabel === 'TP1') {
-                    typeLabel = 'Take Profit Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
-                } else if (orderTypeLabel === 'TP2') {
-                    typeLabel = 'Limit (TP2) / ' + (side === 'BUY' ? 'Buy' : 'Sell');
-                } else {
-                    if (typeRaw.includes('TRAILING')) {
-                        typeLabel = 'Trailing Stop Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
-                    } else {
-                        typeLabel = 'Stop Market / ' + (side === 'BUY' ? 'Buy' : 'Sell');
-                    }
-                }
+                // Format dynamically e.g. "Take Profit Market / Sell"
+                let typeStr = typeRaw.replace(/_/g, ' ');
+                typeStr = typeStr.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+                let typeLabel = typeStr + ' / ' + (side === 'BUY' ? 'Buy' : 'Sell');
 
-                // Add 'VIRTUAL' tag if it's a server fallback order
-                if (o.source === 'virtual') {
-                    typeLabel = '🛡️ [VIRTUAL] ' + typeLabel;
-                }
-
-                // Condition arrow: TP1 SELL triggers when Mark Price ≥ trigger
-                //                  SL  SELL triggers when Mark Price ≤ trigger
-                // For BUY legs it flips, but your trades are SELL reduce-only
-                const isTP = (orderTypeLabel === 'TP1' || orderTypeLabel === 'TP2');
+                const isTP = typeRaw.includes('TAKE_PROFIT');
                 const condSymbol = isTP ? '≥' : '≤';
-                const triggerStr = trigger > 0 ? '$' + trigger.toFixed(trigger < 1 ? 7 : 2) : 'Market';
-                const amtStr     = qty > 0     ? qty.toFixed(qty < 1 ? 5 : 4)               : 'Close All';
+                
+                let decimals = trigger < 1 ? 7 : 2;
+                if (trigger < 0.1) decimals = 7;
+                
+                const triggerStr = trigger > 0 ? '$' + trigger.toFixed(decimals) : 'Market';
+                const amtStr     = qty > 0 ? qty.toString() : 'Close All';
 
-                // card border / bg colour (Virtual orders are purple/gold)
+                // card border / bg colour
                 let borderColor = isTP ? '#1a7a4a' : '#7a1a1a';
                 let bgColor     = isTP ? 'rgba(0,40,20,0.55)' : 'rgba(40,0,0,0.55)';
-                let labelColor  = isTP ? '#0ecb81' : '#f6465d';   // Binance green / red
-
-                if (o.source === 'virtual') {
-                    borderColor = '#8a2be2';
-                    bgColor = 'rgba(75, 0, 130, 0.4)';
-                    labelColor = '#e0b0ff';
-                }
+                let labelColor  = isTP ? '#0ecb81' : '#f6465d';
 
                 let c = '';
                 c += '<div style="border:1px solid ' + borderColor + ';border-radius:5px;background:' + bgColor + ';padding:7px 8px;margin-bottom:7px;">';
-
+                
                 // Row 1 – symbol + Cancel
                 c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">';
                 c +=   '<span style="font-weight:bold;color:#e9fbff;font-size:10px;">' + (o.symbol || '—') + ' <span style="color:#888;font-weight:normal;font-size:8px;">Perp</span></span>';
-                c +=   '<button onclick="cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')" '
-                     + 'style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
+                c +=   '<button onclick="cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')" style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
                 c += '</div>';
 
                 // Row 2 – type label + date
@@ -1112,10 +1116,8 @@
                 c +=   '<span style="color:#666;font-size:7.5px;">' + (o.time || '') + '</span>';
                 c += '</div>';
 
-                // Divider
                 c += '<div style="border-top:1px solid #2a2a2a;margin-bottom:5px;"></div>';
 
-                // Data rows – mirroring Binance layout (label left, value right)
                 function row(label, value, valColor) {
                     return '<div style="display:flex;justify-content:space-between;margin-bottom:3px;">'
                          + '<span style="color:#888;font-size:8px;">' + label + '</span>'
@@ -1123,49 +1125,33 @@
                          + '</div>';
                 }
 
-                c += row('Amount (USDT)', amtStr);
-                c += row('Price', orderTypeLabel === 'TP2' ? triggerStr : 'Market', '#ccc');
-                c += row('Conditions', orderTypeLabel === 'TP2' ? '-' : ('Mark Price ' + condSymbol + ' ' + triggerStr), '#f0b90b');
+                c += row('Amount', amtStr);
+                c += row('Price', 'Market', '#ccc');
+                c += row('Conditions', 'Mark Price ' + condSymbol + ' ' + triggerStr, '#f0b90b');
                 c += row('Reduce Only', 'True', '#ccc');
-
                 c += '</div>';
                 return c;
             }
-            // ─────────────────────────────────────────────────────────────────
 
             let html = '';
 
             // TP1 cards
             tp1Orders.forEach(o => { html += buildCard(o, 'TP1'); });
-            
-            if (tp1Orders.length > 0 && tp2Orders.length > 0) {
+            if (tp1Orders.length > 0 && slOrders.length > 0) {
                 html += '<div style="border-top:1px dashed #333;margin:4px 0 8px;"></div>';
             }
-            
-            // TP2 cards
-            tp2Orders.forEach(o => { html += buildCard(o, 'TP2'); });
-
-            // Separator between TP1/TP2 and SL groups if both exist
-            if ((tp1Orders.length > 0 || tp2Orders.length > 0) && slOrders.length > 0) {
-                html += '<div style="border-top:1px dashed #333;margin:4px 0 8px;"></div>';
-            }
-
             // SL cards
             slOrders.forEach(o => { html += buildCard(o, 'SL'); });
 
             container.innerHTML = html;
         })
         .catch(function(err) {
-            console.error('Error fetching TP1/TP2/SL orders:', err);
+            console.error('Error fetching TP1/SL orders:', err);
             container.innerHTML = '<div style="text-align:center;color:#ff4444;padding:40px 0;font-size:10px;">Error loading orders</div>';
         });
     }
 
     function cancelOrder(symbol, orderId) {
-        if (String(orderId).startsWith('virtual_')) {
-            alert('This is a Virtual Order managed by the server (Binance rejected the initial placement, usually due to < 5 USDT minimum size).\n\nTo edit or remove it, please use the "⚙️ TP/SL" button on your active position card instead.');
-            return;
-        }
         if (!confirm(`Cancel order ${orderId} for ${symbol}?`)) return;
         
         fetch('/api/cancel_conditional_order', {
@@ -1511,61 +1497,6 @@
         });
     }
 
-    // ✅ UPDATE POSITION SIZING
-    function updatePositionSizing(symbol = null) {
-        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
-        
-        if (!targetSymbol) return;
-        
-        const entryInput = document.getElementById('entry_input');
-        const entryPrice = entryInput ? parseFloat(entryInput.value) || 0 : 0;
-        const slTypeElem = document.querySelector('select[name="sl_type"]');
-        const slValueElem = document.querySelector('input[name="sl_value"]');
-        const slType = slTypeElem ? slTypeElem.value : 'SL % Movement';
-        const slValue = slValueElem ? parseFloat(slValueElem.value) || 1.5 : 1.5;
-        const side = getCurrentSide();
-        
-        if (entryPrice <= 0) return;
-        
-        fetch(`/api/calculate-sizing?symbol=${encodeURIComponent(targetSymbol)}&entry=${entryPrice}&sl_type=${encodeURIComponent(slType)}&sl_value=${slValue}&side=${side}`)
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                if (document.getElementById('sizing_units')) document.getElementById('sizing_units').textContent = (data.suggested_units || 0).toFixed(2);
-                if (document.getElementById('sizing_lev')) document.getElementById('sizing_lev').textContent = parseInt(data.suggested_leverage || 1);
-            }
-        }).catch(err => {
-            console.log(`ℹ️ Sizing calculation skipped (normal on fresh load): ${err.message}`);
-        });
-    }
-
-    function updateRiskSizing() {
-        const slider = document.getElementById('risk_slider');
-        const pct = parseFloat(slider.value);
-        document.getElementById('risk_pct_display').textContent = pct.toFixed(1) + '%';
-        
-        // Recalc preview using server sizing logic approximation
-        const unutilizedEl = document.querySelector('#wallet-display input');
-        const unutilized = parseFloat(unutilizedEl ? unutilizedEl.value : 0) || 0;
-        const slValue = parseFloat(document.querySelector('input[name="sl_value"]').value) || 1;
-        const entry = parseFloat(document.getElementById('entry_input').value) || 60000;
-        
-        if (unutilized > 0 && slValue > 0 && entry > 0) {
-            const risk = unutilized * (pct / 100);
-            const sl_pct = Math.abs(slValue / entry) * 100;  // Approx SL%
-            const lev = Math.max(1, Math.floor(100 / (sl_pct + 0.2)));
-            const pos_value = (risk / (sl_pct / 100 + 0.002)) * 100;
-            const qty = pos_value / entry;
-            
-            document.getElementById('risk_amount').textContent = risk.toFixed(2);
-            document.getElementById('risk_qty').textContent = qty.toFixed(4);
-            document.getElementById('risk_lev').textContent = lev;
-            document.getElementById('risk-preview').style.display = 'block';
-        } else {
-            document.getElementById('risk-preview').style.display = 'none';
-        }
-    }
-
     function adminResetDailyTrades() {
         if (confirm("Admin: Reset your daily trade count?")) {
             fetch('/api/admin/reset_daily_trades', { method: 'POST' })
@@ -1748,7 +1679,7 @@
                 const symbolTradeLabel = document.getElementById('symbol_trades_label');
                 if (symbolTradeLabel) symbolTradeLabel.textContent = cleanSymbol;
                 
-                console.log(`✅ [HYBRID] Dynamic updates complete (no reload).`);
+                console.log(`✅[HYBRID] Dynamic updates complete (no reload).`);
             })
             .catch(err => {
                 console.error('❌ Symbol validation failed:', err);
@@ -1774,7 +1705,7 @@
 
         // Close any existing WebSocket to prevent old coins from fighting new coins for the input box
         if (priceWs) {
-            console.log(`🔄 [fetchLivePrice] Closing old WebSocket...`);
+            console.log(`🔄[fetchLivePrice] Closing old WebSocket...`);
             priceWs.close();
         }
 
@@ -1918,7 +1849,7 @@
     function fetchLivePriceViaREST(symbol, entryInput, indicator) {
         if (!symbol || !entryInput) return;
         
-        console.log(`📡 [fetchLivePriceViaREST] Fetching ${symbol} via REST API...`);
+        console.log(`📡[fetchLivePriceViaREST] Fetching ${symbol} via REST API...`);
         
         fetch(`/get_live_price/${encodeURIComponent(symbol)}`)
             .then(r => r.json())
@@ -1929,7 +1860,7 @@
                 }
 
                 if (data.price && data.price > 0) {
-                    console.log(`✅ [fetchLivePriceViaREST] Got price: ${data.price}`);
+                    console.log(`✅[fetchLivePriceViaREST] Got price: ${data.price}`);
                     const livePx = parseFloat(data.price);
                     entryInput.dataset.livePrice = String(livePx);
                     entryInput.dataset.liveSymbol = symbol.toUpperCase();
@@ -2011,295 +1942,6 @@
             }
         } catch (e) {
             console.warn('refreshLivePriceIndicator failed:', e);
-        }
-    }
-
-    // ✅ FETCH COIN DETAILS FOR SELECTED SYMBOL
-    function fetchCoinDetails(symbol = null) {
-        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
-        
-        if (!targetSymbol) return;
-        
-        console.log(`📊 Fetching coin details for: ${targetSymbol}`);
-        
-        fetch(`/api/coin-details/${encodeURIComponent(targetSymbol)}`)
-        .then(r => r.json())
-        .then(data => {
-            if (getSelectedSymbol() && getSelectedSymbol() !== targetSymbol) {
-                console.log(`ℹ️ Ignoring stale coin details for ${targetSymbol}`);
-                return;
-            }
-
-            if (data.success) {
-                // Update max leverage badge
-                const maxLev = data.max_leverage || 125;
-                const maxLevElements = document.querySelectorAll('#max-lev-value, #modal-max-lev');
-                maxLevElements.forEach(el => el.textContent = maxLev + 'x');
-                
-                const levBadge = document.getElementById('lev-badge');
-                if (levBadge) levBadge.textContent = `Max: ${maxLev}x`;
-                
-                // Update suggested leverage
-                const suggLev = data.suggested_leverage || 45;
-                const suggLevElements = document.querySelectorAll('#sugg-lev-value, #modal-sugg-lev');
-                suggLevElements.forEach(el => el.textContent = suggLev + 'x');
-                
-                // Update recommendation text
-                const rec = data.recommendation || 'Safe trading recommended';
-                const recElements = document.querySelectorAll('#lev-recommendation, #modal-rec');
-                recElements.forEach(el => el.textContent = rec);
-                
-                console.log(`✅ Coin details updated: ${targetSymbol}`);
-            }
-        }).catch(err => {
-            console.error(`❌ Coin details fetch failed:`, err);
-        });
-    }
-
-    // ✅ SHOW COIN DETAILS IN MODAL (WITH REAL-TIME DATA)
-    function showCoinDetails() {
-        console.log('🔍 showCoinDetails() called');
-        try {
-            // Safely get form values with fallbacks
-            const symbol = getSelectedSymbol() || 'BTCUSDT';
-            
-            const sl_typeElem = document.querySelector('select[name="sl_type"]');
-            const sl_type = sl_typeElem ? sl_typeElem.value : 'SL % Movement';
-            
-            const sl_valueElem = document.querySelector('input[name="sl_value"]');
-            const sl_value = (sl_valueElem && sl_valueElem.value) ? sl_valueElem.value : '1.5';
-            
-            const side = getCurrentSide();
-            
-            console.log('📊 Form values:', {symbol, sl_type, sl_value, side});
-            
-            if (!symbol) {
-                alert('❌ No symbol selected! Please select a coin.');
-                return;
-            }
-            
-            // Show loading state
-            const modal = document.getElementById('coin-details-modal');
-            if (!modal) {
-                console.error('❌ Modal element not found!');
-                alert('❌ Modal element not found! Check browser console.');
-                return;
-            }
-            
-            console.log('✅ Modal found, opening...');
-            document.getElementById('modal-symbol').textContent = '⏳ ' + symbol;
-            document.getElementById('modal-max-lev').textContent = '...';
-            document.getElementById('modal-sugg-lev').textContent = '...';
-            document.getElementById('modal-rec').innerHTML = '⏳ Fetching live data...';
-            document.getElementById('modal-position-details').innerHTML = '<div style="color: #888; font-size: 11px; padding: 8px; text-align: center;">⏳ Loading position data...</div>';
-            
-            // Show modal with display block first, then flex
-            modal.style.display = 'block';
-            setTimeout(() => {
-                modal.style.display = 'flex';
-                console.log('✅ Modal displayed');
-            }, 10);
-            
-            // Fetch with SL parameters for real-time calculation
-            const fetchUrl = `/api/coin-details/${symbol}?sl_type=${encodeURIComponent(sl_type)}&sl_value=${encodeURIComponent(sl_value)}&side=${encodeURIComponent(side)}`;
-            console.log('🔗 Fetching:', fetchUrl);
-            
-            fetch(fetchUrl)
-                .then(r => {
-                    console.log('📡 Response status:', r.status);
-                    return r.json();
-                })
-                .then(data => {
-                    console.log('📦 API Data received:', data);
-                    try {
-                        if (data && data.success) {
-                            const pos = data.position;
-                            
-                            // Update basic info with REAL data
-                            document.getElementById('modal-symbol').textContent = symbol;
-                            document.getElementById('modal-max-lev').textContent = data.max_leverage || '125';
-                            document.getElementById('modal-sugg-lev').textContent = data.suggested_leverage || '45';
-                            
-                            // Show recommendations based on max leverage
-                            let recommendations = '';
-                            const maxLev = data.max_leverage || 125;
-                            if (maxLev <= 20) {
-                                recommendations = '🔴 Low leverage - Use 5-10% SL';
-                            } else if (maxLev <= 50) {
-                                recommendations = '🟡 Medium leverage - Use 2-5% SL';
-                            } else {
-                                recommendations = '🟢 High leverage - Use 1-2% SL';
-                            }
-                            if (data.sl_percent) {
-                                recommendations += ` | Current SL: ${data.sl_percent}%`;
-                            }
-                            document.getElementById('modal-rec').innerHTML = recommendations;
-                            
-                            // Show position details if open
-                            const posDetailsDiv = document.getElementById('modal-position-details');
-                            if (pos && typeof pos === 'object' && Object.keys(pos).length > 0) {
-                                try {
-                                    // Format data with defaults
-                                    const size = parseFloat(pos.amount || pos.positionAmt || 0).toFixed(5);
-                                    const entryPrice = parseFloat(pos.entry_price || pos.avgPrice || 0).toFixed(8);
-                                    const markPrice = parseFloat(pos.mark_price || data.current_price || 0).toFixed(8);
-                                    const liqPrice = parseFloat(pos.liquidation_price || pos.liquidationPrice || 0).toFixed(8);
-                                    const unrealizedPnL = parseFloat(pos.unrealized_pnl || pos.unrealizedProfit || 0).toFixed(2);
-                                    const roi = parseFloat(pos.dashboard_roi_percent || pos.roi_percent || 0).toFixed(2);
-                                    const margin = parseFloat(pos.margin_usdt || pos.notional || 0).toFixed(2);
-                                    const marginRatio = parseFloat(pos.dashboard_margin_ratio || pos.margin_ratio || 0).toFixed(2);
-                                    
-                                    const pnlColor = unrealizedPnL >= 0 ? '#00ff88' : '#ff4444';
-                                    const roiColor = roi >= 0 ? '#00ff88' : '#ff4444';
-                                    
-                                    // ✅ BUILD CALCULATION BREAKDOWN HTML
-                                    let breakdownHTML = `
-                                        <div style="background: #1a1a2e; padding: 10px; border-radius: 4px; margin-bottom: 10px; font-size: 11px; border-left: 3px solid #ff9800;">
-                                            <strong style="color: #00d4ff; display: block; margin-bottom: 8px;">📊 EXACT COIN DETAILS</strong>
-                                            
-                                            <div style="background: #0d1419; padding: 6px; border-radius: 3px; margin-bottom: 8px;">
-                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Entry Price:</strong> $${entryPrice}</p>
-                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Mark Price:</strong> $${markPrice}</p>
-                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Liquidation Price:</strong> $${liqPrice}</p>
-                                            </div>
-                                            
-                                            <div style="background: #0d1419; padding: 6px; border-radius: 3px; margin-bottom: 8px;">
-                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Position Size:</strong> ${size} units</p>
-                                                <p style="margin: 3px 0; color: #aaa;"><strong style="color: #fff;">Margin Used:</strong> $${margin}</p>
-                                            </div>
-                                            
-                                            <div style="background: #0d261a; padding: 8px; border-radius: 3px; margin-bottom: 8px; border: 1px solid #00ff88;">
-                                                <p style="margin: 0 0 6px 0; color: #00ff88; font-weight: bold;">📈 ROI BREAKDOWN</p>`;
-                                    
-                                    if (data.calculation_breakdown && data.calculation_breakdown.roi) {
-                                        const roi_calc = data.calculation_breakdown.roi;
-                                        breakdownHTML += `
-                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Base ROI:</strong> <span style="color: #00ff88;">${roi_calc.base_percent.toFixed(4)}%</span></p>
-                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Leverage:</strong> <span style="color: #ffaa00;">${roi_calc.leverage}x</span></p>
-                                                <p style="margin: 4px 0; padding: 6px; background: #0a1a0f; border-radius: 2px; color: #fff; font-weight: bold;">
-                                                    Calculation: ${roi_calc.base_percent.toFixed(4)}% × ${roi_calc.leverage}x = <span style="color: ${roiColor};">${roi_calc.calculated_percent.toFixed(2)}%</span>
-                                                </p>
-                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Actual ROI:</strong> <span style="color: ${roiColor};">${roi >= 0 ? '+' : ''}${roi}%</span></p>
-                                                <p style="margin: 4px 0; color: #888; font-size: 10px; font-style: italic;">Dashboard shows: ${roi}% (based on ${roi_calc.leverage}x leverage)</p>`;
-                                    } else {
-                                        breakdownHTML += `
-                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">ROI:</strong> <span style="color: ${roiColor};">${roi >= 0 ? '+' : ''}${roi}%</span></p>`;
-                                    }
-                                    
-                                    breakdownHTML += `
-                                            </div>
-                                            
-                                            <div style="background: #1a0d0d; padding: 8px; border-radius: 3px; margin-bottom: 8px; border: 1px solid #ff9800;">
-                                                <p style="margin: 0 0 6px 0; color: #ff9800; font-weight: bold;">⚠️ MARGIN RATIO BREAKDOWN</p>`;
-                                    
-                                    if (data.calculation_breakdown && data.calculation_breakdown.margin_ratio) {
-                                        const margin_calc = data.calculation_breakdown.margin_ratio;
-                                        breakdownHTML += `
-                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Base Margin Ratio:</strong> <span style="color: #ff9800;">${margin_calc.base_percent.toFixed(4)}%</span></p>
-                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Leverage:</strong> <span style="color: #ffaa00;">${margin_calc.leverage}x</span></p>
-                                                <p style="margin: 4px 0; padding: 6px; background: #260a0a; border-radius: 2px; color: #fff; font-weight: bold;">
-                                                    Calculation: ${margin_calc.base_percent.toFixed(4)}% × ${margin_calc.leverage}x = <span style="color: #ff9800;">${margin_calc.calculated_percent.toFixed(2)}%</span>
-                                                </p>
-                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Actual Margin Ratio:</strong> <span style="color: #ff9800;">${marginRatio}%</span></p>
-                                                <p style="margin: 4px 0; color: #888; font-size: 10px; font-style: italic;">Dashboard shows: ${marginRatio}% (based on ${margin_calc.leverage}x leverage)</p>`;
-                                    } else {
-                                        breakdownHTML += `
-                                                <p style="margin: 4px 0; color: #aaa;"><strong style="color: #fff;">Margin Ratio:</strong> <span style="color: #ff9800;">${marginRatio}%</span></p>`;
-                                    }
-                                    
-                                    breakdownHTML += `
-                                            </div>
-                                            
-                                            <div style="background: #0d1419; padding: 6px; border-radius: 3px; border-top: 2px solid #333;">
-                                                <p style="margin: 4px 0; display: flex; justify-content: space-between;">
-                                                    <span style="color: #aaa;">Unrealized PnL:</span> <strong style="color: ${pnlColor};font-size:12px;">$${unrealizedPnL}</strong>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    `;
-                                    
-                            posDetailsDiv.innerHTML = breakdownHTML;
-                                } catch (parseErr) {
-                                    console.error('Position parsing error:', parseErr);
-                                    posDetailsDiv.innerHTML = '<div style="color: #ff6b6b; font-size: 11px;">⚠️ Position data format error</div>';
-                                }
-                            } else {
-                                posDetailsDiv.innerHTML = '<div style="color: #888; font-size: 11px; padding: 8px; text-align: center;">✅ No open position for this symbol</div>';
-                            }
-                            posDetailsDiv.style.display = 'block';
-                            console.log('✅ Modal updated successfully');
-                        } else {
-                            document.getElementById('modal-rec').innerHTML = '❌ ' + (data.message || 'Error fetching data');
-                            console.error('API error:', data);
-                        }
-                    } catch (err) {
-                        console.error('Data processing error:', err);
-                        document.getElementById('modal-rec').innerHTML = '❌ Processing error: ' + err.message;
-                    }
-                })
-                .catch(err => {
-                    console.error('Fetch error:', err);
-                    document.getElementById('modal-rec').innerHTML = '❌ Network error: ' + err.message;
-                });
-        } catch (e) {
-            console.error('showCoinDetails error:', e);
-            alert('❌ Error: ' + e.message);
-        }
-    }
-
-    // ✅ EDIT LEVERAGE FROM LIVE POSITIONS
-    function editLeverageMod(symbolOverride = null) {
-        const symbol = symbolOverride || (document.getElementById('modal-symbol') ? document.getElementById('modal-symbol').textContent : getSelectedSymbol());
-        const newLeverage = prompt(`Enter new leverage for ${symbol} (1-125x):`);
-        if (newLeverage && !isNaN(newLeverage)) {
-            const lev = parseInt(newLeverage);
-            if (lev >= 1 && lev <= 125) {
-                // Show loading state
-                console.log(`Changing leverage for ${symbol} to ${lev}x...`);
-                
-                fetch('/api/change_leverage', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ symbol: symbol, leverage: lev })
-                })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        alert(`✅ Successfully changed ${symbol} leverage to ${lev}x`);
-                        updateLivePositions(symbol, true); // Refresh positions
-                    } else {
-                        alert(`❌ Failed to change leverage: ${data.error || 'Unknown error'}`);
-                    }
-                })
-                .catch(err => {
-                    console.error('Leverage change error:', err);
-                    alert('❌ Error changing leverage. Check console for details.');
-                });
-            } else {
-                alert('❌ Leverage must be between 1-125x');
-            }
-        }
-    }
-
-    // ✅ EDIT TP/SL FROM MODAL
-    function editTPSLMod() {
-        const symbol = document.getElementById('modal-symbol').textContent;
-        const tpPrice = prompt(`Enter Take Profit price for ${symbol}:`);
-        if (tpPrice && !isNaN(tpPrice)) {
-            const slPrice = prompt(`Enter Stop Loss price for ${symbol}:`);
-            if (slPrice && !isNaN(slPrice)) {
-                alert(`✅ Would set TP: $${tpPrice}, SL: $${slPrice} for ${symbol}. (Integration needed)`);
-                // TODO: Add API call to set TP/SL
-            }
-        }
-    }
-
-    // ✅ CLOSE POSITION FROM MODAL
-    function closePosModal() {
-        const symbol = document.getElementById('modal-symbol').textContent;
-        if (confirm(`⚠️ Close entire ${symbol} position?`)) {
-            alert(`✅ Would close ${symbol} position. (Integration needed)`);
-            // TODO: Add API call to close position
         }
     }
 
