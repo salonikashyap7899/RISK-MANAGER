@@ -762,6 +762,8 @@ def ensure_sqlite_trade_positions_columns():
             cols = [row[1] for row in r.fetchall()]
             if "opening_order_id" not in cols:
                 conn.execute(text("ALTER TABLE trade_positions ADD COLUMN opening_order_id VARCHAR(64)"))
+            if "virtual_guard_active" not in cols:
+                conn.execute(text("ALTER TABLE trade_positions ADD COLUMN virtual_guard_active BOOLEAN DEFAULT 0"))
     except Exception as e:
         print(f"SQLite schema patch (trade_positions): {e}")
 
@@ -1104,6 +1106,46 @@ def api_debug_tp1_sl():
     from conditional_orders_enhancement import get_tp1_and_sl_orders
     result = get_tp1_and_sl_orders(current_user.id)
     return jsonify(result)
+
+@app.route('/api/tp_sl_mode')
+@login_required
+def api_tp_sl_mode():
+    """
+    Returns the TP/SL management mode for each open position.
+    Cross-references database records with live Binance open orders.
+    """
+    try:
+        from models import TradePosition
+        open_positions = TradePosition.query.filter_by(user_id=current_user.id, status='open').all()
+        exchange_orders = logic.get_all_open_conditional_orders(current_user.id)
+        
+        # Map exchange orders by symbol for quick lookup
+        orders_by_symbol = {}
+        for o in exchange_orders:
+            sym = o.get('symbol')
+            if sym not in orders_by_symbol:
+                orders_by_symbol[sym] = []
+            orders_by_symbol[sym].append(o)
+            
+        results = []
+        for pos in open_positions:
+            sym_orders = orders_by_symbol.get(pos.symbol, [])
+            # A position is managed by exchange if it has at least one real order on Binance
+            has_exchange_orders = len(sym_orders) > 0
+            
+            results.append({
+                "symbol": pos.symbol,
+                "virtual_guard_active": bool(pos.virtual_guard_active),
+                "has_exchange_orders": has_exchange_orders,
+                "mode": "Virtual Guard" if pos.virtual_guard_active or not has_exchange_orders else "Exchange Orders",
+                "exchange_order_count": len(sym_orders),
+                "db_sl": pos.sl_price,
+                "db_tp1": pos.tp1_price
+            })
+            
+        return jsonify({"success": True, "positions": results})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/cancel_conditional_order', methods=['POST'])
 @login_required

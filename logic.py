@@ -757,7 +757,8 @@ def run_virtual_tp_sl_guard(user_id=None):
     
     if not user_id: return
     now = time.time()
-    if now - _virtual_guard_last_run.get(user_id, 0) < 1.0: return
+    interval = getattr(config, 'VIRTUAL_GUARD_INTERVAL_SECONDS', 1.0)
+    if now - _virtual_guard_last_run.get(user_id, 0) < interval: return
     _virtual_guard_last_run[user_id] = now
     
     try:
@@ -1371,7 +1372,8 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
             tp1_qty_pct=tp1_pct if tp1_created else 0,
             tp2_price=tp2 if tp2_created else None,
             opening_order_id=main_order_id,
-            status='open'
+            status='open',
+            virtual_guard_active=virtual_guard_enabled
         )
         db.session.add(pos)
         update_trade_stats(symbol, user_id)

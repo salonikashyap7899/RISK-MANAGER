@@ -96,3 +96,6 @@ SUPPORTED_EXCHANGES = {
 # ==========================
 # When enabled, the dashboard shows test-only controls like resetting daily limits.
 TESTING_MODE = os.getenv('TESTING_MODE', 'false').strip().lower() in ('1', 'true', 'yes', 'on')
+
+# Virtual Guard Settings
+VIRTUAL_GUARD_INTERVAL_SECONDS = 1.0

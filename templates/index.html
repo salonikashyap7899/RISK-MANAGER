@@ -974,6 +974,9 @@
                     const tpSlElement = document.getElementById(`tp_sl_details_${pos.symbol}`);
                     if (tpSlElement) {
                         let tpSlHtml = '';
+                        if (pos.virtual_guard_active) {
+                            tpSlHtml += `<div style="margin-bottom: 5px; background: rgba(240,185,11,0.1); padding: 3px 5px; border-radius: 3px; border: 1px solid rgba(240,185,11,0.3); color: #f0b90b; font-weight: bold; font-size: 8px; display: inline-block;">\uD83D\uDEE1\uFE0F Virtual Guard Active</div>`;
+                        }
                         tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #ff6464;">🛑 SL:</strong> $${pos.sl_price.toFixed(4)}</div>`;
                         if (pos.current_sl && pos.current_sl !== pos.sl_price) {
                             tpSlHtml += `<div style="margin-bottom: 3px; font-size: 8px; color: #ffaa00;"><strong>Current SL:</strong> $${pos.current_sl.toFixed(4)}</div>`;
@@ -1028,11 +1031,34 @@ function updateTP1SLOrders() {
         if (header) header.textContent = '\uD83C\uDFAF TP1, TP2 & SL (' + totalOrders + ')';
 
         if (totalOrders === 0) {
-            container.innerHTML = '<div style="text-align:center;color:#444;padding:40px 0;font-size:10px;">No TP1, TP2 or SL orders</div>';
+            fetch('/get_user_trade_positions?_t=' + Date.now())
+            .then(function(r) { return r.json(); })
+            .then(function(posData) {
+                var hasProtection = false;
+                if (posData && posData.positions) {
+                    posData.positions.forEach(function(p) {
+                        if (p.sl_price > 0 || p.tp1_price > 0) hasProtection = true;
+                    });
+                }
+                if (hasProtection) {
+                    container.innerHTML = '<div style="text-align:center;color:#f0b90b;padding:40px 0;font-size:10px;background:rgba(240,185,11,0.05);border-radius:5px;border:1px dashed #f0b90b;margin:10px 0;">' +
+                        '<div style="font-weight:bold;margin-bottom:5px;">\uD83D\uDEE1\uFE0F Virtual TP/SL Guard Active</div>' +
+                        '<div style="color:#888;font-size:9px;">Server-managed protection is running.<br>No exchange orders exist.</div>' +
+                        '</div>';
+                } else {
+                    container.innerHTML = '<div style="text-align:center;color:#444;padding:40px 0;font-size:10px;">No TP1, TP2 or SL orders</div>';
+                }
+            })
+            .catch(function() {
+                container.innerHTML = '<div style="text-align:center;color:#444;padding:40px 0;font-size:10px;">No TP1, TP2 or SL orders</div>';
+            });
             return;
         }
 
         function buildCard(o, orderTypeLabel) {
+            var source = o.source || 'regular';
+            var sourceLabel = source === 'algo' ? 'Exchange Order' : (source === 'virtual' ? 'Virtual Guard' : 'Exchange Order');
+            var sourceColor = source === 'virtual' ? '#f0b90b' : '#0ecb81';
             var trigger = (o.triggerPrice && o.triggerPrice > 0) ? parseFloat(o.triggerPrice) : (o.price && o.price > 0 ? parseFloat(o.price) : 0);
             var qty = (o.qty && o.qty > 0) ? parseFloat(o.qty) : 0;
             var side = (o.side || '').toUpperCase();
@@ -1060,7 +1086,10 @@ function updateTP1SLOrders() {
             c += '<div style="border:1px solid ' + borderColor + ';border-radius:5px;background:' + bgColor + ';padding:7px 8px;margin-bottom:7px;">';
             c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">';
             c += '<span style="font-weight:bold;color:#e9fbff;font-size:10px;">' + (o.symbol || '\u2014') + ' <span style="color:#888;font-weight:normal;font-size:8px;">Perp</span></span>';
+            c += '<div style="display:flex;gap:5px;align-items:center;">';
+            c += '<span style="background:' + sourceColor + '22;color:' + sourceColor + ';border:1px solid ' + sourceColor + '44;padding:0px 4px;border-radius:2px;font-size:7px;font-weight:bold;">' + sourceLabel + '</span>';
             c += '<button onclick="cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')" style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
+            c += '</div>';
             c += '</div>';
             c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">';
             c += '<span style="color:' + labelColor + ';font-size:8.5px;font-weight:600;">' + typeLabel + '</span>';
