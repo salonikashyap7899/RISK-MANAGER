@@ -354,6 +354,8 @@
             }
         }
 </style>
+
+
 </head>
 <body>
 <div class="container">
@@ -840,6 +842,7 @@
         .then(r => r.json())
         .then(data => {
             if (data.success) {
+                // FIXED: Now targets the span IDs correctly
                 if (document.getElementById('sizing_units')) document.getElementById('sizing_units').textContent = (data.suggested_units || 0).toFixed(2);
                 if (document.getElementById('sizing_lev')) document.getElementById('sizing_lev').textContent = parseInt(data.suggested_leverage || 1);
             }
@@ -1679,7 +1682,7 @@
                 const symbolTradeLabel = document.getElementById('symbol_trades_label');
                 if (symbolTradeLabel) symbolTradeLabel.textContent = cleanSymbol;
                 
-                console.log(`✅[HYBRID] Dynamic updates complete (no reload).`);
+                console.log(`✅ [HYBRID] Dynamic updates complete (no reload).`);
             })
             .catch(err => {
                 console.error('❌ Symbol validation failed:', err);
@@ -1705,7 +1708,7 @@
 
         // Close any existing WebSocket to prevent old coins from fighting new coins for the input box
         if (priceWs) {
-            console.log(`🔄[fetchLivePrice] Closing old WebSocket...`);
+            console.log(`🔄 [fetchLivePrice] Closing old WebSocket...`);
             priceWs.close();
         }
 
@@ -1849,7 +1852,7 @@
     function fetchLivePriceViaREST(symbol, entryInput, indicator) {
         if (!symbol || !entryInput) return;
         
-        console.log(`📡[fetchLivePriceViaREST] Fetching ${symbol} via REST API...`);
+        console.log(`📡 [fetchLivePriceViaREST] Fetching ${symbol} via REST API...`);
         
         fetch(`/get_live_price/${encodeURIComponent(symbol)}`)
             .then(r => r.json())
