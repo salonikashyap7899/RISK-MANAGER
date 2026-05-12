@@ -5,87 +5,75 @@ from datetime import datetime
 def get_tp1_and_sl_orders(user_id):
     try:
         client = logic.get_client(user_id)
-        if not client: return {"success": False, "tp1_orders":[], "tp2_orders":[], "sl_orders":[]}
-
-        # 1. Fetch ALL data from Binance endpoints
-        all_regular = []
-        all_algo = []
-        try: all_regular = client.futures_get_open_orders(recvWindow=10000)
-        except: pass
+        if not client:
+            return {"success": False, "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
+        
+        # 1. Fetch Regular & Algo orders from Binance
+        all_binance_orders = []
         try:
+            # Regular Open Orders (Limit, Stop Market)
+            reg_orders = client.futures_get_open_orders(recvWindow=10000)
+            for o in reg_orders:
+                o['order_source'] = 'regular'
+                all_binance_orders.append(o)
+                
+            # Algo Orders (Take Profit Market, Trailing Stops)
             if hasattr(client, 'futures_get_algo_orders'):
-                resp = client.futures_get_algo_orders(recvWindow=10000)
-                all_algo = resp if isinstance(resp, list) else resp.get('orders', [])
-            elif hasattr(client, '_request_futures_api'):
-                resp = client._request_futures_api('get', 'algoOrder/openOrders', True, data={'recvWindow': 10000})
-                all_algo = resp if isinstance(resp, list) else resp.get('orders', [])
-        except: pass
+                algo_resp = client.futures_get_algo_orders(recvWindow=10000)
+                algo_list = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
+                for o in algo_list:
+                    o['order_source'] = 'algo'
+                    all_binance_orders.append(o)
+        except Exception as e:
+            print(f"Fetch Error: {e}")
 
         tp1_orders, tp2_orders, sl_orders = [], [], []
-        seen_binance_types = set() # Track sym_label to avoid virtual duplicates
+        seen_labels = set() # key: symbol_label
 
-        def parse_binance_order(o, is_algo=False):
-            # IDs: algo orders use algoId, others use orderId
+        for o in all_binance_orders:
+            # IMPORTANT: Capture the correct ID
             oid = o.get('algoId') or o.get('orderId')
-            if not oid: return
+            if not oid: continue
             
-            sym = o.get('symbol', '')
-            o_type = str(o.get('type') or o.get('algoType') or '').upper()
-            
-            # Fetch Price/Trigger Price
-            price = float(o.get('stopPrice') or o.get('triggerPrice') or o.get('price') or 0)
+            symbol = o.get('symbol', '')
+            o_type = (o.get('type') or o.get('algoType') or '').upper()
+            trigger = float(o.get('stopPrice') or o.get('triggerPrice') or o.get('price') or 0)
             qty = float(o.get('origQty') or o.get('qty') or 0)
+            side = o.get('side', '').upper()
             
-            # Determine classification (SL vs TP1 vs TP2)
-            if "TAKE_PROFIT" in o_type:
-                label, list_to_add = "TP1", tp1_orders
-            elif "STOP" in o_type or "TRAILING" in o_type:
-                label, list_to_add = "SL", sl_orders
-            elif o_type == "LIMIT" and (o.get('reduceOnly') or o.get('closePosition')):
-                label, list_to_add = "TP2", tp2_orders
-            else:
-                return # Don't show entry/plain limit orders
+            # Classification
+            label = "ORDER"
+            if 'TAKE_PROFIT' in o_type:
+                label, target_list = 'TP1', tp1_orders
+            elif 'STOP' in o_type or 'TRAILING' in o_type:
+                label, target_list = 'SL', sl_orders
+            elif o_type == 'LIMIT' and (o.get('reduceOnly') or o.get('closePosition')):
+                label, target_list = 'TP2', tp2_orders
+            else: continue
 
-            seen_binance_types.add(f"{sym}_{label}")
+            seen_labels.add(f"{symbol}_{label}")
             
-            list_to_add.append({
-                'orderId': oid,
-                'symbol': sym,
-                'side': o.get('side', '').upper(),
+            target_list.append({
+                'orderId': str(oid), # Ensure string for frontend consistency
+                'symbol': symbol,
+                'side': side,
                 'type': o_type,
                 'label': label,
-                'triggerPrice': price,
+                'triggerPrice': trigger,
                 'qty': qty,
-                'time': datetime.now().strftime('%H:%M:%S'), # Recent fetch time
-                'source': 'binance'
+                'time': 'Binance Live',
+                'source': o['order_source'] # important for cancel logic
             })
 
-        # Process everything from Binance first
-        for o in all_regular: parse_binance_order(o)
-        for o in all_algo: parse_binance_order(o, is_algo=True)
-
-        # 2. Add Virtual Guards only if Binance is empty for that symbol/slot
+        # 2. Add Virtual Guards only for missing slots
         db_pos = TradePosition.query.filter_by(user_id=user_id, status='open').all()
         for p in db_pos:
-            s_close = 'SELL' if p.side == 'LONG' else 'BUY'
-            
-            if p.sl_price > 0 and f"{p.symbol}_SL" not in seen_binance_types:
-                sl_orders.append({
-                    'orderId': f"virtual_sl_{p.id}",
-                    'symbol': p.symbol, 'side': s_close, 'type': 'VIRTUAL_GUARD',
-                    'label': 'SL', 'triggerPrice': float(p.current_sl or p.sl_price),
-                    'qty': float(p.initial_qty), 'time': 'Protection Active', 'source': 'virtual'
-                })
-            
-            if p.tp1_price > 0 and f"{p.symbol}_TP1" not in seen_binance_types:
-                tp1_orders.append({
-                    'orderId': f"virtual_tp1_{p.id}",
-                    'symbol': p.symbol, 'side': s_close, 'type': 'VIRTUAL_GUARD',
-                    'label': 'TP1', 'triggerPrice': float(p.tp1_price),
-                    'qty': float(p.initial_qty) * (float(p.tp1_qty_pct or 50)/100),
-                    'time': 'Protection Active', 'source': 'virtual'
-                })
+            side_close = 'SELL' if p.side == 'LONG' else 'BUY'
+            if p.sl_price > 0 and f"{p.symbol}_SL" not in seen_labels:
+                sl_orders.append({'orderId': f"virtual_sl_{p.id}", 'symbol': p.symbol, 'side': side_close, 'type': 'VIRTUAL', 'label': 'SL', 'triggerPrice': float(p.current_sl or p.sl_price), 'qty': float(p.initial_qty), 'time': 'System Guard', 'source': 'virtual'})
+            if p.tp1_price > 0 and f"{p.symbol}_TP1" not in seen_labels:
+                tp1_orders.append({'orderId': f"virtual_tp1_{p.id}", 'symbol': p.symbol, 'side': side_close, 'type': 'VIRTUAL', 'label': 'TP1', 'triggerPrice': float(p.tp1_price), 'qty': float(p.initial_qty) * 0.5, 'time': 'System Guard', 'source': 'virtual'})
 
         return {"success": True, "tp1_orders": tp1_orders, "tp2_orders": tp2_orders, "sl_orders": sl_orders}
     except Exception as e:
-        return {"success": False, "error": str(e), "tp1_orders":[], "tp2_orders":[], "sl_orders":[]}
+        return {"success": False, "error": str(e), "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
