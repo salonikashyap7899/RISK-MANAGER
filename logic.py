@@ -719,45 +719,36 @@ def get_all_open_conditional_orders(user_id=None):
     except Exception as e:
         print(f"Error fetching conditional orders: {e}")
         return []
-
 def cancel_order(symbol, order_id, user_id=None):
     from models import TradePosition, db
     try:
-        # 1. HANDLE VIRTUAL ORDERS (Avoid sending these strings to Binance)
-        if isinstance(order_id, str) and "virtual_" in order_id:
-            pos_id = order_id.split('_')[-1]
-            pos = TradePosition.query.get(pos_id)
+        # Handle Virtual orders internally
+        if isinstance(order_id, str) and order_id.startswith("virtual_"):
+            p_id = order_id.split('_')[-1]
+            pos = TradePosition.query.get(p_id)
             if pos:
-                if "_sl_" in order_id:
-                    pos.sl_price = 0
-                    pos.current_sl = 0
-                elif "_tp1_" in order_id:
-                    pos.tp1_price = 0
-                elif "_tp2_" in order_id:
-                    pos.tp2_price = 0
+                if "_sl_" in order_id: pos.sl_price = 0
+                elif "_tp1_" in order_id: pos.tp1_price = 0
                 db.session.commit()
-            return True, "Removed from dashboard (Guard Order)"
+            return True, "Dashboard item removed"
 
         client = get_client(user_id)
-        if not client: return False, "No connection"
+        if not client: return False, "No client connection"
 
-        # 2. HANDLE BINANCE REAL ORDERS
+        # Check if ID looks like an Algo ID (often long alphanumeric) or numeric Regular ID
+        # Logic: Try Algo first if it's alphanumeric, try Regular if numeric
         try:
-            # Try cancelling as a standard order (SL, Limit)
-            client.futures_cancel_order(symbol=symbol, orderId=order_id)
-            return True, "Binance Order Cancelled"
-        except BinanceAPIException as e:
-            # -2011 means "Unknown Order" (likely it lives in the 'Algo' endpoint)
-            if e.code == -2011:
-                try:
-                    if hasattr(client, 'futures_cancel_algo_order'):
-                        client.futures_cancel_algo_order(algoId=order_id)
-                    elif hasattr(client, '_request_futures_api'):
-                        client._request_futures_api('delete', 'algoOrder', True, data={'algoId': order_id})
-                    return True, "Binance Algo Order Cancelled"
-                except:
-                    pass # Continue to generic error below
-            return False, f"Binance error: {e.message}"
+            # 1. Attempt Regular Cancel
+            return client.futures_cancel_order(symbol=symbol, orderId=order_id), "Cancelled"
+        except Exception:
+            try:
+                # 2. Attempt Algo Cancel (Using 'algoId' parameter, not 'orderId')
+                if hasattr(client, 'futures_cancel_algo_order'):
+                    return client.futures_cancel_algo_order(algoId=order_id), "Algo Cancelled"
+                else:
+                    return client._request_futures_api('delete', 'algoOrder', True, data={'algoId': order_id}), "Algo Cancelled"
+            except Exception as e2:
+                return False, f"Cancel Failed: {str(e2)}"
     except Exception as e:
         return False, str(e)
 
