@@ -721,46 +721,43 @@ def get_all_open_conditional_orders(user_id=None):
         return []
 
 def cancel_order(symbol, order_id, user_id=None):
-    # Intercept VIRTUAL cancel requests and handle them in the database
-    if str(order_id).startswith('virtual_'):
-        from models import TradePosition, db
-        try:
-            pos_id = int(str(order_id).split('_')[-1])
-            pos = TradePosition.query.get(pos_id)
-            if pos and pos.user_id == user_id:
-                if 'tp1' in order_id:
-                    pos.tp1_price = None
-                    pos.tp1_qty_pct = 0
-                elif 'tp2' in order_id:
-                    pos.tp2_price = None
-                elif 'sl' in order_id:
-                    pos.sl_price = None
-                    pos.current_sl = None
-                db.session.commit()
-                return True, "Virtual order cancelled (removed from system)"
-            return False, "Position not found"
-        except Exception as e:
-            return False, f"Failed to cancel virtual order: {str(e)}"
-
-    # Normal Binance Cancellation Request
+    from models import TradePosition, db
     try:
+        # ✅ FIX: Handle Virtual Orders locally to avoid Binance -1102 Error
+        if isinstance(order_id, str) and order_id.startswith("virtual_"):
+            pos_id = order_id.split('_')[-1]
+            pos = TradePosition.query.get(pos_id)
+            if pos:
+                # If it's a virtual SL, just clear the SL in DB
+                if "_sl_" in order_id:
+                    pos.sl_price = 0
+                    pos.current_sl = 0
+                # If it's a virtual TP, clear the TP in DB
+                elif "_tp1_" in order_id:
+                    pos.tp1_price = 0
+                elif "_tp2_" in order_id:
+                    pos.tp2_price = 0
+                db.session.commit()
+            return True, "Virtual order removed from dashboard"
+
         client = get_client(user_id)
         if client is None:
             return False, "Exchange connection not found"
 
-        # Try regular cancel first
+        # Try regular cancel
         try:
+            # Ensure order_id is passed correctly as a parameter
             client.futures_cancel_order(symbol=symbol, orderId=order_id)
             return True, "Order cancelled successfully"
         except BinanceAPIException as e:
-            # If regular cancel fails, try algo cancel
-            if e.code in [-2011, -2013]:  # Order does not exist as regular order
+            # If regular cancel fails, try algo cancel (for TP/SL orders)
+            if e.code in [-2011, -2013]: 
                 try:
                     if hasattr(client, 'futures_cancel_algo_order'):
                         client.futures_cancel_algo_order(algoId=order_id)
                     elif hasattr(client, '_request_futures_api'):
                         client._request_futures_api('delete', 'algoOrder', True, data={'algoId': order_id})
-                    return True, "Algo order cancelled successfully"
+                    return True, "Algo order cancelled"
                 except Exception as algo_cancel_err:
                     return False, f"Algo cancel failed: {str(algo_cancel_err)}"
             return False, str(e)
