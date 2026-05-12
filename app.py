@@ -1102,11 +1102,16 @@ def api_debug_conditional_orders():
 @login_required
 def api_cancel_conditional_order():
     data = request.get_json(silent=True) or {}
-    order_id = data.get('order_id')
+    order_id = str(data.get('order_id') or '')
     symbol = data.get('symbol')
     if not order_id or not symbol:
         return jsonify({"success": False, "message": "Missing order_id or symbol"}), 400
     try:
+        # Virtual orders (e.g. virtual_sl_123, virtual_tp1_456) exist only in DB,
+        # never on Binance — skip the exchange call entirely.
+        if order_id.startswith('virtual_'):
+            return jsonify({"success": True, "message": "Virtual order removed from display"})
+
         # Use logic.cancel_order which handles both regular and algo orders
         success, message = logic.cancel_order(symbol, order_id, current_user.id)
         return jsonify({"success": success, "message": message})
