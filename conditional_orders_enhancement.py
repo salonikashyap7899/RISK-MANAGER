@@ -1,6 +1,10 @@
 import logic
 from models import TradePosition, db
 from datetime import datetime
+import time
+
+_orders_cache = {}
+_orders_cache_time = {}
 
 def get_tp1_and_sl_orders(user_id):
     try:
@@ -8,24 +12,35 @@ def get_tp1_and_sl_orders(user_id):
         if not client:
             return {"success": False, "error": "No client", "tp1_orders": [], "tp2_orders": [], "sl_orders":[]}
         
-        # Fetch all regular open orders (Limit, Stop Market, etc)
+        now = time.time()
+        cache_key = f"orders_{user_id}"
+        
         all_orders =[]
-        try:
-            all_orders = client.futures_get_open_orders(recvWindow=10000)
-        except Exception as e:
-            print(f"Error fetching open orders: {e}")
-            
-        # Fetch all conditional algo orders (Trailing stops, Take Profit Market, etc)
         algo_orders =[]
-        try:
-            if hasattr(client, 'futures_get_algo_orders'):
-                algo_resp = client.futures_get_algo_orders(recvWindow=10000)
-                algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders',[])
-            elif hasattr(client, '_request_futures_api'):
-                algo_resp = client._request_futures_api('get', 'algoOrder/openOrders', True, data={'recvWindow': 10000})
-                algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders',[])
-        except Exception as e:
-            print(f"Error fetching algo orders: {e}")
+        
+        # 2.5 second cache to prevent Binance rate limits / timeouts on aggressive polling
+        if cache_key in _orders_cache and (now - _orders_cache_time.get(cache_key, 0)) < 2.5:
+            all_orders, algo_orders = _orders_cache[cache_key]
+        else:
+            try:
+                # Fetch all regular open orders (Limit, Stop Market, etc)
+                all_orders = client.futures_get_open_orders(recvWindow=10000)
+            except Exception as e:
+                print(f"Error fetching open orders: {e}")
+                
+            try:
+                # Fetch all conditional algo orders
+                if hasattr(client, 'futures_get_algo_orders'):
+                    algo_resp = client.futures_get_algo_orders(recvWindow=10000)
+                    algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders',[])
+                elif hasattr(client, '_request_futures_api'):
+                    algo_resp = client._request_futures_api('get', 'algoOrder/openOrders', True, data={'recvWindow': 10000})
+                    algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders',[])
+            except Exception as e:
+                print(f"Error fetching algo orders: {e}")
+                
+            _orders_cache[cache_key] = (all_orders, algo_orders)
+            _orders_cache_time[cache_key] = now
 
         # Get ONLY OPEN DB positions to provide context and virtual guard fallbacks
         db_positions = (
@@ -81,27 +96,23 @@ def get_tp1_and_sl_orders(user_id):
             }
 
             # Classification Logic
-            # 1. TP1: Take profit market
             if 'TAKE_PROFIT' in o_type and 'LIMIT' not in o_type:
                 context['label'] = 'TP1'
                 tp1_orders.append(context)
-            # 2. TP2: Limit order (only closing positions)
             elif o_type == 'LIMIT':
                 if o.get('reduceOnly') or o.get('closePosition'):
                     context['label'] = 'TP2'
                     tp2_orders.append(context)
-            # 3. SL: Stop market or trailing stop
             elif 'STOP' in o_type or 'TRAILING' in o_type:
                 context['label'] = 'Trail SL' if 'TRAILING' in o_type else 'SL'
                 sl_orders.append(context)
 
-        # Map all real Binance orders
         for o in all_orders:
             _add_order(o, 'regular')
         for o in algo_orders:
             _add_order(o, 'algo')
 
-        # INJECT VIRTUAL ORDERS for positions that failed to place on Binance (e.g. < 5 USDT Min Notional)
+        # INJECT VIRTUAL ORDERS for positions that failed to place on Binance
         for sym, pos in pos_map.items():
             side_close = 'SELL' if pos.side == 'LONG' else 'BUY'
             
@@ -162,7 +173,7 @@ def get_tp1_and_sl_orders(user_id):
         return {
             "success": False,
             "error": str(e),
-            "tp1_orders": [],
+            "tp1_orders":[],
             "tp2_orders":[],
             "sl_orders":[],
         }
