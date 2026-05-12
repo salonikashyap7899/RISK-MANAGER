@@ -727,6 +727,9 @@ def index():
         logic._positions_cache_time.pop(f"positions_{current_user.id}", None)
         logic._trade_history_cache.pop(f"trade_history_{current_user.id}", None)
         logic._trade_history_cache_time.pop(f"trade_history_{current_user.id}", None)
+        # FIX: Clear conditional-order cache so the next TP1/SL poll immediately
+        # fetches the freshly-placed orders from Binance instead of stale data.
+        logic._conditional_cache.pop(current_user.id, None)
         return redirect(url_for("index", symbol=selected_symbol))
 
     return render_template(
@@ -1102,18 +1105,25 @@ def api_debug_conditional_orders():
 @login_required
 def api_cancel_conditional_order():
     data = request.get_json(silent=True) or {}
-    order_id = str(data.get('order_id') or '')
+    order_id = data.get('order_id')
     symbol = data.get('symbol')
     if not order_id or not symbol:
         return jsonify({"success": False, "message": "Missing order_id or symbol"}), 400
-    try:
-        # Virtual orders (e.g. virtual_sl_123, virtual_tp1_456) exist only in DB,
-        # never on Binance — skip the exchange call entirely.
-        if order_id.startswith('virtual_'):
-            return jsonify({"success": True, "message": "Virtual order removed from display"})
 
+    # FIX: Virtual orders exist only in the DB — never send them to Binance.
+    # Sending a "virtual_sl_xxx" string as orderId causes Binance -1102 error.
+    if str(order_id).startswith('virtual_'):
+        return jsonify({
+            "success": False,
+            "message": "This order is a virtual guard (too small for Binance). Cancel via position management instead."
+        })
+
+    try:
         # Use logic.cancel_order which handles both regular and algo orders
         success, message = logic.cancel_order(symbol, order_id, current_user.id)
+        # Clear cache so the panel refreshes immediately after a real cancel
+        if success:
+            logic._conditional_cache.pop(current_user.id, None)
         return jsonify({"success": success, "message": message})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
