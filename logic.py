@@ -721,6 +721,28 @@ def get_all_open_conditional_orders(user_id=None):
         return []
 
 def cancel_order(symbol, order_id, user_id=None):
+    # Intercept VIRTUAL cancel requests and handle them in the database
+    if str(order_id).startswith('virtual_'):
+        from models import TradePosition, db
+        try:
+            pos_id = int(str(order_id).split('_')[-1])
+            pos = TradePosition.query.get(pos_id)
+            if pos and pos.user_id == user_id:
+                if 'tp1' in order_id:
+                    pos.tp1_price = None
+                    pos.tp1_qty_pct = 0
+                elif 'tp2' in order_id:
+                    pos.tp2_price = None
+                elif 'sl' in order_id:
+                    pos.sl_price = None
+                    pos.current_sl = None
+                db.session.commit()
+                return True, "Virtual order cancelled (removed from system)"
+            return False, "Position not found"
+        except Exception as e:
+            return False, f"Failed to cancel virtual order: {str(e)}"
+
+    # Normal Binance Cancellation Request
     try:
         client = get_client(user_id)
         if client is None:
