@@ -719,37 +719,49 @@ def get_all_open_conditional_orders(user_id=None):
     except Exception as e:
         print(f"Error fetching conditional orders: {e}")
         return []
+# Replace the existing cancel_order function in logic.py with this:
+
 def cancel_order(symbol, order_id, user_id=None):
     from models import TradePosition, db
+    from binance.exceptions import BinanceAPIException
     try:
-        # Handle Virtual orders internally
+        # 1. HANDLE VIRTUAL ORDERS locally (Avoid -1102 Malformed ID)
         if isinstance(order_id, str) and order_id.startswith("virtual_"):
             p_id = order_id.split('_')[-1]
             pos = TradePosition.query.get(p_id)
             if pos:
-                if "_sl_" in order_id: pos.sl_price = 0
-                elif "_tp1_" in order_id: pos.tp1_price = 0
+                if "_sl_" in order_id: 
+                    pos.sl_price = 0
+                    pos.current_sl = 0
+                elif "_tp1_" in order_id: 
+                    pos.tp1_price = 0
                 db.session.commit()
-            return True, "Dashboard item removed"
+            return True, "Removed from Dashboard (Local Guard)"
 
         client = get_client(user_id)
-        if not client: return False, "No client connection"
+        if not client: return False, "Exchange disconnected"
 
-        # Check if ID looks like an Algo ID (often long alphanumeric) or numeric Regular ID
-        # Logic: Try Algo first if it's alphanumeric, try Regular if numeric
+        # 2. ATTEMPT BINANCE CANCEL
+        # First try as a standard Regular Order
         try:
-            # 1. Attempt Regular Cancel
-            return client.futures_cancel_order(symbol=symbol, orderId=order_id), "Cancelled"
-        except Exception:
-            try:
-                # 2. Attempt Algo Cancel (Using 'algoId' parameter, not 'orderId')
-                if hasattr(client, 'futures_cancel_algo_order'):
-                    return client.futures_cancel_algo_order(algoId=order_id), "Algo Cancelled"
-                else:
-                    return client._request_futures_api('delete', 'algoOrder', True, data={'algoId': order_id}), "Algo Cancelled"
-            except Exception as e2:
-                return False, f"Cancel Failed: {str(e2)}"
+            client.futures_cancel_order(symbol=symbol, orderId=order_id)
+            return True, "Binance Order Cancelled"
+        except BinanceAPIException as e:
+            # -2011 is 'Unknown Order' (Order is either filled or lives in the Algo Book)
+            if e.code == -2011:
+                try:
+                    # Cancel via the Algo Endpoint (for TP Market orders)
+                    if hasattr(client, 'futures_cancel_algo_order'):
+                        client.futures_cancel_algo_order(algoId=order_id)
+                    else:
+                        client._request_futures_api('delete', 'algoOrder', True, data={'algoId': order_id})
+                    return True, "Algo/TP Order Cancelled"
+                except Exception as e_algo:
+                    return False, f"Failed: {str(e_algo)}"
+            return False, f"Binance: {e.message}"
+            
     except Exception as e:
+        print(f"Cancel error: {e}")
         return False, str(e)
 
 def run_virtual_tp_sl_guard(user_id=None):
