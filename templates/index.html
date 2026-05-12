@@ -1,5 +1,3 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1987,19 +1985,25 @@
 
     // Close modal when clicking outside
     // ✅ INITIALIZE ON PAGE LOAD
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('✅ Page loaded, initializing dynamic functions');
-            updateLivePositions();
-            updateTradeHistory();
-            updateTP1SLOrders();
-            refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
-        });
-    } else {
+    function initOnLoad() {
+        console.log('✅ Page loaded, initializing dynamic functions');
         updateLivePositions();
         updateTradeHistory();
         updateTP1SLOrders();
         refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
+
+        // ✅ FIX: Rapid burst refreshes after page load so newly executed
+        // orders (TP/SL placed on Binance) appear immediately without waiting
+        // for the 5-second polling interval.
+        [1000, 2500, 5000].forEach(function(delay) {
+            setTimeout(updateTP1SLOrders, delay);
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initOnLoad);
+    } else {
+        initOnLoad();
     }
 
     // ✅ AUTO-REFRESH TIMERS (Background updates while user trades)
@@ -2071,4 +2075,4 @@
         </div>
     </div>
 </body>
-</html>
+    </html>
