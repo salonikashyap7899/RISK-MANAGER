@@ -1083,20 +1083,30 @@ def api_tp1_and_sl_orders():
     """
     Fetch ONLY TP1 and SL conditional orders with position context.
     Query param fresh=1 forces bypass of cache for instant updates.
+    Query param symbol=BTCUSDT filters by symbol.
     """
     from conditional_orders_enhancement import get_tp1_and_sl_orders
     try:
         fresh = request.args.get('fresh', '0') == '1'
+        symbol_filter = request.args.get('symbol', None)
         if fresh:
             logic._conditional_cache.pop(current_user.id, None)
             print(f"[API] Fresh TP/SL fetch for user {current_user.id}")
         
-        result = get_tp1_and_sl_orders(current_user.id)
+        result = get_tp1_and_sl_orders(current_user.id, symbol_filter=symbol_filter)
     except Exception as e:
         print(f"[ERROR] api_tp1_and_sl_orders: {e}")
         result = {"success": False, "error": str(e),
-                  "tp1_orders": [], "sl_orders": []}
+                  "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
     return jsonify(result)
+
+@app.route('/api/open_tp_sl_positions')
+@login_required
+def api_open_tp_sl_positions():
+    from models import TradePosition
+    positions = TradePosition.query.filter_by(user_id=current_user.id, status='open').order_by(TradePosition.created_at.desc()).all()
+    result = [{ 'symbol': p.symbol, 'side': p.side, 'sl_price': p.sl_price, 'current_sl': p.current_sl, 'tp1_price': p.tp1_price, 'tp1_qty_pct': p.tp1_qty_pct, 'tp2_price': p.tp2_price } for p in positions]
+    return jsonify({"success": True, "positions": result})
 
 
 @app.route('/api/debug_conditional_orders')
