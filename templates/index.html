@@ -1,3 +1,5 @@
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -571,12 +573,6 @@
                         <button type="button" onclick="updateTP1SLOrders()" style="background: rgba(255, 170, 0, 0.1); color: #ffaa00; border: 1px solid #ffaa00; padding: 1px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; font-weight: bold;">Refresh</button>
                     </div>
 
-                    <div style="padding: 4px 6px; border-bottom: 1px solid #1a3a45;">
-                        <select id="tpsl_symbol_filter" onchange="updateTP1SLOrders(true)" style="background:#0c141d;color:#e9fbff;border:1px solid #0ca7d4;border-radius:4px;padding:2px 6px;font-size:9px;width:100%;">
-                            <option value="">All Symbols</option>
-                        </select>
-                    </div>
-
                     <div id="conditional_orders_left" class="orders-scroll" style="overflow-y: auto; flex: 1; min-height: 0; font-size: 9px; margin: 0; padding: 0 4px;">
                         <div style="text-align: center; color: #444; padding: 40px 0; font-size: 10px;">No conditional orders</div>
                     </div>
@@ -1064,42 +1060,19 @@
         });
     }
 
-    function updateTP1SLOrders(forceFresh) {
+    function updateTP1SLOrders() {
         const container = document.getElementById('conditional_orders_left');
         const header = document.getElementById('conditional_header_left');
-        const symbolFilter = document.getElementById('tpsl_symbol_filter');
         if (!container) return;
 
-        const selectedSymbol = symbolFilter ? symbolFilter.value : '';
-        let url = forceFresh ? '/api/tp1_and_sl_orders?fresh=1' : '/api/tp1_and_sl_orders';
-        if (selectedSymbol) {
-            url += (url.includes('?') ? '&' : '?') + 'symbol=' + encodeURIComponent(selectedSymbol);
-        }
-
-        fetch(url)
+        fetch('/api/tp1_and_sl_orders')
         .then(r => r.json())
         .then(data => {
-            const tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders : [];
-            const tp2Orders = Array.isArray(data.tp2_orders) ? data.tp2_orders : [];
-            const slOrders  = Array.isArray(data.sl_orders)  ? data.sl_orders  : [];
-            const totalOrders = tp1Orders.length + tp2Orders.length + slOrders.length;
+            const tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders :[];
+            const slOrders  = Array.isArray(data.sl_orders)  ? data.sl_orders  :[];
+            const totalOrders = tp1Orders.length + slOrders.length;
 
             if (header) header.textContent = '🎨 TP1 & SL (' + totalOrders + ')';
-
-            // Populate symbol dropdown with all unique symbols
-            if (symbolFilter) {
-                const allOrders = [...tp1Orders, ...tp2Orders, ...slOrders];
-                const symbols = [...new Set(allOrders.map(o => o.symbol).filter(Boolean))];
-                const currentVal = symbolFilter.value;
-                symbolFilter.innerHTML = '<option value="">All Symbols</option>';
-                symbols.forEach(sym => {
-                    const opt = document.createElement('option');
-                    opt.value = sym;
-                    opt.textContent = sym;
-                    if (sym === currentVal) opt.selected = true;
-                    symbolFilter.appendChild(opt);
-                });
-            }
 
             if (totalOrders === 0) {
                 container.innerHTML = '<div style="text-align:center;color:#444;padding:40px 0;font-size:10px;">No conditional orders</div>';
@@ -1117,7 +1090,7 @@
                 typeStr = typeStr.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
                 let typeLabel = typeStr + ' / ' + (side === 'BUY' ? 'Buy' : 'Sell');
 
-                const isTP = typeRaw.includes('TAKE_PROFIT') || typeRaw.includes('VIRTUAL_TP') || typeRaw.includes('VIRTUAL_LIMIT');
+                const isTP = typeRaw.includes('TAKE_PROFIT');
                 const condSymbol = isTP ? '≥' : '≤';
                 
                 let decimals = trigger < 1 ? 7 : 2;
@@ -1137,7 +1110,7 @@
                 // Row 1 – symbol + Cancel
                 c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">';
                 c +=   '<span style="font-weight:bold;color:#e9fbff;font-size:10px;">' + (o.symbol || '—') + ' <span style="color:#888;font-weight:normal;font-size:8px;">Perp</span></span>';
-                c +=   '<button onclick="cancelOrder('' + o.symbol + '','' + o.orderId + '')" style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
+                c +=   '<button onclick="cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')" style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
                 c += '</div>';
 
                 // Row 2 – type label + date
@@ -1167,9 +1140,7 @@
 
             // TP1 cards
             tp1Orders.forEach(o => { html += buildCard(o, 'TP1'); });
-            // TP2 cards
-            tp2Orders.forEach(o => { html += buildCard(o, 'TP2'); });
-            if ((tp1Orders.length + tp2Orders.length) > 0 && slOrders.length > 0) {
+            if (tp1Orders.length > 0 && slOrders.length > 0) {
                 html += '<div style="border-top:1px dashed #333;margin:4px 0 8px;"></div>';
             }
             // SL cards
@@ -1194,11 +1165,7 @@
         .then(r => r.json())
         .then(data => {
             if (data.success) {
-                // Force fresh fetch to immediately show updated orders
-                updateTP1SLOrders(true);
-                // Also do burst refreshes to ensure sync
-                setTimeout(() => updateTP1SLOrders(true), 500);
-                setTimeout(() => updateTP1SLOrders(true), 1000);
+                updateTP1SLOrders();
             } else {
                 alert(`Error: ${data.message || data.error || 'Unknown error'}`);
             }
@@ -1457,7 +1424,7 @@
             .then(r => r.json())
             .then(data => { alert(data.message || 'Closed'); })
             .then(updateLivePositions)
-            .then(() => setTimeout(() => updateTP1SLOrders(true), 1500));
+            .then(() => setTimeout(updateTP1SLOrders, 1500));
         }
     }
 
@@ -1496,7 +1463,6 @@
             alert(data.message || 'Partial close requested');
             updateLivePositions();
             updateTradeHistory();
-            updateTP1SLOrders(true);
         });
     }
 
@@ -1519,29 +1485,8 @@
         }).then(r => r.json()).then(data => {
             alert(data.message || 'SL updated');
             updateLivePositions();
-            updateTP1SLOrders(true);
         });
     }
-    
-    // Add event listener to form to force refresh TP/SL after submission
-    document.addEventListener('DOMContentLoaded', function() {
-        const tradeForm = document.querySelector('form');
-        if (tradeForm) {
-            tradeForm.addEventListener('submit', function() {
-                // Since this is a standard form submission (reload), 
-                // the redirect in app.py will handle it.
-                // But for good measure, we ensure the next load is fresh.
-                localStorage.setItem('force_fresh_tpsl', '1');
-            });
-        }
-        
-        // If we just came from a trade submission
-        if (localStorage.getItem('force_fresh_tpsl') === '1') {
-            localStorage.removeItem('force_fresh_tpsl');
-            setTimeout(() => updateTP1SLOrders(true), 500);
-            setTimeout(() => updateTP1SLOrders(true), 2000);
-        }
-    });
 
     function updateTradeLimits() {
         fetch('/api/today_stats').then(r => r.json()).then(data => {
@@ -1588,7 +1533,7 @@
         setTimeout(() => {
             const sym = getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}';
             updateLivePositions(sym, true);
-            updateTP1SLOrders(true);
+            updateTP1SLOrders();
             updateTradeHistory(sym);
             updateTradeLimits();
             updateLiveTradeLog();
@@ -2031,7 +1976,7 @@
         updatePositionSizing(activeSymbol);
         updateLivePositions(activeSymbol, forceFresh);
         updateTradeHistory(activeSymbol);
-        updateTP1SLOrders(true);
+        updateTP1SLOrders();
         updateTradeLimits();
     }
 
@@ -2042,25 +1987,19 @@
 
     // Close modal when clicking outside
     // ✅ INITIALIZE ON PAGE LOAD
-    function initOnLoad() {
-        console.log('✅ Page loaded, initializing dynamic functions');
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('✅ Page loaded, initializing dynamic functions');
+            updateLivePositions();
+            updateTradeHistory();
+            updateTP1SLOrders();
+            refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
+        });
+    } else {
         updateLivePositions();
         updateTradeHistory();
-        updateTP1SLOrders(true);
+        updateTP1SLOrders();
         refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
-
-        // ✅ FIX: Rapid burst refreshes after page load so newly executed
-        // orders (TP/SL placed on Binance) appear immediately without waiting
-        // for the 5-second polling interval. Force fresh fetches to bypass cache.
-        [500, 1500, 3000].forEach(function(delay) {
-            setTimeout(function() { updateTP1SLOrders(true); }, delay);
-        });
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initOnLoad);
-    } else {
-        initOnLoad();
     }
 
     // ✅ AUTO-REFRESH TIMERS (Background updates while user trades)
@@ -2132,4 +2071,4 @@
         </div>
     </div>
 </body>
-    </html>
+</html>
