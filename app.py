@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from functools import wraps
 from models import db, User, ExchangeConnection, SubscriptionHistory, TradeDailyStats, TradeLog
-from flask import jsonify, request, session
+from flask import Flask, render_template, redirect, url_for, flash, jsonify, request, session, make_response
 from logic import select_symbol
 import logic
 import config
@@ -604,8 +604,14 @@ def logout():
         db.session.commit()
     logout_user()
     session.clear()
+    
+    # Clear all session cookies
+    response = make_response(redirect(url_for('login')))
+    response.set_cookie('session', '', expires=0)
+    response.set_cookie('remember_token', '', expires=0)
+    
     flash("Logged out successfully.", "info")
-    return redirect(url_for('login'))
+    return response
 
 @app.route('/index', methods=['GET', 'POST'])
 @login_required
@@ -776,12 +782,21 @@ def exchange_connections():
     # Format for UI
     formatted_connections = []
     for conn in connections:
+        # Ensure last_verified is a datetime object or None
+        last_verified_str = "Never"
+        if conn.last_verified:
+            if isinstance(conn.last_verified, datetime):
+                last_verified_str = conn.last_verified.strftime("%Y-%m-%d %H:%M")
+            else:
+                # If it's already a string, just use it
+                last_verified_str = str(conn.last_verified)
+
         formatted_connections.append({
             'id': conn.id,
             'exchange_type': conn.exchange_type,
             'connection_name': conn.connection_name or f"{conn.exchange_type.capitalize()} Connection",
             'is_connected': conn.is_connected,
-            'last_verified': conn.last_verified.strftime("%Y-%m-%d %H:%M") if conn.last_verified else "Never"
+            'last_verified': last_verified_str
         })
     
     # Supported exchanges list
