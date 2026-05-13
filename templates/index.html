@@ -1457,7 +1457,7 @@
             .then(r => r.json())
             .then(data => { alert(data.message || 'Closed'); })
             .then(updateLivePositions)
-            .then(() => setTimeout(updateTP1SLOrders, 1500));
+            .then(() => setTimeout(() => updateTP1SLOrders(true), 1500));
         }
     }
 
@@ -1496,6 +1496,7 @@
             alert(data.message || 'Partial close requested');
             updateLivePositions();
             updateTradeHistory();
+            updateTP1SLOrders(true);
         });
     }
 
@@ -1518,8 +1519,29 @@
         }).then(r => r.json()).then(data => {
             alert(data.message || 'SL updated');
             updateLivePositions();
+            updateTP1SLOrders(true);
         });
     }
+    
+    // Add event listener to form to force refresh TP/SL after submission
+    document.addEventListener('DOMContentLoaded', function() {
+        const tradeForm = document.querySelector('form');
+        if (tradeForm) {
+            tradeForm.addEventListener('submit', function() {
+                // Since this is a standard form submission (reload), 
+                // the redirect in app.py will handle it.
+                // But for good measure, we ensure the next load is fresh.
+                localStorage.setItem('force_fresh_tpsl', '1');
+            });
+        }
+        
+        // If we just came from a trade submission
+        if (localStorage.getItem('force_fresh_tpsl') === '1') {
+            localStorage.removeItem('force_fresh_tpsl');
+            setTimeout(() => updateTP1SLOrders(true), 500);
+            setTimeout(() => updateTP1SLOrders(true), 2000);
+        }
+    });
 
     function updateTradeLimits() {
         fetch('/api/today_stats').then(r => r.json()).then(data => {
@@ -1566,7 +1588,7 @@
         setTimeout(() => {
             const sym = getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}';
             updateLivePositions(sym, true);
-            updateTP1SLOrders();
+            updateTP1SLOrders(true);
             updateTradeHistory(sym);
             updateTradeLimits();
             updateLiveTradeLog();
@@ -2009,7 +2031,7 @@
         updatePositionSizing(activeSymbol);
         updateLivePositions(activeSymbol, forceFresh);
         updateTradeHistory(activeSymbol);
-        updateTP1SLOrders();
+        updateTP1SLOrders(true);
         updateTradeLimits();
     }
 
@@ -2024,7 +2046,7 @@
         console.log('✅ Page loaded, initializing dynamic functions');
         updateLivePositions();
         updateTradeHistory();
-        updateTP1SLOrders();
+        updateTP1SLOrders(true);
         refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
 
         // ✅ FIX: Rapid burst refreshes after page load so newly executed

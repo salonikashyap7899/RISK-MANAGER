@@ -733,6 +733,11 @@ def index():
         # Also invalidate the conditional orders enhancement cache
         from conditional_orders_enhancement import invalidate_conditional_cache
         invalidate_conditional_cache(current_user.id)
+        
+        # Double-check: also clear the cache for the result of logic.execute_trade_action()
+        if result.get("success"):
+            logic._conditional_cache.pop(current_user.id, None)
+
         return redirect(url_for("index", symbol=selected_symbol))
 
     return render_template(
