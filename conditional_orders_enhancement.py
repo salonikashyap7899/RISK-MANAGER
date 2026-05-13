@@ -27,8 +27,23 @@ def get_tp1_and_sl_orders(user_id):
         except Exception as e:
             print(f"Error fetching algo orders: {e}")
 
-        # Combine all real Binance orders to ensure nothing is missed
-        combined_orders = all_orders + algo_orders
+        # 3. DEDUPLICATE ORDERS (Fix for the double-counting bug)
+        unique_orders_map = {}
+        for o in all_orders:
+            oid = o.get('orderId')
+            if oid:
+                unique_orders_map[str(oid)] = o
+
+        for o in algo_orders:
+            # Algo orders sometimes use 'algoId' if 'orderId' is 0 or missing
+            oid = o.get('orderId')
+            if not oid or oid == 0:
+                oid = o.get('algoId')
+            if oid:
+                unique_orders_map[str(oid)] = o
+        
+        # Convert the unique dictionary back to a list
+        combined_orders = list(unique_orders_map.values())
 
         tp1_orders = []
         tp2_orders = []
@@ -55,19 +70,22 @@ def get_tp1_and_sl_orders(user_id):
             has_real_tp = False
             has_real_sl = False
 
-            # 3. Process REAL Binance Orders First
+            # 4. Process REAL Binance Orders
             for o in pos_real_orders:
                 o_type = o.get('type', '')
                 o_side = o.get('side', '')
                 
                 # Match orders that are intended to close the position
                 if o_side == side_close:
-                    # Binance conditional orders use 'stopPrice', limit orders use 'price'
                     trigger_price = float(o.get('stopPrice', 0) or o.get('price', 0))
                     qty = float(o.get('origQty', 0))
                     
+                    order_id = o.get('orderId')
+                    if not order_id or order_id == 0:
+                        order_id = o.get('algoId')
+
                     formatted_order = {
-                        'orderId': o.get('orderId', o.get('algoId')), # handle both standard and algo IDs
+                        'orderId': order_id,
                         'symbol': sym,
                         'side': o_side,
                         'type': o_type,
@@ -78,7 +96,7 @@ def get_tp1_and_sl_orders(user_id):
                     }
 
                     # Classify the real order
-                    if o_type in ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT']:
+                    if o_type in ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'LIMIT']:
                         formatted_order['label'] = 'TP'
                         tp1_orders.append(formatted_order)
                         has_real_tp = True
@@ -87,7 +105,7 @@ def get_tp1_and_sl_orders(user_id):
                         sl_orders.append(formatted_order)
                         has_real_sl = True
 
-            # 4. Fallback to Virtual DB Orders ONLY if Real Orders are missing
+            # 5. Fallback to Virtual DB Orders ONLY if Real Orders are missing
             if not has_real_tp and pos.tp1_price and pos.tp1_price > 0:
                 tp1_qty = float(pos.initial_qty) * (float(pos.tp1_qty_pct) / 100.0) if pos.tp1_qty_pct else float(pos.initial_qty)
                 tp1_orders.append({
@@ -114,6 +132,23 @@ def get_tp1_and_sl_orders(user_id):
                     'time': pos.updated_at.strftime('%Y-%m-%d %H:%M:%S') if pos.updated_at else 'N/A',
                     'source': 'virtual'
                 })
+                
+            # Virtual TP2 logic (Restored from your original file)
+            if pos.tp2_price and pos.tp2_price > 0 and not any(o['symbol'] == sym for o in tp2_orders):
+                tp1_qty = float(pos.initial_qty) * (float(pos.tp1_qty_pct) / 100.0) if pos.tp1_qty_pct else 0
+                tp2_qty = float(pos.initial_qty) - tp1_qty
+                if tp2_qty > 0:
+                    tp2_orders.append({
+                        'orderId': f"virtual_tp2_{pos.id}",
+                        'symbol': sym,
+                        'side': side_close,
+                        'type': 'VIRTUAL_LIMIT',
+                        'label': 'TP2',
+                        'triggerPrice': float(pos.tp2_price),
+                        'qty': tp2_qty,
+                        'time': pos.updated_at.strftime('%Y-%m-%d %H:%M:%S') if pos.updated_at else 'N/A',
+                        'source': 'virtual'
+                    })
 
         return {
             "success": True,
