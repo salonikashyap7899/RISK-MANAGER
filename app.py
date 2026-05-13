@@ -1099,6 +1099,22 @@ def api_debug_conditional_orders():
     raw = logic.get_all_open_conditional_orders(current_user.id)
     return jsonify({"count": len(raw), "orders": raw})
 
+@app.route('/api/cache_status', methods=['GET'])
+@login_required
+def api_cache_status():
+    """Lightweight endpoint so the frontend status pill can show IP ban state and cache freshness."""
+    import time
+    now_ms = int(time.time() * 1000)
+    banned = now_ms < logic._api_ban_until_ms
+    return jsonify({
+        "ip_banned": banned,
+        "ban_until_ms": logic._api_ban_until_ms if banned else 0,
+        "price_cache_ttl_s": 5,
+        "balance_cache_ttl_s": 30,
+        "conditional_cache_ttl_s": 30,
+    })
+
+
 @app.route('/api/cancel_conditional_order', methods=['POST'])
 @login_required
 def api_cancel_conditional_order():
