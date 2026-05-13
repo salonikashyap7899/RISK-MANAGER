@@ -1071,15 +1071,15 @@ def api_conditional_orders():
     basic = [o for o in orders if o.get('type', '').upper() not in CONDITIONAL_TYPES and o.get('source') != 'algo']
     return jsonify({"conditional_orders": conditional, "basic_orders": basic, "success": True})
 
-from conditional_orders_enhancement import get_tp1_and_sl_orders # Ensure this is imported
-
-@app.route('/api/get_conditional_orders')
+@app.route('/api/tp1_and_sl_orders')
 @login_required
-def api_get_conditional_orders():
+def api_tp1_and_sl_orders():
+    """
+    Fetch ONLY TP1 and SL conditional orders with position context.
+    """
+    from conditional_orders_enhancement import get_tp1_and_sl_orders
     try:
-        # IMPORTANT: Make sure it calls get_tp1_and_sl_orders
-        # This function handles the fingerprinting we just set up
-        result = get_tp1_and_sl_orders(current_user.id)
+       result = get_tp1_and_sl_orders(current_user.id)
     except Exception as e:
         result = {"success": False, "error": str(e), "tp1_orders": [], "sl_orders": []}
     return jsonify(result)
