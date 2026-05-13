@@ -16,6 +16,7 @@ import io
 import uuid
 import razorpay
 import time
+import re
 
 # Load environment variables
 load_dotenv()
@@ -64,6 +65,42 @@ google = oauth.register(
 
 razorpay_client = razorpay.Client(auth=(config.RAZORPAY_KEY_ID, config.RAZORPAY_KEY_SECRET))
 
+DISPOSABLE_DOMAINS = {
+    'mailinator.com', 'tempmail.com', 'throwaway.email', 'guerrillamail.com',
+    'yopmail.com', 'trashmail.com', 'sharklasers.com', 'maildrop.cc',
+    'fakeinbox.com', 'tempinbox.com', 'trashmail.me', 'trashmail.net',
+    'temp-mail.org', 'mohmal.com', 'discard.email', 'spamgourmet.com',
+    'mailexp.com', 'throwam.com', 'spam4.me', 'dispostable.com',
+    'mailnull.com', 'getairmail.com', 'filzmail.com', 'trbvm.com',
+    'grr.la', 'guerrillamail.info', 'guerrillamail.biz', 'guerrillamail.de',
+    'guerrillamail.net', 'guerrillamail.org', 'cuvox.de', 'dayrep.com',
+    'einrot.com', 'fleckens.hu', 'superrito.com', 'teleworm.us',
+    'rhyta.com', 'armyspy.com', 'guam.net', 'inoutmail.eu',
+    'spamgourmet.net', 'spamgourmet.org', 'spamgourmet.com', 'mailnesia.com',
+}
+
+def validate_email_address(email):
+    pattern = r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$'
+    if not re.match(pattern, email):
+        return False, 'Please enter a valid email address.'
+    domain = email.split('@')[1].lower()
+    if domain in DISPOSABLE_DOMAINS:
+        return False, 'Disposable or temporary email addresses are not allowed.'
+    return True, ''
+
+def validate_password_strength(password):
+    if len(password) < 8:
+        return False, 'Password must be at least 8 characters long.'
+    if not re.search(r'[A-Z]', password):
+        return False, 'Password must contain at least one uppercase letter (A-Z).'
+    if not re.search(r'[a-z]', password):
+        return False, 'Password must contain at least one lowercase letter (a-z).'
+    if not re.search(r'[0-9]', password):
+        return False, 'Password must contain at least one number (0-9).'
+    if not re.search(r'[!@#$%^&*()\-_=+\[\]{}|;:,.<>?/]', password):
+        return False, 'Password must contain at least one special character (!@#$%^&* etc).'
+    return True, ''
+
 def get_month_end(dt=None):
     if not dt:
         dt = datetime.utcnow()
@@ -98,20 +135,19 @@ def subscription_required(f):
             flash("Please subscribe to access the trading dashboard.", "warning")
             return redirect(url_for('subscribe'))
         
-        # Check if subscription has expired - only if subscription_end is set
-        if current_user.subscription_end:
-            if now > current_user.subscription_end:
-                # Subscription has expired
-                current_user.is_subscribed = False
-                current_user.subscription_status = 'expired'
-                db.session.commit()
-                flash("Your subscription has expired. Please renew to access the dashboard.", "warning")
-                return redirect(url_for('subscribe'))
-        else:
-            # If subscription_end is not set but is_subscribed is True, 
-            # treat as active for monthly subscribers
-            pass
-            
+        # Always require subscription_end to be set for regular users
+        if not current_user.subscription_end:
+            flash("Your subscription details are incomplete. Please subscribe to access the dashboard.", "warning")
+            return redirect(url_for('subscribe'))
+
+        # Block access the moment subscription_end has passed
+        if now >= current_user.subscription_end:
+            current_user.is_subscribed = False
+            current_user.subscription_status = 'expired'
+            db.session.commit()
+            flash("Your subscription has expired. Please renew to continue accessing the dashboard.", "warning")
+            return redirect(url_for('subscribe'))
+
         return f(*args, **kwargs)
     return decorated_function
 
@@ -141,57 +177,53 @@ def privacy():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    if request.method == 'POST':
-        email = (request.form.get('email') or '').strip().lower()
-        username = (request.form.get('username') or '').strip()
-        password = request.form.get('password') or ''
-        confirm_password = request.form.get('confirm_password') or ''
+    if request.method == 'GET':
+        return redirect(url_for('home'))
 
-        # Check if passwords match
-        if password != confirm_password:
-            msg = 'Passwords do not match.'
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({'success': False, 'message': msg}), 400
-            flash(msg, 'error')
-            return render_template('register.html'), 400
+    email = (request.form.get('email') or '').strip().lower()
+    username = (request.form.get('username') or '').strip()
+    password = request.form.get('password') or ''
+    confirm_password = request.form.get('confirm_password') or ''
 
-        if User.query.filter_by(email=email).first():
-            msg = 'Email already registered. Please log in or use another email.'
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({'success': False, 'message': msg}), 400
-            flash(msg, 'error')
-            return render_template('register.html'), 400
+    def ajax_error(msg, code=400):
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'message': msg}), code
+        flash(msg, 'error')
+        return redirect(url_for('home'))
 
-        if User.query.filter_by(username=username).first():
-            msg = 'Username already taken. Choose a different username.'
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({'success': False, 'message': msg}), 400
-            flash(msg, 'error')
-            return render_template('register.html'), 400
+    # Validate email format and block disposable domains
+    email_ok, email_err = validate_email_address(email)
+    if not email_ok:
+        return ajax_error(email_err)
 
-        hashed_pw = generate_password_hash(password)
-        new_user = User(
-            username=username,
-            email=email,
-            password=hashed_pw
-        )
-        try:
-            db.session.add(new_user)
-            db.session.commit()
-            msg = 'Registration successful. Please log in.'
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({'success': True, 'message': msg}), 200
-            flash(msg, 'success')
-            return redirect(url_for('login'))
-        except Exception as e:
-            db.session.rollback()
-            msg = 'An error occurred during registration. Please try again.'
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({'success': False, 'message': msg}), 500
-            flash(msg, 'error')
-            return render_template('register.html'), 500
+    # Enforce strong password
+    pw_ok, pw_err = validate_password_strength(password)
+    if not pw_ok:
+        return ajax_error(pw_err)
 
-    return render_template('register.html')
+    # Check passwords match
+    if password != confirm_password:
+        return ajax_error('Passwords do not match.')
+
+    if User.query.filter_by(email=email).first():
+        return ajax_error('Email already registered. Please log in or use another email.')
+
+    if User.query.filter_by(username=username).first():
+        return ajax_error('Username already taken. Choose a different username.')
+
+    hashed_pw = generate_password_hash(password)
+    new_user = User(username=username, email=email, password=hashed_pw)
+    try:
+        db.session.add(new_user)
+        db.session.commit()
+        msg = 'Registration successful! Please log in.'
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': True, 'message': msg}), 200
+        flash(msg, 'success')
+        return redirect(url_for('home'))
+    except Exception:
+        db.session.rollback()
+        return ajax_error('An error occurred during registration. Please try again.', 500)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -236,7 +268,7 @@ def login():
             return jsonify({'success': True, 'redirect': url_for('index')}), 200
         return redirect(url_for('index'))
 
-    return render_template('login.html')
+    return redirect(url_for('home'))
 
 @app.route('/login/google')
 @app.route('/google-login')
