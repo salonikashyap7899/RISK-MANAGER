@@ -119,10 +119,31 @@ def _classify_raw_orders(raw_orders, pos_map, seen_ids, tp1_orders, tp2_orders, 
         trigger = float(o.get('stopPrice') or o.get('triggerPrice') or o.get('price') or 0)
         qty     = float(o.get('origQty') or o.get('qty') or 0)
         ts_raw  = o.get('time') or o.get('bookTime') or o.get('updateTime') or 0
-        time_str = (datetime.fromtimestamp(int(ts_raw) / 1000).strftime('%Y-%m-%d %H:%M:%S')
-                    if ts_raw else 'N/A')
+        
+        # Handle both millisecond timestamps and pre-formatted strings from logic.py
+        if isinstance(ts_raw, str):
+            time_str = ts_raw
+        else:
+            time_str = (datetime.fromtimestamp(int(ts_raw) / 1000).strftime('%Y-%m-%d %H:%M:%S')
+                        if ts_raw else 'N/A')
 
         db_pos = pos_map.get(symbol)
+        
+        # Safely extract position data with type checking
+        position_entry = None
+        position_sl = None
+        position_tp1 = None
+        position_status = 'unknown'
+        
+        if db_pos:
+            try:
+                position_entry = float(db_pos.entry_price) if db_pos.entry_price else None
+                position_sl = float(db_pos.sl_price) if db_pos.sl_price else None
+                position_tp1 = float(db_pos.tp1_price) if db_pos.tp1_price else None
+                position_status = db_pos.status
+            except (TypeError, ValueError) as e:
+                print(f"[WARNING] Error converting position data for {symbol}: {e}")
+        
         context = {
             'orderId':         oid,
             'symbol':          symbol,
@@ -132,10 +153,10 @@ def _classify_raw_orders(raw_orders, pos_map, seen_ids, tp1_orders, tp2_orders, 
             'qty':             qty,
             'time':            time_str,
             'source':          o.get('source', 'regular'),
-            'position_entry':  float(db_pos.entry_price) if db_pos and db_pos.entry_price else None,
-            'position_sl':     float(db_pos.sl_price)    if db_pos and db_pos.sl_price    else None,
-            'position_tp1':    float(db_pos.tp1_price)   if db_pos and db_pos.tp1_price   else None,
-            'position_status': db_pos.status if db_pos else 'unknown',
+            'position_entry':  position_entry,
+            'position_sl':     position_sl,
+            'position_tp1':    position_tp1,
+            'position_status': position_status,
         }
 
         if 'TAKE_PROFIT' in o_type and 'LIMIT' not in o_type:

@@ -730,6 +730,9 @@ def index():
         # FIX: Clear conditional-order cache so the next TP1/SL poll immediately
         # fetches the freshly-placed orders from Binance instead of stale data.
         logic._conditional_cache.pop(current_user.id, None)
+        # Also invalidate the conditional orders enhancement cache
+        from conditional_orders_enhancement import invalidate_conditional_cache
+        invalidate_conditional_cache(current_user.id)
         return redirect(url_for("index", symbol=selected_symbol))
 
     return render_template(
@@ -1079,11 +1082,18 @@ def api_conditional_orders():
 def api_tp1_and_sl_orders():
     """
     Fetch ONLY TP1 and SL conditional orders with position context.
+    Query param fresh=1 forces bypass of cache for instant updates.
     """
     from conditional_orders_enhancement import get_tp1_and_sl_orders
     try:
+        fresh = request.args.get('fresh', '0') == '1'
+        if fresh:
+            logic._conditional_cache.pop(current_user.id, None)
+            print(f"[API] Fresh TP/SL fetch for user {current_user.id}")
+        
         result = get_tp1_and_sl_orders(current_user.id)
     except Exception as e:
+        print(f"[ERROR] api_tp1_and_sl_orders: {e}")
         result = {"success": False, "error": str(e),
                   "tp1_orders": [], "sl_orders": []}
     return jsonify(result)

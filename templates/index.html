@@ -1058,12 +1058,13 @@
         });
     }
 
-    function updateTP1SLOrders() {
+    function updateTP1SLOrders(forceFresh) {
         const container = document.getElementById('conditional_orders_left');
         const header = document.getElementById('conditional_header_left');
         if (!container) return;
 
-        fetch('/api/tp1_and_sl_orders')
+        const url = forceFresh ? '/api/tp1_and_sl_orders?fresh=1' : '/api/tp1_and_sl_orders';
+        fetch(url)
         .then(r => r.json())
         .then(data => {
             const tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders :[];
@@ -1163,7 +1164,11 @@
         .then(r => r.json())
         .then(data => {
             if (data.success) {
-                updateTP1SLOrders();
+                // Force fresh fetch to immediately show updated orders
+                updateTP1SLOrders(true);
+                // Also do burst refreshes to ensure sync
+                setTimeout(() => updateTP1SLOrders(true), 500);
+                setTimeout(() => updateTP1SLOrders(true), 1000);
             } else {
                 alert(`Error: ${data.message || data.error || 'Unknown error'}`);
             }
@@ -1994,9 +1999,9 @@
 
         // ✅ FIX: Rapid burst refreshes after page load so newly executed
         // orders (TP/SL placed on Binance) appear immediately without waiting
-        // for the 5-second polling interval.
-        [1000, 2500, 5000].forEach(function(delay) {
-            setTimeout(updateTP1SLOrders, delay);
+        // for the 5-second polling interval. Force fresh fetches to bypass cache.
+        [500, 1500, 3000].forEach(function(delay) {
+            setTimeout(function() { updateTP1SLOrders(true); }, delay);
         });
     }
 
