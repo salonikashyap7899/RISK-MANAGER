@@ -8,12 +8,14 @@ def get_tp1_and_sl_orders(user_id):
         if not client:
             return {"success": False, "error": "No client", "tp1_orders": [], "tp2_orders": [], "sl_orders":[]}
         
-        # 1. Fetch orders from Binance
+        # 1. Fetch regular open orders from Binance
         all_orders = []
         try:
             all_orders = client.futures_get_open_orders(recvWindow=10000)
-        except Exception: pass
+        except Exception as e:
+            print(f"Error fetching open orders: {e}")
             
+        # 2. Fetch conditional algo orders from Binance
         algo_orders = []
         try:
             if hasattr(client, 'futures_get_algo_orders'):
@@ -22,72 +24,9 @@ def get_tp1_and_sl_orders(user_id):
             elif hasattr(client, '_request_futures_api'):
                 algo_resp = client._request_futures_api('get', 'algoOrder/openOrders', True, data={'recvWindow': 10000})
                 algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders',[])
-        except Exception: pass
+        except Exception as e:
+            print(f"Error fetching algo orders: {e}")
 
-        # 2. Smart Deduplication
-        unique_orders = {}
-        for o in (all_orders + algo_orders):
-            # Key = Symbol + Side + Type + TriggerPrice (rounded to 4 decimal places)
-            price = round(float(o.get('stopPrice', 0) or o.get('price', 0)), 4)
-            key = f"{o.get('symbol')}_{o.get('side')}_{o.get('type')}_{price}"
-            if key not in unique_orders:
-                unique_orders[key] = o
-
-        # 3. Get DB context
-        active_positions = TradePosition.query.filter_by(user_id=user_id, status='open').all()
-        
-        tp1_orders, tp2_orders, sl_orders = [], [], []
-
-        for pos in active_positions:
-            sym = pos.symbol
-            side_close = 'BUY' if pos.side.upper() == 'SELL' else 'SELL'
-            
-            # Find any real orders for this symbol
-            matched_real_tp = False
-            matched_real_sl = False
-
-            for key, o in unique_orders.items():
-                if o.get('symbol') == sym and o.get('side') == side_close:
-                    o_type = o.get('type', '')
-                    price = float(o.get('stopPrice', 0) or o.get('price', 0))
-                    
-                    formatted = {
-                        'orderId': o.get('orderId') or o.get('algoId'),
-                        'symbol': sym,
-                        'side': side_close,
-                        'type': o_type,
-                        'triggerPrice': price,
-                        'qty': float(o.get('origQty', 0)),
-                        'time': 'Live',
-                        'source': 'binance_real',
-                        'label': 'TP' if 'TAKE_PROFIT' in o_type or o_type == 'LIMIT' else 'SL'
-                    }
-
-                    if formatted['label'] == 'TP':
-                        tp1_orders.append(formatted)
-                        matched_real_tp = True
-                    else:
-                        sl_orders.append(formatted)
-                        matched_real_sl = True
-
-            # 4. Fallback to Virtual ONLY if no real order exists for that category
-            if not matched_real_tp and pos.tp1_price:
-                tp1_orders.append({
-                    'orderId': f"vtp1_{pos.id}", 'symbol': sym, 'side': side_close,
-                    'type': 'VIRTUAL', 'label': 'TP1', 'triggerPrice': pos.tp1_price,
-                    'qty': pos.initial_qty, 'source': 'virtual'
-                })
-            
-            if not matched_real_sl and pos.sl_price:
-                sl_orders.append({
-                    'orderId': f"vsl_{pos.id}", 'symbol': sym, 'side': side_close,
-                    'type': 'VIRTUAL', 'label': 'SL', 'triggerPrice': pos.sl_price,
-                    'qty': pos.initial_qty, 'source': 'virtual'
-                })
-
-        return {"success": True, "tp1_orders": tp1_orders, "tp2_orders": tp2_orders, "sl_orders": sl_orders}
-    except Exception as e:
-        return {"success": False, "error": str(e), "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
         # 3. BULLETPROOF DEDUPLICATION (Order Fingerprinting)
         # Identifies duplicates by actual order parameters rather than relying on Binance's inconsistent IDs
         unique_orders_map = {}
