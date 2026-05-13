@@ -29,7 +29,7 @@ _virtual_guard_last_run = {}
 # Prevents the duplicate UI pollers from hammering Binance and triggering -1003 IP bans.
 _conditional_cache = {}          # {user_id: (ts_ms, [orders])}
 _conditional_ban_until = 0       # ms epoch; while now < this, skip the call
-CONDITIONAL_CACHE_MS = 2500
+CONDITIONAL_CACHE_MS = 8000  # 8 seconds max cache
 
 # Known leverage limits for common coins (updated based on Binance data)
 # These serve as fallback when API fails
@@ -1765,7 +1765,7 @@ def get_user_trade_positions_with_tp_sl(user_id=None):
         positions = TradePosition.query.filter_by(user_id=user_id).order_by(
             TradePosition.status.desc(),  # Open first
             TradePosition.updated_at.desc()  # Most recent
-        ).limit(100).all()
+        ).limit(500).all()
         
         formatted_positions = []
         for pos in positions:
