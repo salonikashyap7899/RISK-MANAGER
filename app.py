@@ -727,17 +727,6 @@ def index():
         logic._positions_cache_time.pop(f"positions_{current_user.id}", None)
         logic._trade_history_cache.pop(f"trade_history_{current_user.id}", None)
         logic._trade_history_cache_time.pop(f"trade_history_{current_user.id}", None)
-        # FIX: Clear conditional-order cache so the next TP1/SL poll immediately
-        # fetches the freshly-placed orders from Binance instead of stale data.
-        logic._conditional_cache.pop(current_user.id, None)
-        # Also invalidate the conditional orders enhancement cache
-        from conditional_orders_enhancement import invalidate_conditional_cache
-        invalidate_conditional_cache(current_user.id)
-        
-        # Double-check: also clear the cache for the result of logic.execute_trade_action()
-        if result.get("success"):
-            logic._conditional_cache.pop(current_user.id, None)
-
         return redirect(url_for("index", symbol=selected_symbol))
 
     return render_template(
@@ -1087,31 +1076,14 @@ def api_conditional_orders():
 def api_tp1_and_sl_orders():
     """
     Fetch ONLY TP1 and SL conditional orders with position context.
-    Query param fresh=1 forces bypass of cache for instant updates.
-    Query param symbol=BTCUSDT filters by symbol.
     """
     from conditional_orders_enhancement import get_tp1_and_sl_orders
     try:
-        fresh = request.args.get('fresh', '0') == '1'
-        symbol_filter = request.args.get('symbol', None)
-        if fresh:
-            logic._conditional_cache.pop(current_user.id, None)
-            print(f"[API] Fresh TP/SL fetch for user {current_user.id}")
-        
-        result = get_tp1_and_sl_orders(current_user.id, symbol_filter=symbol_filter)
+        result = get_tp1_and_sl_orders(current_user.id)
     except Exception as e:
-        print(f"[ERROR] api_tp1_and_sl_orders: {e}")
         result = {"success": False, "error": str(e),
-                  "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
+                  "tp1_orders": [], "sl_orders": []}
     return jsonify(result)
-
-@app.route('/api/open_tp_sl_positions')
-@login_required
-def api_open_tp_sl_positions():
-    from models import TradePosition
-    positions = TradePosition.query.filter_by(user_id=current_user.id, status='open').order_by(TradePosition.created_at.desc()).all()
-    result = [{ 'symbol': p.symbol, 'side': p.side, 'sl_price': p.sl_price, 'current_sl': p.current_sl, 'tp1_price': p.tp1_price, 'tp1_qty_pct': p.tp1_qty_pct, 'tp2_price': p.tp2_price } for p in positions]
-    return jsonify({"success": True, "positions": result})
 
 
 @app.route('/api/debug_conditional_orders')
@@ -1134,21 +1106,9 @@ def api_cancel_conditional_order():
     symbol = data.get('symbol')
     if not order_id or not symbol:
         return jsonify({"success": False, "message": "Missing order_id or symbol"}), 400
-
-    # FIX: Virtual orders exist only in the DB — never send them to Binance.
-    # Sending a "virtual_sl_xxx" string as orderId causes Binance -1102 error.
-    if str(order_id).startswith('virtual_'):
-        return jsonify({
-            "success": False,
-            "message": "This order is a virtual guard (too small for Binance). Cancel via position management instead."
-        })
-
     try:
         # Use logic.cancel_order which handles both regular and algo orders
         success, message = logic.cancel_order(symbol, order_id, current_user.id)
-        # Clear cache so the panel refreshes immediately after a real cancel
-        if success:
-            logic._conditional_cache.pop(current_user.id, None)
         return jsonify({"success": success, "message": message})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
