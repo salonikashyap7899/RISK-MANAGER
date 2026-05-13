@@ -29,7 +29,7 @@ _virtual_guard_last_run = {}
 # Prevents the duplicate UI pollers from hammering Binance and triggering -1003 IP bans.
 _conditional_cache = {}          # {user_id: (ts_ms, [orders])}
 _conditional_ban_until = 0       # ms epoch; while now < this, skip the call
-CONDITIONAL_CACHE_MS = 4000  # 4 seconds max cache
+CONDITIONAL_CACHE_MS = 2500
 
 # Known leverage limits for common coins (updated based on Binance data)
 # These serve as fallback when API fails
@@ -1376,8 +1376,6 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         db.session.add(pos)
         update_trade_stats(symbol, user_id)
         db.session.commit()
-        # Clear conditional cache so dashboard instantly reflects new TP/SL orders
-        _conditional_cache.pop(user_id, None)
         # Build human-readable status message
         status_lines = [f"Main: ✅ ({main_order_id})"]
         status_lines.append(f"SL: {'✅' if sl_created else '❌'}")
@@ -1767,7 +1765,7 @@ def get_user_trade_positions_with_tp_sl(user_id=None):
         positions = TradePosition.query.filter_by(user_id=user_id).order_by(
             TradePosition.status.desc(),  # Open first
             TradePosition.updated_at.desc()  # Most recent
-        ).limit(500).all()
+        ).limit(100).all()
         
         formatted_positions = []
         for pos in positions:
