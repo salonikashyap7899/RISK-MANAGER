@@ -27,86 +27,90 @@ def get_tp1_and_sl_orders(user_id):
         except Exception as e:
             print(f"Error fetching algo orders: {e}")
 
-        # 3. DEDUPLICATE ORDERS (Fix for the double-counting bug)
+        # 3. BULLETPROOF DEDUPLICATION (Order Fingerprinting)
+        # Identifies duplicates by actual order parameters rather than relying on Binance's inconsistent IDs
         unique_orders_map = {}
-        for o in all_orders:
-            oid = o.get('orderId')
-            if oid:
-                unique_orders_map[str(oid)] = o
-
-        for o in algo_orders:
-            # Algo orders sometimes use 'algoId' if 'orderId' is 0 or missing
-            oid = o.get('orderId')
-            if not oid or oid == 0:
-                oid = o.get('algoId')
-            if oid:
-                unique_orders_map[str(oid)] = o
+        raw_combined = all_orders + algo_orders
         
-        # Convert the unique dictionary back to a list
+        for o in raw_combined:
+            sym = o.get('symbol')
+            side = o.get('side')
+            o_type = o.get('type')
+            price = float(o.get('stopPrice', 0) or o.get('price', 0))
+            qty = float(o.get('origQty', 0))
+            
+            # Create a unique fingerprint: Symbol + Side + Type + Price + Quantity
+            fingerprint = f"{sym}_{side}_{o_type}_{price}_{qty}"
+            
+            # Prefer the version that has a valid orderId if both exist
+            if fingerprint not in unique_orders_map:
+                unique_orders_map[fingerprint] = o
+            else:
+                existing_oid = unique_orders_map[fingerprint].get('orderId', 0)
+                new_oid = o.get('orderId', 0)
+                if new_oid and new_oid != 0 and (not existing_oid or existing_oid == 0):
+                    unique_orders_map[fingerprint] = o
+
         combined_orders = list(unique_orders_map.values())
+
+        # 4. GET DB POSITIONS ONCE (Prevents UI duplication if you have multiple DB rows for one coin)
+        active_positions = TradePosition.query.filter_by(user_id=user_id, status='open').all()
+        positions_map = {}
+        for pos in active_positions:
+            if pos.symbol not in positions_map:
+                positions_map[pos.symbol] = {
+                    'side_close': 'BUY' if pos.side.upper() == 'SELL' else 'SELL',
+                    'pos': pos
+                }
 
         tp1_orders = []
         tp2_orders = []
         sl_orders = []
+        
+        real_tp_symbols = set()
+        real_sl_symbols = set()
 
-        # Group real orders by symbol for easy matching
-        real_orders_by_symbol = {}
-        for order in combined_orders:
-            sym = order.get('symbol')
-            if sym not in real_orders_by_symbol:
-                real_orders_by_symbol[sym] = []
-            real_orders_by_symbol[sym].append(order)
+        # 5. PROCESS REAL ORDERS EXACTLY ONCE
+        for o in combined_orders:
+            sym = o.get('symbol')
+            o_side = o.get('side')
+            o_type = o.get('type', '')
 
-        # Get ONLY OPEN DB positions to provide context and virtual fallbacks
-        active_positions = TradePosition.query.filter_by(user_id=user_id, status='open').all()
-
-        for pos in active_positions:
-            sym = pos.symbol
-            # The order side needed to close this position
-            side_close = 'BUY' if pos.side.upper() == 'SELL' else 'SELL'
-            
-            pos_real_orders = real_orders_by_symbol.get(sym, [])
-            
-            has_real_tp = False
-            has_real_sl = False
-
-            # 4. Process REAL Binance Orders
-            for o in pos_real_orders:
-                o_type = o.get('type', '')
-                o_side = o.get('side', '')
+            # Only process if this order matches the closing direction of an active DB position
+            if sym in positions_map and o_side == positions_map[sym]['side_close']:
+                trigger_price = float(o.get('stopPrice', 0) or o.get('price', 0))
+                qty = float(o.get('origQty', 0))
                 
-                # Match orders that are intended to close the position
-                if o_side == side_close:
-                    trigger_price = float(o.get('stopPrice', 0) or o.get('price', 0))
-                    qty = float(o.get('origQty', 0))
-                    
-                    order_id = o.get('orderId')
-                    if not order_id or order_id == 0:
-                        order_id = o.get('algoId')
+                order_id = o.get('orderId')
+                if not order_id or order_id == 0:
+                    order_id = o.get('algoId')
 
-                    formatted_order = {
-                        'orderId': order_id,
-                        'symbol': sym,
-                        'side': o_side,
-                        'type': o_type,
-                        'triggerPrice': trigger_price,
-                        'qty': qty,
-                        'time': datetime.fromtimestamp(o.get('time', o.get('updateTime', 0)) / 1000.0).strftime('%Y-%m-%d %H:%M:%S') if o.get('time', o.get('updateTime')) else 'N/A',
-                        'source': 'binance_real'
-                    }
+                formatted_order = {
+                    'orderId': order_id,
+                    'symbol': sym,
+                    'side': o_side,
+                    'type': o_type,
+                    'triggerPrice': trigger_price,
+                    'qty': qty,
+                    'time': datetime.fromtimestamp(o.get('time', o.get('updateTime', 0)) / 1000.0).strftime('%Y-%m-%d %H:%M:%S') if o.get('time', o.get('updateTime')) else 'N/A',
+                    'source': 'binance_real'
+                }
 
-                    # Classify the real order
-                    if o_type in ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'LIMIT']:
-                        formatted_order['label'] = 'TP'
-                        tp1_orders.append(formatted_order)
-                        has_real_tp = True
-                    elif o_type in ['STOP_MARKET', 'STOP']:
-                        formatted_order['label'] = 'SL'
-                        sl_orders.append(formatted_order)
-                        has_real_sl = True
+                if o_type in ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'LIMIT']:
+                    formatted_order['label'] = 'TP'
+                    tp1_orders.append(formatted_order)
+                    real_tp_symbols.add(sym)
+                elif o_type in ['STOP_MARKET', 'STOP']:
+                    formatted_order['label'] = 'SL'
+                    sl_orders.append(formatted_order)
+                    real_sl_symbols.add(sym)
 
-            # 5. Fallback to Virtual DB Orders ONLY if Real Orders are missing
-            if not has_real_tp and pos.tp1_price and pos.tp1_price > 0:
+        # 6. ADD VIRTUAL FALLBACKS (Only for coins where real orders are entirely missing)
+        for sym, data in positions_map.items():
+            pos = data['pos']
+            side_close = data['side_close']
+            
+            if sym not in real_tp_symbols and pos.tp1_price and pos.tp1_price > 0:
                 tp1_qty = float(pos.initial_qty) * (float(pos.tp1_qty_pct) / 100.0) if pos.tp1_qty_pct else float(pos.initial_qty)
                 tp1_orders.append({
                     'orderId': f"virtual_tp1_{pos.id}",
@@ -120,7 +124,7 @@ def get_tp1_and_sl_orders(user_id):
                     'source': 'virtual'
                 })
 
-            if not has_real_sl and pos.sl_price and pos.sl_price > 0:
+            if sym not in real_sl_symbols and pos.sl_price and pos.sl_price > 0:
                 sl_orders.append({
                     'orderId': f"virtual_sl_{pos.id}",
                     'symbol': sym,
@@ -133,8 +137,8 @@ def get_tp1_and_sl_orders(user_id):
                     'source': 'virtual'
                 })
                 
-            # Virtual TP2 logic (Restored from your original file)
-            if pos.tp2_price and pos.tp2_price > 0 and not any(o['symbol'] == sym for o in tp2_orders):
+            # Virtual TP2
+            if pos.tp2_price and pos.tp2_price > 0:
                 tp1_qty = float(pos.initial_qty) * (float(pos.tp1_qty_pct) / 100.0) if pos.tp1_qty_pct else 0
                 tp2_qty = float(pos.initial_qty) - tp1_qty
                 if tp2_qty > 0:
