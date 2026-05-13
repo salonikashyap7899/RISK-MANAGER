@@ -620,7 +620,18 @@
                 </div>
                 <button type="submit" class="w-full btn-primary text-white px-4 py-3 rounded-lg font-semibold">Login</button>
             </form>
-            <div class="mt-6 text-center">
+            <div class="mt-4">
+                <div class="relative flex items-center py-2">
+                    <div class="flex-grow border-t border-gray-700"></div>
+                    <span class="mx-3 text-gray-500 text-sm">or</span>
+                    <div class="flex-grow border-t border-gray-700"></div>
+                </div>
+                <a href="/google-login" class="flex items-center justify-center gap-3 w-full py-3 px-4 bg-white text-gray-800 rounded-lg font-semibold hover:bg-gray-100 transition-all">
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" alt="Google">
+                    Sign in with Google
+                </a>
+            </div>
+            <div class="mt-4 text-center">
                 <p class="text-gray-400">Don't have an account? <button onclick="switchToRegister()" class="text-cyan-400 hover:text-cyan-300 font-semibold">Register here</button></p>
             </div>
         </div>
