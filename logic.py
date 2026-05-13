@@ -29,7 +29,7 @@ _virtual_guard_last_run = {}
 # Prevents the duplicate UI pollers from hammering Binance and triggering -1003 IP bans.
 _conditional_cache = {}          # {user_id: (ts_ms, [orders])}
 _conditional_ban_until = 0       # ms epoch; while now < this, skip the call
-CONDITIONAL_CACHE_MS = 2500
+CONDITIONAL_CACHE_MS = 1000
 
 # Known leverage limits for common coins (updated based on Binance data)
 # These serve as fallback when API fails
