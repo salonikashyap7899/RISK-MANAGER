@@ -12,31 +12,26 @@ def invalidate_conditional_cache(user_id):
     logic._conditional_cache.pop(user_id, None)
 
 
-# ─── Direct REST fallback ──────────────────────────────────────────────────────
-def _direct_binance_open_orders(user_id):
+# ─── Direct REST: open orders ──────────────────────────────────────────────────
+def _direct_binance_open_orders(client):
     """
     Fetch ALL open futures orders via a direct signed HTTPS request.
-    Used as fallback when python-binance client's futures_get_open_orders
-    fails silently (timestamp drift, library bug, etc.).
-    Returns a list of raw Binance order dicts, or [] on any error.
+    Bypasses the python-binance client to avoid silent -1021 / library failures.
+    Returns list of raw Binance order dicts, or [] on any error.
     """
     try:
-        client = logic.get_client(user_id)
-        if not client:
-            return []
-
         api_key    = getattr(client, 'API_KEY', None)
         api_secret = getattr(client, 'API_SECRET', None)
         if not api_key or not api_secret:
             return []
 
-        # Use Binance server time to avoid -1021 timestamp errors
+        # Sync to Binance server time → eliminates -1021 timestamp errors
         ts = int(time.time() * 1000)
         try:
-            srv = requests.get('https://fapi.binance.com/fapi/v1/time', timeout=5)
+            srv = requests.get('https://fapi.binance.com/fapi/v1/time', timeout=4)
             ts  = srv.json().get('serverTime', ts)
         except Exception:
-            pass  # use local ts if server time fetch fails
+            pass
 
         query = f"timestamp={ts}&recvWindow=10000"
         sig   = hmac.new(
@@ -45,25 +40,73 @@ def _direct_binance_open_orders(user_id):
             hashlib.sha256
         ).hexdigest()
 
-        url  = f"https://fapi.binance.com/fapi/v1/openOrders?{query}&signature={sig}"
-        resp = requests.get(url, headers={"X-MBX-APIKEY": api_key}, timeout=10)
-
+        resp = requests.get(
+            f"https://fapi.binance.com/fapi/v1/openOrders?{query}&signature={sig}",
+            headers={"X-MBX-APIKEY": api_key},
+            timeout=10
+        )
         if resp.status_code == 200:
-            orders = resp.json()
-            print(f"[DIRECT REST] Got {len(orders)} open orders from Binance for user {user_id}")
-            return orders if isinstance(orders, list) else []
-        else:
-            print(f"[DIRECT REST] Binance returned {resp.status_code}: {resp.text[:200]}")
-            return []
-
+            data = resp.json()
+            orders = data if isinstance(data, list) else []
+            print(f"[DIRECT REST orders] Got {len(orders)} open orders")
+            return orders
+        print(f"[DIRECT REST orders] HTTP {resp.status_code}: {resp.text[:200]}")
+        return []
     except Exception as e:
-        print(f"[DIRECT REST] Exception fetching open orders: {e}")
+        print(f"[DIRECT REST orders] Exception: {e}")
         return []
 
 
-# ─── Classify a list of raw Binance order dicts ────────────────────────────────
+# ─── Direct REST: live positions ───────────────────────────────────────────────
+def _direct_binance_live_symbols(client):
+    """
+    Returns a set of symbol strings that have a non-zero position on Binance.
+    e.g. {'BANKUSDT', 'SOLUSDT'}
+    Uses direct REST so it's not affected by client caching or library bugs.
+    Returns None on error (caller should assume all DB symbols are live).
+    """
+    try:
+        api_key    = getattr(client, 'API_KEY', None)
+        api_secret = getattr(client, 'API_SECRET', None)
+        if not api_key or not api_secret:
+            return None
+
+        ts = int(time.time() * 1000)
+        try:
+            srv = requests.get('https://fapi.binance.com/fapi/v1/time', timeout=4)
+            ts  = srv.json().get('serverTime', ts)
+        except Exception:
+            pass
+
+        query = f"timestamp={ts}&recvWindow=10000"
+        sig   = hmac.new(
+            api_secret.encode('utf-8'),
+            query.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+
+        resp = requests.get(
+            f"https://fapi.binance.com/fapi/v2/positionRisk?{query}&signature={sig}",
+            headers={"X-MBX-APIKEY": api_key},
+            timeout=10
+        )
+        if resp.status_code == 200:
+            live = {
+                p['symbol']
+                for p in resp.json()
+                if abs(float(p.get('positionAmt', 0))) > 0
+            }
+            print(f"[DIRECT REST positions] Live symbols: {live}")
+            return live
+        print(f"[DIRECT REST positions] HTTP {resp.status_code}: {resp.text[:200]}")
+        return None
+    except Exception as e:
+        print(f"[DIRECT REST positions] Exception: {e}")
+        return None
+
+
+# ─── Classify raw Binance order dicts into buckets ────────────────────────────
 def _classify_raw_orders(raw_orders, pos_map, seen_ids, tp1_orders, tp2_orders, sl_orders):
-    """Sort raw Binance order dicts into tp1 / tp2 / sl buckets."""
     for o in raw_orders:
         oid = str(o.get('orderId') or o.get('algoId') or '')
         if not oid or oid in seen_ids:
@@ -109,7 +152,13 @@ def _classify_raw_orders(raw_orders, pos_map, seen_ids, tp1_orders, tp2_orders, 
 # ─── Main public function ──────────────────────────────────────────────────────
 def get_tp1_and_sl_orders(user_id):
     try:
-        # ── 1. Load open DB positions for context & virtual-guard fallbacks ──
+        # ── 1. Get Binance client ────────────────────────────────────────────
+        client = logic.get_client(user_id)
+        if not client:
+            return {"success": False, "error": "No client",
+                    "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
+
+        # ── 2. Fetch open DB positions for context ───────────────────────────
         db_positions = (
             TradePosition.query
             .filter_by(user_id=user_id, status='open')
@@ -123,29 +172,36 @@ def get_tp1_and_sl_orders(user_id):
 
         tp1_orders, tp2_orders, sl_orders, seen_ids = [], [], [], set()
 
-        # ── 2. Primary: reuse logic layer (cached, handles regular + algo) ───
+        # ── 3. Fetch real Binance open orders (primary via logic, fallback direct REST) ──
         real_orders = logic.get_all_open_conditional_orders(user_id)
         if real_orders:
             _classify_raw_orders(real_orders, pos_map, seen_ids,
                                  tp1_orders, tp2_orders, sl_orders)
-
-        # ── 3. Fallback: direct signed REST call when client returned nothing ─
-        # If the logic layer returned 0 orders BUT we have open DB positions,
-        # the client fetch almost certainly failed silently.  Hit Binance
-        # directly so we never show fake virtual orders for real Binance orders.
-        real_count = len(tp1_orders) + len(tp2_orders) + len(sl_orders)
-        if real_count == 0 and pos_map:
-            print(f"[FALLBACK] logic layer returned 0 orders but {len(pos_map)} "
-                  "DB positions exist — trying direct REST fetch")
-            raw = _direct_binance_open_orders(user_id)
+        else:
+            # Primary returned nothing → hit Binance directly
+            print("[FALLBACK] Primary returned 0 orders, trying direct REST")
+            raw = _direct_binance_open_orders(client)
             if raw:
-                # Refresh the shared cache so other pollers benefit too
                 logic._conditional_cache[user_id] = (int(time.time() * 1000), raw)
                 _classify_raw_orders(raw, pos_map, seen_ids,
                                      tp1_orders, tp2_orders, sl_orders)
 
-        # ── 4. Virtual fallbacks (only for genuinely missing/too-small orders) ──
+        # ── 4. Fetch LIVE Binance positions to guard against stale DB rows ───
+        # A DB position can remain 'open' even after it closes on Binance
+        # (e.g. TP/SL hit, manual close, liquidation).  If we inject a virtual
+        # order for a closed position we show phantom cards that confuse users.
+        live_symbols = _direct_binance_live_symbols(client)
+        # live_symbols is None on API error → be safe and allow all DB symbols
+        if live_symbols is None:
+            live_symbols = set(pos_map.keys())
+
+        # ── 5. Virtual fallbacks — only for truly open + order-missing positions ──
         for sym, pos in pos_map.items():
+            # Skip if no live Binance position for this symbol
+            if sym not in live_symbols:
+                print(f"[VIRTUAL SKIP] {sym} has no live Binance position — skipping virtual order")
+                continue
+
             side_close = 'SELL' if pos.side == 'LONG' else 'BUY'
 
             if (pos.sl_price and pos.sl_price > 0
