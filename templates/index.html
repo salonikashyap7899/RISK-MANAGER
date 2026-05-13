@@ -275,6 +275,7 @@
             font-size: 8px;
             font-family: monospace;
         }
+        /* Native progress avoids template syntax inside style="" (lint/CSS parse) */
         .daily-limit-progress {
             width: 100%;
             height: 6px;
@@ -366,12 +367,17 @@
     {% endif %}
     
     <div class="panel left">
-        <div class="header">TRADING CONTROLS</div>
-        {% if trade_status %}
-        <div class="message {{ 'success' if trade_status.success else 'error' }}">
-            {{ trade_status.message }}
+        <div class="header" style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+            <span>TRADING CONTROLS</span>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span id="cache-status-pill" title="Live price feed & cache status"
+                      style="font-size:7px;padding:2px 6px;border-radius:10px;background:rgba(0,212,255,0.12);border:1px solid rgba(0,212,255,0.3);color:#9fdcff;white-space:nowrap;display:inline-flex;align-items:center;gap:3px;">
+                    <span id="cache-status-dot" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#9fdcff;"></span>
+                    <span id="cache-status-text">WS --</span>
+                </span>
+                <a href="/" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);color:#cce9ff;text-decoration:none;font-size:8px;padding:2px 8px;border-radius:4px;white-space:nowrap;font-weight:600;letter-spacing:0.03em;">&#8962; Home</a>
+            </div>
         </div>
-        {% endif %}
      
         <div class="left-panel-scroll">
         <form method="POST" style="display: flex; flex-direction: column;">
@@ -603,23 +609,28 @@
             <button type="button" onclick="closeAllPositions()" aria-label="Close all open positions" style="background: #cc0000; color: #fff; border: none; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 9px; font-weight: bold; transition: all 0.2s;">Close All</button>
         </div>
         <div id="live_positions" class="positions-scroll" style="overflow-y: auto; flex: 1; min-height: 0; font-size: 9px; margin: 0; padding: 0 4px;">
-            <div style="text-align: center; color: #555; padding: 40px 2px; font-size: 10px;">Loading positions for {{ selected_symbol }}...<br><small style="color: #444;">Place a trade to see live position details</small></div>
+            <div style="text-align: center; color: #555; padding: 40px 2px; font-size: 10px;">No open positions yet<br><small style="color: #444;">Place a trade to see live position details</small></div>
         </div>
     </div>
 
 <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script type="text/javascript">
           let tvWidget = null;
+          // ✅ FIXED: currentChartSymbol tracks the ACTIVE symbol for the chart
           let currentChartSymbol = "{{ selected_symbol or 'BTCUSDT' }}";
           let lastValidSymbol = currentChartSymbol;
 
           function getTradingViewSymbol(symbol) {
             const cleanSymbol = (symbol || currentChartSymbol || 'BTCUSDT').trim().toUpperCase();
+            // TradingView futures formatting isn't consistent for all Binance listings.
+            // Heuristic: multiplier-style symbols (starting with a digit) often work without ".P".
             if (/^[0-9]/.test(cleanSymbol)) return `BINANCE:${cleanSymbol}`;
             return `BINANCE:${cleanSymbol}.P`;
           }
           
+          // ✅ FIXED: Accept symbol parameter so chart updates on symbol change
           function initializeTradingViewChart(symbol) {
+            // Use passed symbol, fall back to currentChartSymbol, then server-rendered default
             if (symbol && symbol.trim() !== '') {
               currentChartSymbol = symbol.trim().toUpperCase();
             }
@@ -632,6 +643,7 @@
               return;
             }
             
+            // Clear previous widget if it exists
             if (tvWidget) {
               try {
                 tvWidget.remove();
@@ -641,11 +653,18 @@
               }
             }
 
+            // Clear the container completely before reinitializing
             chartContainer.innerHTML = '';
             
+            // Add small delay to ensure DOM is ready after clearing
             setTimeout(() => {
               try {
+                console.log(`📊 Initializing TradingView chart for: ${currentChartSymbol}`);
+                
+                // ✅ CRITICAL FIX: Format symbol correctly for TradingView Futures
+                // TradingView expects futures symbols in specific formats
                 const fullTvSymbol = getTradingViewSymbol(currentChartSymbol);
+                console.log(`📊 TradingView formatted symbol: ${fullTvSymbol}`);
                 
                 tvWidget = new TradingView.widget({
                   "autosize": true,
@@ -660,10 +679,13 @@
                   "hide_top_toolbar": isMobileChart,
                   "save_image": false,
                   "container_id": "tv_chart",
-                  "allow_symbol_change": true
+                  "allow_symbol_change": true  // ✅ CHANGED: Allow symbol change so users can search if symbol doesn't match
                 });
+                
+                console.log(`✅ TradingView chart initialized for: ${fullTvSymbol}`);
               } catch (e) {
                 console.error('❌ Error initializing TradingView chart:', e);
+                // Show user-friendly error
                 const chartDiv = document.getElementById('tv_chart');
                 if (chartDiv) {
                   chartDiv.innerHTML = 
@@ -675,6 +697,7 @@
             }, 100);
           }
           
+          // Initialize chart on page load
           if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
               setTimeout(() => initializeTradingViewChart(), 500);
@@ -683,6 +706,7 @@
             setTimeout(() => initializeTradingViewChart(), 500);
           }
           
+          // Reinitialize on visibility change (when tab comes back to focus)
           document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
               console.log('📊 Page visible again, reinitializing chart...');
@@ -696,21 +720,9 @@
 </div>
 
 <script>
-    // ─── State ────────────────────────────────────────────────────────────────
+    // Store positions data for real-time updates
     let currentPositions = {};
 
-    // ✅ FIX: Pending-request guards — prevents concurrent duplicate API calls
-    let _positionsPending = false;
-    let _tp1SlPending     = false;
-    let _tradeHistPending = false;
-    let _liqPricePending  = false;
-
-    // WebSocket state
-    let priceWs = null;
-    let priceWsSymbol = '';
-    let lastPriceMessageAt = 0;
-
-    // ─── Helpers ──────────────────────────────────────────────────────────────
     function getSelectedSymbol() {
         const symbolElem = document.querySelector('select[name="symbol"]');
         return symbolElem ? (symbolElem.value || '').trim().toUpperCase() : '';
@@ -720,32 +732,172 @@
         const sideElem = document.getElementById('side_hidden');
         return sideElem ? (sideElem.value || 'LONG').trim().toUpperCase() : 'LONG';
     }
+    
+    // Auto-populate embedded coin details with selected symbol
+    function updateEmbeddedCoinDetails(symbol, forceFresh = false) {
+        if (!document.getElementById('embed-modal-symbol')) return;
 
-    // ─── Live Positions ───────────────────────────────────────────────────────
-    function updateLivePositions(symbol, forceFresh) {
-        // ✅ FIX: Skip if a request is already in-flight
-        if (_positionsPending) return;
-        _positionsPending = true;
+        // Use passed symbol, then dropdown, then fallback
+        const activeSymbol = (symbol || getSelectedSymbol() || 'BTCUSDT').trim().toUpperCase();
+        const sl_typeElem = document.querySelector('select[name="sl_type"]');
+        const sl_type = sl_typeElem ? sl_typeElem.value : 'SL % Movement';
+        const sl_valueElem = document.querySelector('input[name="sl_value"]');
+        const sl_value = (sl_valueElem && sl_valueElem.value) ? sl_valueElem.value : '1.5';
+        const side = getCurrentSide();
+        
+        if (!activeSymbol) return;
+        
+        // Update header and loading state
+        document.getElementById('embed-modal-symbol').textContent = activeSymbol;
+        document.getElementById('embed-pnl').textContent = '...';
+        document.getElementById('embed-roi').textContent = '...';
+        document.getElementById('embed-size').textContent = '...';
+        document.getElementById('embed-margin').textContent = '...';
+        document.getElementById('embed-margin-ratio').textContent = '...';
+        document.getElementById('embed-entry').textContent = '-';
+        document.getElementById('embed-mark').textContent = '-';
+        document.getElementById('embed-liq').textContent = '-';
+        
+        const freshQuery = forceFresh ? '&fresh=1' : '';
+        const fetchUrl = `/api/coin-details/${activeSymbol}?sl_type=${encodeURIComponent(sl_type)}&sl_value=${encodeURIComponent(sl_value)}&side=${encodeURIComponent(side)}${freshQuery}`;
+        
+        fetch(fetchUrl)
+            .then(r => r.json())
+            .then(data => {
+                if (getSelectedSymbol() && getSelectedSymbol() !== activeSymbol) {
+                    console.log(`ℹ️ Ignoring stale embedded details for ${activeSymbol}`);
+                    return;
+                }
 
+                if (data && data.success) {
+                    const pos = data.position;
+                    
+                    if (pos && typeof pos === 'object' && Object.keys(pos).length > 0) {
+                        try {
+                            const size = parseFloat(pos.amount || pos.positionAmt || 0).toFixed(2);
+                            const entryPrice = parseFloat(pos.entry_price || pos.avgPrice || 0).toFixed(8);
+                            const markPrice = parseFloat(pos.mark_price || data.current_price || 0).toFixed(8);
+                            const liqPrice = parseFloat(pos.liquidation_price || pos.liquidationPrice || 0).toFixed(8);
+                            const unrealizedPnL = parseFloat(pos.unrealized_pnl || pos.unrealizedProfit || 0).toFixed(2);
+                            const roi = parseFloat(pos.dashboard_roi_percent || pos.roi_percent || 0).toFixed(2);
+                            const margin = parseFloat(pos.margin_usdt || pos.notional || 0).toFixed(2);
+                            const marginRatio = parseFloat(pos.dashboard_margin_ratio || pos.margin_ratio || 0).toFixed(2);
+                            
+                            // Update new card-based layout
+                            document.getElementById('embed-pnl').textContent = unrealizedPnL;
+                            document.getElementById('embed-pnl').style.color = unrealizedPnL >= 0 ? '#00ff88' : '#ff6464';
+                            
+                            document.getElementById('embed-roi').textContent = roi + '%';
+                            document.getElementById('embed-roi').style.color = roi >= 0 ? '#00ff88' : '#ff6464';
+                            
+                            document.getElementById('embed-size').textContent = size;
+                            document.getElementById('embed-margin').textContent = margin;
+                            document.getElementById('embed-margin-ratio').textContent = marginRatio + '%';
+                            document.getElementById('embed-margin-ratio').style.color = marginRatio < 5 ? '#ff6464' : '#ff6464';
+                            
+                            document.getElementById('embed-entry').textContent = entryPrice;
+                            document.getElementById('embed-mark').textContent = markPrice;
+                            document.getElementById('embed-liq').textContent = liqPrice;
+                        } catch (err) {
+                            console.error('Error parsing position data:', err);
+                        }
+                    } else {
+                        const currentPrice = parseFloat(data.current_price || 0).toFixed(8);
+                        // No position - still show live symbol snapshot
+                        document.getElementById('embed-pnl').textContent = '0.00';
+                        document.getElementById('embed-roi').textContent = '0.00%';
+                        document.getElementById('embed-size').textContent = '0.00';
+                        document.getElementById('embed-margin').textContent = '0.00';
+                        document.getElementById('embed-margin-ratio').textContent = '0.00%';
+                        document.getElementById('embed-entry').textContent = currentPrice !== '0.00000000' ? currentPrice : '-';
+                        document.getElementById('embed-mark').textContent = currentPrice !== '0.00000000' ? currentPrice : '-';
+                        document.getElementById('embed-liq').textContent = '-';
+                    }
+                }
+            })
+            .catch(err => {
+                console.error('Error fetching coin details:', err);
+            });
+    }
+    
+    // ✅ FIXED: Update embedded coin details AND chart when symbol changes
+    document.addEventListener('DOMContentLoaded', () => {
+        updateEmbeddedCoinDetails();
+        setInterval(updateEmbeddedCoinDetails, 5000); // Refresh every 5 seconds
+    });
+    
+    // Live Updates - Enhanced with real-time liquidation prices
+   // ✅ UPDATE POSITION SIZING
+    function updatePositionSizing(symbol = null) {
+        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
+        
+        if (!targetSymbol) return;
+        
+        const entryInput = document.getElementById('entry_input');
+        const entryPrice = entryInput ? parseFloat(entryInput.value) || 0 : 0;
+        const slTypeElem = document.querySelector('select[name="sl_type"]');
+        const slValueElem = document.querySelector('input[name="sl_value"]');
+        const slType = slTypeElem ? slTypeElem.value : 'SL % Movement';
+        const slValue = slValueElem ? parseFloat(slValueElem.value) || 1.5 : 1.5;
+        const side = getCurrentSide();
+        
+        if (entryPrice <= 0) return;
+        
+        fetch(`/api/calculate-sizing?symbol=${encodeURIComponent(targetSymbol)}&entry=${entryPrice}&sl_type=${encodeURIComponent(slType)}&sl_value=${slValue}&side=${side}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                // FIXED: Now targets the span IDs correctly
+                if (document.getElementById('sizing_units')) document.getElementById('sizing_units').textContent = (data.suggested_units || 0).toFixed(2);
+                if (document.getElementById('sizing_lev')) document.getElementById('sizing_lev').textContent = parseInt(data.suggested_leverage || 1);
+            }
+        }).catch(err => {
+            console.log(`ℹ️ Sizing calculation skipped (normal on fresh load): ${err.message}`);
+        });
+    }
+    
+    function updateLivePositions(symbol = null, forceFresh = false) {
+        const targetSymbol = (symbol || getSelectedSymbol() || 'BTCUSDT').trim().toUpperCase();
         const container = document.getElementById('live_positions');
-        const sym = (symbol || getSelectedSymbol() || '').trim().toUpperCase();
-        const freshParam = forceFresh ? '&fresh=1' : '';
-        const url = sym
-            ? `/get_open_positions?symbol=${encodeURIComponent(sym)}${freshParam}&_t=${Date.now()}`
-            : `/get_open_positions${freshParam}&_t=${Date.now()}`;
+        const headerEl = document.getElementById('position_header');
+
+        if (!container) return;
+
+        let url = '/get_open_positions';
+        const params =[];
+        if (forceFresh) params.push('fresh=1');
+        params.push(`_t=${Date.now()}`);
+        url += `?${params.join('&')}`;
 
         fetch(url)
         .then(r => r.json())
         .then(data => {
-            _positionsPending = false;
-            const positions = Array.isArray(data.positions) ? data.positions : [];
+            // Drop updates if the user navigated away
+            if (targetSymbol && getSelectedSymbol() !== targetSymbol) {
+                return;
+            }
+
+            const positions = Array.isArray(data.positions) ? data.positions :[];
             currentPositions = {};
+
             positions.forEach(pos => {
-                if (pos && pos.symbol) currentPositions[pos.symbol] = pos;
+                // Ensure leverage is correctly typed, fallback to 0/null for loading state
+                pos.leverage = pos.leverage ? parseFloat(pos.leverage) : 0;
+                currentPositions[pos.symbol] = pos;
             });
-            renderPositions();
+
+            if (positions.length > 0) {
+                renderPositions();
+                updateLiveDataOnly();
+                updateTP1SLOrders();
+            } else {
+                currentPositions = {};
+                if (headerEl) {
+                    headerEl.textContent = '📍 LIVE POSITIONS (0)';
+                }
+                container.innerHTML = `<div style="text-align: center; color: #81b8c5; padding: 20px 12px; font-size: 9px;">No open positions for ${targetSymbol}</div>`;
+            }
         }).catch(err => {
-            _positionsPending = false;
             console.error('Failed to fetch positions:', err);
             if (!container.innerHTML || container.innerHTML.includes('No open positions')) {
                 container.innerHTML = '<div style="color: #ff6b6b; font-size: 9px; text-align: center; padding: 20px 12px;">Error loading positions</div>';
@@ -753,18 +905,13 @@
         });
     }
     
-    // ✅ FIX: Liquidation prices now use the batch positions endpoint with 8s server-side cache.
-    // Previously this called /api/liquidation_prices which had ZERO cache — every call was a fresh
-    // Binance REST request. Now we reuse the cached positions data from the same endpoint.
+    // Fetch ONLY liquidation prices live (NO cache) - run more frequently
     function updateLiveDataOnly() {
-        if (_liqPricePending) return;
-        _liqPricePending = true;
-
         fetch('/api/liquidation_prices')
         .then(r => r.json())
         .then(data => {
-            _liqPricePending = false;
             if (data.success && data.liquidation_prices) {
+                // Update only the liquidation-related fields with fresh data
                 Object.keys(data.liquidation_prices).forEach(symbol => {
                     if (currentPositions[symbol]) {
                         const liveData = data.liquidation_prices[symbol];
@@ -775,18 +922,19 @@
                         currentPositions[symbol].dashboard_roi_percent = liveData.roi_percent;
                         currentPositions[symbol].margin_ratio = liveData.margin_ratio;
                         currentPositions[symbol].dashboard_margin_ratio = liveData.margin_ratio;
-                        currentPositions[symbol].leverage = liveData.leverage ? parseFloat(liveData.leverage) : 0;
+                        currentPositions[symbol].leverage = liveData.leverage ? parseFloat(liveData.leverage) : 0; // ✅ UPDATE LIVE LEVERAGE
                         currentPositions[symbol].timestamp = liveData.timestamp;
                     }
                 });
+                // Re-render with updated data
                 renderPositions();
             }
         }).catch(err => {
-            _liqPricePending = false;
             console.log("Live data update error (non-critical):", err);
         });
     }
     
+    // Render positions with current data
     function renderPositions() {
         const container = document.getElementById('live_positions');
         const header = document.getElementById('position_header');
@@ -872,9 +1020,11 @@
             container.innerHTML = '<div style="text-align: center; color: #666; padding: 24px 12px; font-size: 10px; line-height: 1.5;">No open positions yet<br><small style="color: #555; font-size: 9px;">Place a trade to see live position details</small></div>';
         }
         
+        // Fetch and display TP/SL data from database
         fetchAndDisplayTPSLData();
     }
     
+    // Fetch TP/SL data from database and display it
     function fetchAndDisplayTPSLData() {
         fetch('/get_user_trade_positions')
         .then(r => r.json())
@@ -904,6 +1054,7 @@
         })
         .catch(err => {
             console.log('Error fetching TP/SL data:', err);
+            // Gracefully hide TP/SL sections if fetch fails
             const allPositions = Object.keys(currentPositions);
             allPositions.forEach(symbol => {
                 const tpSlElement = document.getElementById(`tp_sl_details_${symbol}`);
@@ -914,22 +1065,16 @@
         });
     }
 
-    // ─── TP1/SL Orders ────────────────────────────────────────────────────────
     function updateTP1SLOrders() {
-        // ✅ FIX: Skip if previous request still pending
-        if (_tp1SlPending) return;
-        _tp1SlPending = true;
-
         const container = document.getElementById('conditional_orders_left');
         const header = document.getElementById('conditional_header_left');
-        if (!container) { _tp1SlPending = false; return; }
+        if (!container) return;
 
         fetch('/api/tp1_and_sl_orders')
         .then(r => r.json())
         .then(data => {
-            _tp1SlPending = false;
-            const tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders : [];
-            const slOrders  = Array.isArray(data.sl_orders)  ? data.sl_orders  : [];
+            const tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders :[];
+            const slOrders  = Array.isArray(data.sl_orders)  ? data.sl_orders  :[];
             const totalOrders = tp1Orders.length + slOrders.length;
 
             if (header) header.textContent = '🎨 TP1 & SL (' + totalOrders + ')';
@@ -945,6 +1090,7 @@
                 const side     = (o.side || '').toUpperCase();
                 const typeRaw  = (o.type || '').toUpperCase();
 
+                // Format dynamically e.g. "Take Profit Market / Sell"
                 let typeStr = typeRaw.replace(/_/g, ' ');
                 typeStr = typeStr.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
                 let typeLabel = typeStr + ' / ' + (side === 'BUY' ? 'Buy' : 'Sell');
@@ -958,20 +1104,26 @@
                 const triggerStr = trigger > 0 ? '$' + trigger.toFixed(decimals) : 'Market';
                 const amtStr     = qty > 0 ? qty.toString() : 'Close All';
 
+                // card border / bg colour
                 let borderColor = isTP ? '#1a7a4a' : '#7a1a1a';
                 let bgColor     = isTP ? 'rgba(0,40,20,0.55)' : 'rgba(40,0,0,0.55)';
                 let labelColor  = isTP ? '#0ecb81' : '#f6465d';
 
                 let c = '';
                 c += '<div style="border:1px solid ' + borderColor + ';border-radius:5px;background:' + bgColor + ';padding:7px 8px;margin-bottom:7px;">';
+                
+                // Row 1 – symbol + Cancel
                 c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">';
                 c +=   '<span style="font-weight:bold;color:#e9fbff;font-size:10px;">' + (o.symbol || '—') + ' <span style="color:#888;font-weight:normal;font-size:8px;">Perp</span></span>';
                 c +=   '<button onclick="cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')" style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
                 c += '</div>';
+
+                // Row 2 – type label + date
                 c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">';
                 c +=   '<span style="color:' + labelColor + ';font-size:8.5px;font-weight:600;">' + typeLabel + '</span>';
                 c +=   '<span style="color:#666;font-size:7.5px;">' + (o.time || '') + '</span>';
                 c += '</div>';
+
                 c += '<div style="border-top:1px solid #2a2a2a;margin-bottom:5px;"></div>';
 
                 function row(label, value, valColor) {
@@ -990,15 +1142,18 @@
             }
 
             let html = '';
+
+            // TP1 cards
             tp1Orders.forEach(o => { html += buildCard(o, 'TP1'); });
             if (tp1Orders.length > 0 && slOrders.length > 0) {
                 html += '<div style="border-top:1px dashed #333;margin:4px 0 8px;"></div>';
             }
+            // SL cards
             slOrders.forEach(o => { html += buildCard(o, 'SL'); });
+
             container.innerHTML = html;
         })
         .catch(function(err) {
-            _tp1SlPending = false;
             console.error('Error fetching TP1/SL orders:', err);
             container.innerHTML = '<div style="text-align:center;color:#ff4444;padding:40px 0;font-size:10px;">Error loading orders</div>';
         });
@@ -1023,29 +1178,19 @@
         .catch(err => alert(`Error: ${err.message}`));
     }
 
-    // ─── Trade History ────────────────────────────────────────────────────────
-    function updateTradeHistory(symbol, forceRefresh) {
-        // ✅ FIX: Skip if previous request still pending
-        if (_tradeHistPending) return;
-        _tradeHistPending = true;
-
+    function updateTradeHistory() {
         const container = document.getElementById('trade_history');
-        if (!container) { _tradeHistPending = false; return; }
+        if (!container) return;
 
         if (!container.innerHTML || container.innerHTML.includes('No recent trades')) {
             container.innerHTML = '<div style="text-align: center; color: #666; padding: 18px 0; font-size: 8px;">Loading trades...</div>';
         }
 
-        // ✅ FIX: Only send fresh=1 when explicitly requested (manual refresh button).
-        // The auto-refresh timer never forces a fresh call — server-side 60s cache is enough.
-        const freshParam = forceRefresh ? '&fresh=1' : '';
-        const url = `/get_trade_history${freshParam}&_t=${Date.now()}`;
-
+        const url = `/get_trade_history?fresh=1&_t=${Date.now()}`;
         fetch(url)
         .then(r => r.json())
         .then(data => {
-            _tradeHistPending = false;
-            const trades = Array.isArray(data.trades) ? data.trades : [];
+            const trades = Array.isArray(data.trades) ? data.trades :[];
             if (trades.length > 0) {
                 let html = '';
                 trades.slice(0, 50).forEach(trade => {
@@ -1067,7 +1212,6 @@
             }
         })
         .catch(err => {
-            _tradeHistPending = false;
             console.error('Error fetching trade history:', err);
             if (!container.innerHTML || container.innerHTML.includes('Loading trades...')) {
                 container.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 18px 0; font-size: 8px;">Trade history unavailable</div>';
@@ -1080,7 +1224,6 @@
         .then(r => r.json())
         .then(data => {
             const container = document.getElementById('live_trade_log');
-            if (!container) return;
             if (data.events && data.events.length > 0) {
                 let html = '';
                 data.events.forEach(event => {
@@ -1089,6 +1232,7 @@
                                       event.type === 'SL_UPDATE' ? '#ffaa00' : '#ffffff';
                     const pnlColor = event.pnl >= 0 ? '#00ff88' : '#ff4444';
                     
+                    // ✅ Show PNL in live log with real-time updates
                     let pnlDisplay = '';
                     if (event.pnl !== undefined) {
                         pnlDisplay = `<span style="color: ${pnlColor}; font-weight: bold; margin-left: 10px;"> 💰 PnL: $${event.pnl.toFixed(2)} ${event.pnl >= 0 ? '✓' : '✗'}</span>`;
@@ -1111,65 +1255,12 @@
     function clearTradeLog() {
         fetch('/clear_trade_events', {method: 'POST'})
         .then(() => {
-            const el = document.getElementById('live_trade_log');
-            if (el) el.innerHTML = '<div style="text-align: center; color: #888; padding-top: 60px;">Log cleared...</div>';
+            document.getElementById('live_trade_log').innerHTML = '<div style="text-align: center; color: #888; padding-top: 60px;">Log cleared...</div>';
         });
     }
 
-    function updateEmbeddedCoinDetails(symbol, forceFresh) {
-        if (!document.getElementById('embed-modal-symbol')) return;
-
-        const activeSymbol = (symbol || getSelectedSymbol() || 'BTCUSDT').trim().toUpperCase();
-        const sl_typeElem = document.querySelector('select[name="sl_type"]');
-        const sl_type = sl_typeElem ? sl_typeElem.value : 'SL % Movement';
-        const sl_valueElem = document.querySelector('input[name="sl_value"]');
-        const sl_value = (sl_valueElem && sl_valueElem.value) ? sl_valueElem.value : '1.5';
-        const side = getCurrentSide();
-        
-        if (!activeSymbol) return;
-        
-        document.getElementById('embed-modal-symbol').textContent = activeSymbol;
-
-        const freshQuery = forceFresh ? '&fresh=1' : '';
-        const fetchUrl = `/api/coin-details/${activeSymbol}?sl_type=${encodeURIComponent(sl_type)}&sl_value=${encodeURIComponent(sl_value)}&side=${encodeURIComponent(side)}${freshQuery}`;
-        
-        fetch(fetchUrl)
-            .then(r => r.json())
-            .then(data => {
-                if (getSelectedSymbol() && getSelectedSymbol() !== activeSymbol) return;
-                if (data && data.success) {
-                    const pos = data.position;
-                    if (pos && typeof pos === 'object' && Object.keys(pos).length > 0) {
-                        try {
-                            const unrealizedPnL = parseFloat(pos.unrealized_pnl || pos.unrealizedProfit || 0).toFixed(2);
-                            const roi = parseFloat(pos.dashboard_roi_percent || pos.roi_percent || 0).toFixed(2);
-                            const size = parseFloat(pos.amount || pos.positionAmt || 0).toFixed(2);
-                            const margin = parseFloat(pos.margin_usdt || 0).toFixed(2);
-                            const marginRatio = parseFloat(pos.dashboard_margin_ratio || pos.margin_ratio || 0).toFixed(2);
-                            const entryPrice = parseFloat(pos.entry_price || pos.avgPrice || 0).toFixed(8);
-                            const markPrice = parseFloat(pos.mark_price || data.current_price || 0).toFixed(8);
-                            const liqPrice = parseFloat(pos.liquidation_price || pos.liquidationPrice || 0).toFixed(8);
-
-                            const safeSet = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-                            safeSet('embed-pnl', '$' + unrealizedPnL);
-                            safeSet('embed-roi', roi + '%');
-                            safeSet('embed-size', size);
-                            safeSet('embed-margin', '$' + margin);
-                            safeSet('embed-margin-ratio', marginRatio + '%');
-                            safeSet('embed-entry', '$' + entryPrice);
-                            safeSet('embed-mark', '$' + markPrice);
-                            safeSet('embed-liq', '$' + liqPrice);
-                        } catch (e) {
-                            console.warn('Error updating embedded coin details:', e);
-                        }
-                    }
-                }
-            })
-            .catch(err => console.log('Coin details error:', err));
-    }
-
     function validateFormInputs() {
-        const warnings = [];
+        const warnings =[];
         const symbol = document.querySelector('select[name="symbol"]').value;
         const side = document.getElementById('side_hidden').value;
         const orderType = document.getElementById('order_type_select').value;
@@ -1184,6 +1275,7 @@
             tp1 = side === 'LONG' ? entry * (1 + tp1Raw / 100) : entry * (1 - tp1Raw / 100);
         }
         
+        // Validate SL
         if (slValue <= 0) {
             warnings.push('🛡️ Stop Loss is mandatory and must be greater than 0');
         } else if (slType === 'SL Points' && entry > 0) {
@@ -1194,41 +1286,216 @@
             }
         }
         
+        // Validate entry for LIMIT orders
         if (orderType === 'LIMIT' && entry <= 0) {
-            warnings.push('📋 Entry price required for LIMIT orders');
+            warnings.push('💰 LIMIT orders require a valid entry price');
         }
-
-        const warningsDiv = document.getElementById('validation-warnings');
-        const warningList = document.getElementById('warning-list');
-        if (warningsDiv && warningList) {
-            if (warnings.length > 0) {
-                warningList.innerHTML = warnings.map(w => `<div>${w}</div>`).join('');
-                warningsDiv.style.display = 'block';
-            } else {
-                warningsDiv.style.display = 'none';
+        
+        // Validate TP levels (tp1 resolved to price when mode is % movement)
+        if (tp1 > 0 && entry > 0) {
+            if (side === 'LONG' && tp1 <= entry) {
+                warnings.push('🎯 TP1 must be above entry price for LONG trades');
+            } else if (side === 'SHORT' && tp1 >= entry) {
+                warnings.push('🎯 TP1 must be below entry price for SHORT trades');
             }
         }
+        
+        if (tp2 > 0) {
+            if (side === 'LONG' && tp2 <= entry) {
+                warnings.push('🎯 TP2 must be above entry price for LONG trades');
+            } else if (side === 'SHORT' && tp2 >= entry) {
+                warnings.push('🎯 TP2 must be below entry price for SHORT trades');
+            }
+        }
+        
+        // Check minimum order size
+        if (entry > 0) {
+            const minNotional = 5; // Binance minimum USDT
+            const minQty = Math.ceil((minNotional / Math.max(entry, 0.01)) * 10000) / 10000;
+            
+            // Get suggested quantity from hidden input (server-rendered)
+            const suggestedUnitsInput = document.getElementById('sizing_suggested_units');
+            const suggestedQty = suggestedUnitsInput ? parseFloat(suggestedUnitsInput.value) : 0;
+            
+            if (suggestedQty > 0 && suggestedQty < minQty) {
+                warnings.push(`📦 Order size (${suggestedQty.toFixed(6)}) below Binance minimum (${minQty.toFixed(6)} units or $${minNotional} USDT). Increase risk allocation or widen SL.`);
+            }
+        }
+        
+        // Show/hide warnings
+        const warningDiv = document.getElementById('validation-warnings');
+        const warningList = document.getElementById('warning-list');
+        
+        if (warnings.length > 0) {
+            warningList.innerHTML = warnings.map(w => `<div>• ${w}</div>`).join('');
+            warningDiv.style.display = 'block';
+        } else {
+            warningDiv.style.display = 'none';
+        }
+        
         return warnings.length === 0;
     }
 
-    function updateTradeLimits() {
-        fetch('/api/today_stats')
-        .then(r => r.json())
-        .then(data => {
-            const totalDisplay = document.getElementById('total_trades_display');
-            if (totalDisplay) totalDisplay.textContent = `${data.total_trades}/${data.max_trades}`;
-            
-            const progress = document.getElementById('daily_limit_progress');
-            if (progress) {
-                progress.value = data.total_trades;
-                progress.max = data.max_trades || 1;
-                if (data.total_trades >= data.max_trades) {
-                    progress.classList.add('limit-over');
-                } else {
-                    progress.classList.remove('limit-over');
-                }
+    function confirmTradeExecution() {
+        const symbol = document.querySelector('select[name="symbol"]').value;
+        const side = document.getElementById('side_hidden').value;
+        const entry = document.getElementById('entry_input').value;
+        const sl = document.querySelector('input[name="sl_value"]').value;
+        const slType = document.querySelector('select[name="sl_type"]').value;
+        const tp1Mode = document.querySelector('select[name="tp1_mode"]') ? document.querySelector('select[name="tp1_mode"]').value : 'TP1 Price';
+        const tp1Raw = document.querySelector('input[name="tp1"]').value;
+        const tp2 = document.querySelector('input[name="tp2"]').value;
+        const qty = document.querySelector('input[name="user_units"]').value || 'Auto';
+        const lev = document.querySelector('input[name="user_lev"]').value || 'Auto';
+        
+        // ✅ STRICT SL VALIDATION
+        if (!sl || parseFloat(sl) <= 0) {
+            alert('🚫 STOP LOSS MANDATORY!\n\nYou must enter a Stop Loss value:\n• SL % Movement: Enter percentage (e.g., 1 for 1%)\n• SL Points: Enter price level\n\nWithout SL, trades are NOT allowed.');
+            return false;
+        }
+        
+        let message = `🔥 CONFIRM TRADE EXECUTION:\n\n`;
+        message += `📊 ${symbol} ${side}\n`;
+        message += `💰 Entry: $${parseFloat(entry).toFixed(4)}\n`;
+        
+        const en = parseFloat(entry) || 0;
+        const slNum = parseFloat(sl) || 0;
+        // Show SL with correct unit based on SL type
+        if (slType === "SL % Movement") {
+            const slLong = en * (1 - slNum / 100);
+            const slShort = en * (1 + slNum / 100);
+            message += `🛡️ SL: ${slNum.toFixed(2)}% (≈$${slLong.toFixed(4)} LONG / ≈$${slShort.toFixed(4)} SHORT)\n`;
+        } else {
+            message += `🛡️ SL: $${slNum.toFixed(4)}\n`;
+        }
+        
+        if (tp1Raw && parseFloat(tp1Raw) > 0) {
+            let tp1Disp = parseFloat(tp1Raw);
+            if (tp1Mode === "TP1 % Movement" && en > 0) {
+                tp1Disp = side === 'LONG' ? en * (1 + tp1Disp / 100) : en * (1 - tp1Disp / 100);
+                message += `🎯 TP1: ${parseFloat(tp1Raw).toFixed(2)}% → $${tp1Disp.toFixed(4)}\n`;
+            } else {
+                message += `🎯 TP1: $${tp1Disp.toFixed(4)}\n`;
             }
-            
+        }
+        if (tp2 && parseFloat(tp2) > 0) message += `🎯 TP2: $${parseFloat(tp2).toFixed(4)}\n`;
+        message += `📦 Qty: ${qty}\n`;
+        message += `⚡ Leverage: ${lev}x\n\n`;
+        message += `⚠️ This will execute a REAL order on Binance!\n`;
+        message += `Are you sure you want to proceed?`;
+        
+        return confirm(message);
+    }
+
+    // ✅ Global variable for Binance WebSocket connection
+    let priceWs = null;
+    let priceWsSymbol = '';
+    let lastPriceMessageAt = 0;
+
+    let updateLivePrice = function(symbolOverride = null, forceRestart = false) {
+        const symbolSelect = document.querySelector('select[name="symbol"]');
+        const symbol = (symbolOverride || (symbolSelect ? symbolSelect.value : '') || '').trim().toUpperCase();
+
+        if (!symbol) {
+            return;
+        }
+
+        const resetBtn = document.getElementById('reset-live-btn');
+        const indicator = document.getElementById('live-indicator');
+        const socketState = priceWs ? priceWs.readyState : WebSocket.CLOSED;
+        const sameSymbol = priceWsSymbol === symbol;
+        const hasRecentTick = lastPriceMessageAt > 0 && (Date.now() - lastPriceMessageAt) < 6000;
+        const socketActive = socketState === WebSocket.OPEN || socketState === WebSocket.CONNECTING;
+
+        if (!forceRestart && sameSymbol && socketActive && (hasRecentTick || socketState === WebSocket.CONNECTING)) {
+            console.log(`Live feed already active for ${symbol}`);
+            return;
+        }
+
+        console.log(`Ensuring live price stream for ${symbol}`);
+        fetchLivePrice(symbol);
+
+        if (indicator) {
+            indicator.style.display = 'inline-block';
+        }
+        if (resetBtn) {
+            resetBtn.textContent = 'Live';
+        }
+    };
+
+    function closePosition(symbol) {
+        if(confirm(`Close ${symbol}?`)) {
+            fetch(`/close_position/${symbol}`, {method: 'POST'})
+            .then(r => r.json())
+            .then(data => { alert(data.message || 'Closed'); })
+            .then(updateLivePositions)
+            .then(() => setTimeout(updateTP1SLOrders, 1500));
+        }
+    }
+
+    function closeAllPositions() {
+        if(confirm('Close ALL positions?')) {
+            fetch('/get_open_positions').then(r => r.json()).then(data => {
+                if (data.positions.length > 0) {
+                    Promise.all(data.positions.map(p => 
+                        fetch(`/close_position/${p.symbol}`, {method: 'POST'})
+                    )).then(() => {
+                        alert('All closed!');
+                        updateLivePositions();
+                    });
+                }
+            });
+        }
+    }
+
+    function partialClose(symbol) {
+        const percent = prompt(`Enter percent of ${symbol} position to close (10-100%)\n\nExample: 50 = close half the position\nExample: 25 = close quarter of the position`, '50');
+        if (!percent) return;
+        const closePercent = parseFloat(percent);
+        if (isNaN(closePercent) || closePercent <= 0 || closePercent > 100) {
+            return alert('❌ Invalid percentage! Enter a value between 1 and 100');
+        }
+
+        if (!confirm(`⚠️ CONFIRM PARTIAL CLOSE:\n\n📊 ${symbol}\n📦 Close: ${closePercent}% of position\n\nThis will reduce your position size!\nProceed?`)) {
+            return;
+        }
+
+        fetch('/partial_close', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({symbol: symbol, close_percent: closePercent})
+        }).then(r => r.json()).then(data => {
+            alert(data.message || 'Partial close requested');
+            updateLivePositions();
+            updateTradeHistory();
+        });
+    }
+
+    function moveTrailingSL(symbol) {
+        const currentSL = prompt(`Set NEW trailing SL move percent for ${symbol} (-1 to 0)\n\nCurrent: Move SL closer to price by X%\nExample: -0.3 = move SL 0.3% closer to current price\n\nEnter value (-1 to 0):`, '-0.3');
+        if (!currentSL) return;
+        const newPercent = parseFloat(currentSL);
+        if (isNaN(newPercent) || newPercent < -1 || newPercent > 0) {
+            return alert('❌ Invalid value! Trailing SL must be between -1 and 0 percent\n\nExample: -0.3 = move SL 0.3% closer to price');
+        }
+
+        if (!confirm(`⚠️ CONFIRM TRAILING SL UPDATE:\n\n📊 ${symbol}\n🎯 New trailing: ${newPercent}%\n\nThis will modify your stop loss!\nProceed?`)) {
+            return;
+        }
+
+        fetch('/update_sl', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({symbol: symbol, new_sl_percent: newPercent})
+        }).then(r => r.json()).then(data => {
+            alert(data.message || 'SL updated');
+            updateLivePositions();
+        });
+    }
+
+    function updateTradeLimits() {
+        fetch('/api/today_stats').then(r => r.json()).then(data => {
+            document.getElementById('total_trades_display').textContent = `${data.total_trades}/${data.max_trades}`;
             const selectedSymbol = document.querySelector('select[name="symbol"]').value || '';
             const symbolCount = data.symbol_trades && data.symbol_trades[selectedSymbol] ? data.symbol_trades[selectedSymbol] : 0;
             const symbolDisplay = document.getElementById('symbol_trades_display');
@@ -1248,8 +1515,8 @@
             });
         }
     }
-
-    // ─── Live Price WebSocket ─────────────────────────────────────────────────
+    
+    // ✅ FIXED: Ensure updateLivePrice runs AFTER DOM is fully loaded with correct symbol
     document.addEventListener('DOMContentLoaded', function() {
         setTimeout(() => {
             const symbolSelect = document.querySelector('select[name="symbol"]');
@@ -1258,6 +1525,7 @@
                 const sym = (symbolSelect.value || '').trim().toUpperCase() || 'BTCUSDT';
                 entryInput.dataset.liveSymbol = sym;
                 entryInput.dataset.snapToLive = '1';
+                console.log('Initializing live price for: ' + sym);
                 fetchLivePrice(sym);
             } else if (typeof fetchLivePrice === 'function') {
                 fetchLivePrice('BTCUSDT');
@@ -1265,20 +1533,23 @@
         }, 300);
     });
 
+    // Keep these but they now run AFTER DOMContentLoaded ensures symbol is ready
     document.addEventListener('DOMContentLoaded', function() {
         setTimeout(() => {
             const sym = getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}';
             updateLivePositions(sym, true);
             updateTP1SLOrders();
-            updateTradeHistory(sym, false);
+            updateTradeHistory(sym);
             updateTradeLimits();
             updateLiveTradeLog();
             updateEmbeddedCoinDetails(sym, true);
         }, 200);
     });
     
+    // Form validation
     document.addEventListener('DOMContentLoaded', function() {
-        const inputs = [
+        // Add validation listeners to key inputs
+        const inputs =[
             'entry_input',
             'input[name="sl_value"]',
             'input[name="tp1"]',
@@ -1295,87 +1566,40 @@
             }
         });
         
+        // Initial validation
         setTimeout(validateFormInputs, 500);
     });
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            updateLivePositions();
-            updateTradeHistory();
-            updateTP1SLOrders();
-            refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
-        });
-    } else {
-        updateLivePositions();
-        updateTradeHistory();
-        updateTP1SLOrders();
-        refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
-    }
 
-    // ─── AUTO-REFRESH TIMERS ──────────────────────────────────────────────────
-    // ✅ FIX SUMMARY — what changed and why:
-    //
-    // BEFORE → AFTER
-    // Positions:     every  5s → every 30s   (6× reduction; live marks come from WebSocket)
-    // TP1/SL orders: every  5s → every 60s   (12× reduction; orders barely change second-to-second)
-    // Price REST:    every 10s → disabled     (WebSocket already streams the price live)
-    // Coin details:  every 30s → every 120s   (4× reduction; leverage/sizing barely changes)
-    // Trade history: every 30s → every 120s   (4× reduction; 60s server-side cache anyway)
-    //
-    // Additionally, ALL pollers now:
-    //   • Skip if a previous request for the same data is still in-flight (pending guards)
-    //   • Pause automatically when the browser tab is hidden (Page Visibility API)
-    //
-    // Total API calls/minute (worst case):
-    //   Before: ~36 calls/min (positions) + ~36 calls/min (TP/SL) + ~6 calls/min (price) + ... ≈ 100+ calls/min
-    //   After:  ~2 calls/min (positions) + ~1 call/min (TP/SL) + ~0.5 calls/min (details) ≈ ~4 calls/min
-
-    // ✅ Page Visibility API — pause all polling when tab is hidden
-    let _pollsPaused = false;
-    document.addEventListener('visibilitychange', () => {
-        _pollsPaused = document.hidden;
-        if (!_pollsPaused) {
-            console.log('👁️ Tab visible — resuming live data');
-            // Immediately refresh positions when tab becomes visible again
-            updateLivePositions();
-        } else {
-            console.log('🙈 Tab hidden — pausing API polls to save rate limit');
-        }
-    });
-
-    // Positions every 30 seconds (was 5s)
-    setInterval(() => {
-        if (!_pollsPaused) updateLivePositions();
-    }, 30000);
-
-    // TP1/SL orders every 60 seconds (was 5s)
-    setInterval(() => {
-        if (!_pollsPaused) updateTP1SLOrders();
-    }, 60000);
-
-    // ✅ Removed the 10-second REST price poll — the WebSocket handles live price.
-    // The "Live" button still works for a manual REST fallback if WebSocket drops.
-
-    // Coin details + trade history every 120 seconds (was 30s)
-    setInterval(() => {
-        if (!_pollsPaused) {
-            fetchCoinDetails();
-            updateEmbeddedCoinDetails();
-            updateTradeHistory();   // no fresh=1 — uses 60s server-side cache
-        }
-    }, 120000);
-
-    // ─── Symbol Change ────────────────────────────────────────────────────────
+    // ✅ HYBRID APPROACH: Form reload for chart (reliable) + dynamic updates for data (fast)
     function isValidSymbol(symbol) {
+        // Validate symbol format for Binance Futures
         if (!symbol || typeof symbol !== 'string') return false;
         symbol = symbol.trim().toUpperCase();
-        if (!symbol.endsWith('USDT')) return false;
-        if (symbol.length < 6 || symbol.length > 20) return false;
-        if (!/^[A-Z0-9]+$/.test(symbol)) return false;
+        
+        // Must end with USDT
+        if (!symbol.endsWith('USDT')) {
+            console.warn(`⚠️ Symbol validation failed: ${symbol} doesn't end with USDT`);
+            return false;
+        }
+        
+        // Must be reasonable length (typically 6-15 chars for normal symbols)
+        if (symbol.length < 6 || symbol.length > 20) {
+            console.warn(`⚠️ Symbol validation failed: ${symbol} has invalid length ${symbol.length}`);
+            return false;
+        }
+        
+        // Must be alphanumeric only
+        if (!/^[A-Z0-9]+$/.test(symbol)) {
+            console.warn(`⚠️ Symbol validation failed: ${symbol} contains invalid characters`);
+            return false;
+        }
+        
         return true;
     }
     
     function changeSymbolDynamic(event) {
+        // Prevent default only to validate first
         if (event) {
             event.preventDefault();
             event.stopPropagation();
@@ -1384,26 +1608,37 @@
         const symbolSelect = document.querySelector('select[name="symbol"]');
         const symbol = symbolSelect ? symbolSelect.value : null;
         
-        if (!symbol || symbol.trim() === '') return false;
+        if (!symbol || symbol.trim() === '') {
+            console.warn('⚠️ Invalid symbol for change:', symbol);
+            return false;
+        }
 
         const cleanSymbol = symbol.trim().toUpperCase();
         
+        // ✅ Validate symbol format before proceeding
         if (!isValidSymbol(cleanSymbol)) {
             console.error(`❌ [VALIDATION] Invalid symbol format: ${cleanSymbol}`);
             alert(`⚠️ Invalid symbol: "${cleanSymbol}"\n\nPlease select a valid Binance Futures symbol like BTCUSDT, ETHUSDT, etc.`);
             return false;
         }
+        
+        console.log(`🔄 [SYMBOL CHANGE] Switching to: ${cleanSymbol}`);
 
+        // ✅ Validate against Binance Futures list before updating UI/chart
+        // Prevents TradingView "symbol doesn't exist" and Live price hanging on invalid symbols.
         fetch(`/validate_symbol/${encodeURIComponent(cleanSymbol)}?_t=${Date.now()}`)
             .then(r => r.json())
             .then(v => {
                 if (!v || !v.valid || !v.tradeable) {
                     const msg = (v && v.message) ? v.message : 'Symbol not tradeable';
                     alert(`⚠️ ${msg}\n\nPick another symbol.`);
+
+                    // Revert dropdown to last valid selection
                     if (symbolSelect) symbolSelect.value = lastValidSymbol;
                     return;
                 }
 
+                // Mark as last-known-good only after Binance confirms it
                 lastValidSymbol = cleanSymbol;
                 const prevHidden = document.querySelector('input[name="prev_symbol"]');
                 if (prevHidden) prevHidden.value = cleanSymbol;
@@ -1411,44 +1646,48 @@
                 currentChartSymbol = cleanSymbol;
                 initializeTradingViewChart(cleanSymbol);
 
-                // ✅ Use the single select_symbol endpoint for all data instead of 6 separate calls
-                fetch('/api/select_symbol', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ symbol: cleanSymbol })
-                })
-                .then(r => r.json())
-                .then(sd => {
-                    if (sd.positions) {
-                        currentPositions = {};
-                        (sd.positions || []).forEach(pos => {
-                            if (pos && pos.symbol) currentPositions[pos.symbol] = pos;
-                        });
-                        renderPositions();
-                    }
-                    // Update trade history
-                    if (sd.recent_trades) {
-                        const container = document.getElementById('trade_history');
-                        if (container) {
-                            if (sd.recent_trades.length === 0) {
-                                container.innerHTML = '<div style="text-align: center; color: #666; padding: 18px 0; font-size: 8px;">No recent trades for ' + cleanSymbol + '</div>';
-                            }
-                        }
-                    }
-                })
-                .catch(() => {
-                    // Fallback: individual calls if batch endpoint fails
+                // ✅ HYBRID APPROACH:
+                // 1. Immediately update dynamic data (price, positions, analysis) without reload
+                console.log(`🔄 [HYBRID] Starting dynamic updates...`);
+                
+                setTimeout(() => {
+                    console.log(`🔄 [HYBRID-1] Fetching live price for: ${cleanSymbol}`);
+                    updateLivePrice(cleanSymbol, true);
+                }, 50);
+
+                setTimeout(() => {
+                    console.log(`🔄 [HYBRID-2] Updating coin analysis for: ${cleanSymbol}`);
+                    updateEmbeddedCoinDetails(cleanSymbol, true);
+                }, 100);
+
+                setTimeout(() => {
+                    console.log(`🔄 [HYBRID-3] Fetching coin details for: ${cleanSymbol}`);
+                    fetchCoinDetails(cleanSymbol);
+                }, 150);
+
+                setTimeout(() => {
+                    console.log(`🔄[HYBRID-4] Updating positions for: ${cleanSymbol}`);
+                    // Force fresh positions (server supports fresh=1)
                     updateLivePositions(cleanSymbol, true);
-                });
+                }, 200);
 
-                // Update live price via WebSocket (one call replaces 6)
-                fetchLivePrice(cleanSymbol);
-                updatePositionSizing(cleanSymbol);
+                // ✅ Ensure recent trades updates immediately on symbol change
+                setTimeout(() => {
+                    console.log(`🔄[HYBRID-6] Updating trade history for: ${cleanSymbol}`);
+                    updateTradeHistory(cleanSymbol);
+                }, 220);
 
-                // Update symbol labels
+                setTimeout(() => {
+                    console.log(`🔄[HYBRID-5] Calculating sizing for: ${cleanSymbol}`);
+                    updatePositionSizing(cleanSymbol);
+                }, 250);
+
+                // 2. Update symbol labels immediately
                 document.querySelectorAll('#embed-modal-symbol').forEach(el => el.textContent = cleanSymbol);
                 const symbolTradeLabel = document.getElementById('symbol_trades_label');
                 if (symbolTradeLabel) symbolTradeLabel.textContent = cleanSymbol;
+                
+                console.log(`✅ [HYBRID] Dynamic updates complete (no reload).`);
             })
             .catch(err => {
                 console.error('❌ Symbol validation failed:', err);
@@ -1458,25 +1697,37 @@
         return false;
     }
 
-    // ─── Live Price WebSocket ─────────────────────────────────────────────────
-    function fetchLivePrice(symbol) {
+    // ✅ FETCH LIVE PRICE (Now utilizing WebSocket for instant, lag-free updates)
+    function fetchLivePrice(symbol = null) {
         const entryInput = document.getElementById('entry_input');
         const indicator = document.getElementById('reset-live-btn');
         
         const targetSymbol = (symbol || getSelectedSymbol() || 'BTCUSDT').trim().toUpperCase();
         
-        if (!targetSymbol || !entryInput) return;
+        console.log(`📡[fetchLivePrice] Starting for symbol: ${targetSymbol}`);
+        
+        if (!targetSymbol || !entryInput) {
+            console.error(`❌ [fetchLivePrice] Missing targetSymbol or entryInput`);
+            return;
+        }
 
+        // Close any existing WebSocket to prevent old coins from fighting new coins for the input box
         if (priceWs) {
+            console.log(`🔄 [fetchLivePrice] Closing old WebSocket...`);
             priceWs.close();
         }
 
+        // Set UI loading state
         entryInput.dataset.liveSymbol = targetSymbol.toUpperCase();
         entryInput.value = "Loading...";
         entryInput.style.color = '#ffaa00';
+        
+        console.log(`🔄 [fetchLivePrice] Opening WebSocket for: ${targetSymbol}`);
 
+        // Use the Binance Futures mark-price stream for dependable updates on every contract
         const wsSymbol = targetSymbol.toLowerCase();
         const wsUrl = `wss://fstream.binance.com/stream?streams=${wsSymbol}@bookTicker/${wsSymbol}@markPrice@1s`;
+        console.log(`📡[fetchLivePrice] WebSocket URL: ${wsUrl}`);
         
         let wsTimeout = null;
         let wsOpened = false;
@@ -1487,8 +1738,11 @@
 
         priceWs.onopen = () => {
             wsOpened = true;
+            console.log(`✅ [fetchLivePrice] WebSocket connected for ${targetSymbol}`);
+            // If the socket opens but no mark price arrives, fall back to REST instead of hanging forever.
             wsTimeout = setTimeout(() => {
                 if (!wsReceivedData) {
+                    console.warn(`⏱️ [fetchLivePrice] No futures ticker received for ${targetSymbol} - trying REST API`);
                     priceWs.close();
                     fetchLivePriceViaREST(targetSymbol, entryInput, indicator);
                 }
@@ -1512,13 +1766,20 @@
                 if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
                     parsedPrice = parseFloat(data.p ?? data.c);
                 }
-                if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) return;
-                
+                if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+                    console.warn(`⚠️ [fetchLivePrice] Invalid futures ticker payload for ${targetSymbol}:`, data);
+                    return;
+                }
                 const currentPrice = parsedPrice.toFixed(8);
 
+                console.log(`📊[fetchLivePrice] Got price for ${targetSymbol}: ${currentPrice}`);
+
+                // Only update if the user hasn't switched coins again mid-stream
                 if (entryInput.dataset.liveSymbol === targetSymbol.toUpperCase()) {
+                    // Always remember the latest market price so the indicator can show Δ
                     entryInput.dataset.livePrice = String(parsedPrice);
 
+                    // Snap entry field to the live price ONLY on first tick or when user clicked "Live"
                     const shouldSnap = entryInput.dataset.snapToLive === '1'
                         || !entryInput.dataset.userEntry
                         || parseFloat(entryInput.dataset.userEntry) <= 0;
@@ -1540,6 +1801,7 @@
                         }, 300);
                     }
 
+                    // Update the small live-price indicator + delta next to the field
                     if (typeof refreshLivePriceIndicator === 'function') {
                         refreshLivePriceIndicator(parsedPrice);
                     }
@@ -1554,6 +1816,8 @@
                             indicator.textContent = '🔄 Live Price';
                         }, 2000);
                     }
+                } else {
+                    console.log(`ℹ️ [fetchLivePrice] Ignoring price update - symbol changed to ${entryInput.dataset.liveSymbol}`);
                 }
             } catch (err) {
                 console.error(`❌[fetchLivePrice] Error parsing message:`, err);
@@ -1562,8 +1826,13 @@
 
         priceWs.onerror = (err) => {
             wsOpened = false;
-            if (priceWsSymbol === targetSymbol) priceWsSymbol = '';
+            if (priceWsSymbol === targetSymbol) {
+                priceWsSymbol = '';
+            }
             if (wsTimeout) clearTimeout(wsTimeout);
+            console.error(`❌ [fetchLivePrice] WebSocket error for ${targetSymbol}:`, err);
+            
+            // Try REST API as fallback
             priceWs.close();
             fetchLivePriceViaREST(targetSymbol, entryInput, indicator);
         };
@@ -1571,23 +1840,35 @@
         priceWs.onclose = () => {
             const shouldFallback = wsOpened && !wsReceivedData && entryInput.dataset.liveSymbol === targetSymbol.toUpperCase();
             wsOpened = false;
-            if (priceWsSymbol === targetSymbol) priceWsSymbol = '';
+            if (priceWsSymbol === targetSymbol) {
+                priceWsSymbol = '';
+            }
             if (wsTimeout) clearTimeout(wsTimeout);
+            console.log(`🔄[fetchLivePrice] WebSocket closed for ${targetSymbol}`);
+
             if (shouldFallback) {
+                console.log(`🔁[fetchLivePrice] Falling back to REST after empty futures stream for ${targetSymbol}`);
                 fetchLivePriceViaREST(targetSymbol, entryInput, indicator);
             }
         };
     }
     
+    // ✅ FALLBACK: Fetch price via REST API when WebSocket fails
     function fetchLivePriceViaREST(symbol, entryInput, indicator) {
         if (!symbol || !entryInput) return;
+        
+        console.log(`📡 [fetchLivePriceViaREST] Fetching ${symbol} via REST API...`);
         
         fetch(`/get_live_price/${encodeURIComponent(symbol)}`)
             .then(r => r.json())
             .then(data => {
-                if (getSelectedSymbol() && getSelectedSymbol() !== symbol.toUpperCase()) return;
+                if (getSelectedSymbol() && getSelectedSymbol() !== symbol.toUpperCase()) {
+                    console.log(`ℹ️ [fetchLivePriceViaREST] Ignoring stale price for ${symbol}`);
+                    return;
+                }
 
                 if (data.price && data.price > 0) {
+                    console.log(`✅[fetchLivePriceViaREST] Got price: ${data.price}`);
                     const livePx = parseFloat(data.price);
                     entryInput.dataset.livePrice = String(livePx);
                     entryInput.dataset.liveSymbol = symbol.toUpperCase();
@@ -1619,26 +1900,21 @@
                         }, 2000);
                     }
                 } else {
+                    console.error(`❌[fetchLivePriceViaREST] Invalid price: ${data.price}`);
                     entryInput.value = 'Error';
                     entryInput.style.color = '#ff4444';
                     if (indicator) indicator.textContent = '❌ Error';
                 }
             })
             .catch(err => {
+                console.error(`❌[fetchLivePriceViaREST] Failed:`, err);
                 entryInput.value = 'Error';
                 entryInput.style.color = '#ff4444';
                 if (indicator) indicator.textContent = '❌ Error';
             });
     }
 
-    function updateLivePrice(symbol, forceFresh) {
-        const targetSymbol = (symbol || getSelectedSymbol() || 'BTCUSDT').trim().toUpperCase();
-        const age = Date.now() - lastPriceMessageAt;
-        // Only fall back to REST if WebSocket hasn't sent a message in 15 seconds
-        if (age < 15000 && priceWsSymbol === targetSymbol) return;
-        fetchLivePrice(targetSymbol);
-    }
-
+    // ✅ Update the small live-price indicator (price + Δ vs. entry) next to Entry Price
     function refreshLivePriceIndicator(livePxArg) {
         try {
             const entryInput = document.getElementById('entry_input');
@@ -1658,6 +1934,7 @@
                 return;
             }
 
+            // Adaptive precision so small-priced coins still show meaningful digits
             const decimals = livePx >= 100 ? 2 : livePx >= 1 ? 4 : 6;
             valEl.textContent = livePx.toFixed(decimals);
 
@@ -1676,7 +1953,7 @@
         }
     }
 
-    function refreshSelectedSymbolPanels(symbol, forceFresh) {
+    function refreshSelectedSymbolPanels(symbol, forceFresh = false) {
         const activeSymbol = (symbol || getSelectedSymbol() || '').trim().toUpperCase();
         if (!activeSymbol) return;
 
@@ -1685,8 +1962,12 @@
         const header = document.getElementById('embed-modal-symbol');
         const prevSymbolInput = document.querySelector('input[name="prev_symbol"]');
 
-        if (prevSymbolInput) prevSymbolInput.value = activeSymbol;
-        if (header) header.textContent = activeSymbol;
+        if (prevSymbolInput) {
+            prevSymbolInput.value = activeSymbol;
+        }
+        if (header) {
+            header.textContent = activeSymbol;
+        }
         if (positionsContainer) {
             positionsContainer.innerHTML = `<div style="text-align: center; color: #666; padding: 20px 12px; font-size: 9px;">Loading positions for ${activeSymbol}...</div>`;
         }
@@ -1696,36 +1977,232 @@
 
         updateLivePrice(activeSymbol, true);
         updateEmbeddedCoinDetails(activeSymbol, forceFresh);
+        fetchCoinDetails(activeSymbol);
         updatePositionSizing(activeSymbol);
         updateLivePositions(activeSymbol, forceFresh);
-        updateTradeHistory(activeSymbol, false);
+        updateTradeHistory(activeSymbol);
         updateTP1SLOrders();
         updateTradeLimits();
     }
 
+    // ✅ CLOSE COIN DETAILS MODAL
     function closeCoinModal() {
-        const m = document.getElementById('coin-details-modal');
-        if (m) m.style.display = 'none';
+        document.getElementById('coin-details-modal').style.display = 'none';
     }
+
+    // Close modal when clicking outside
+    // ✅ INITIALIZE ON PAGE LOAD
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('✅ Page loaded, initializing dynamic functions');
+            updateLivePositions();
+            updateTradeHistory();
+            updateTP1SLOrders();
+            refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
+        });
+    } else {
+        updateLivePositions();
+        updateTradeHistory();
+        updateTP1SLOrders();
+        refreshSelectedSymbolPanels(getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}', true);
+    }
+
+    // ─── CACHE / LIVE-PRICE STATUS PILL ───────────────────────────────────────
+    // Updates the small pill in the header every 2 s to reflect the WebSocket
+    // state, REST fallback mode, stale feed, or an active Binance IP ban.
+    (function startCacheStatusUpdater() {
+        const dot  = document.getElementById('cache-status-dot');
+        const text = document.getElementById('cache-status-text');
+        if (!dot || !text) return;
+
+        function tick() {
+            const now = Date.now();
+            const secAgo = lastPriceMessageAt > 0 ? Math.round((now - lastPriceMessageAt) / 1000) : null;
+
+            // Check IP ban via a lightweight endpoint (non-blocking, fire-and-forget)
+            fetch('/api/cache_status', { method: 'GET' })
+                .then(r => r.ok ? r.json() : null)
+                .then(d => {
+                    if (!d) return;
+                    if (d.ip_banned) {
+                        const secsLeft = Math.max(0, Math.round((d.ban_until_ms - Date.now()) / 1000));
+                        dot.style.background  = '#ff4444';
+                        dot.style.boxShadow   = '0 0 4px #ff4444';
+                        text.textContent      = `IP Ban ${secsLeft}s`;
+                        text.style.color      = '#ff8888';
+                        return;
+                    }
+                    // Normal mode — show WS / REST and freshness
+                    const socketActive = typeof priceWs !== 'undefined'
+                        && priceWs !== null
+                        && (priceWs.readyState === WebSocket.OPEN || priceWs.readyState === WebSocket.CONNECTING);
+                    const fresh = secAgo !== null && secAgo < 8;
+
+                    if (socketActive && fresh) {
+                        dot.style.background = '#00ff88';
+                        dot.style.boxShadow  = '0 0 4px #00ff88';
+                        text.textContent     = secAgo !== null ? `WS ${secAgo}s ago` : 'WS Live';
+                        text.style.color     = '#9fdcff';
+                    } else if (fresh) {
+                        dot.style.background = '#00d4ff';
+                        dot.style.boxShadow  = '0 0 4px #00d4ff';
+                        text.textContent     = `REST ${secAgo}s ago`;
+                        text.style.color     = '#9fdcff';
+                    } else {
+                        dot.style.background = '#ffaa00';
+                        dot.style.boxShadow  = '0 0 4px #ffaa00';
+                        text.textContent     = secAgo !== null ? `Stale ${secAgo}s` : 'Stale';
+                        text.style.color     = '#ffcc66';
+                    }
+                })
+                .catch(() => {
+                    // If endpoint doesn't exist yet, just show feed freshness without ban check
+                    const socketActive = typeof priceWs !== 'undefined'
+                        && priceWs !== null
+                        && (priceWs.readyState === WebSocket.OPEN || priceWs.readyState === WebSocket.CONNECTING);
+                    const fresh = secAgo !== null && secAgo < 8;
+                    if (socketActive && fresh) {
+                        dot.style.background = '#00ff88';
+                        text.textContent     = secAgo !== null ? `WS ${secAgo}s ago` : 'WS Live';
+                    } else if (fresh) {
+                        dot.style.background = '#00d4ff';
+                        text.textContent     = `REST ${secAgo}s ago`;
+                    } else {
+                        dot.style.background = '#ffaa00';
+                        text.textContent     = 'Stale';
+                        text.style.color     = '#ffcc66';
+                    }
+                });
+        }
+
+        tick();
+        setInterval(tick, 2000);
+    })();
+
+    // ✅ AUTO-REFRESH TIMERS (Background updates while user trades)
+    // Refresh positions every 5 seconds
+    setInterval(() => {
+        updateLivePositions();
+    }, 5000);
+
+    // Refresh price every 10 seconds only if the current feed has gone stale
+    setInterval(() => {
+        updateLivePrice();
+    }, 10000);
+
+    // Refresh coin details (leverage, etc) every 30 seconds
+    setInterval(() => {
+        fetchCoinDetails();
+        updateEmbeddedCoinDetails();
+        updateTradeHistory();
+    }, 30000);
+
+    // Refresh TP1 and SL orders every 5 seconds
+    setInterval(updateTP1SLOrders, 5000);
 
     window.onclick = function(event) {
         const modal = document.getElementById('coin-details-modal');
-        if (modal && event.target === modal) {
+        if (event.target === modal && modal.style.display === 'flex') {
             modal.style.display = 'none';
         }
-    };
-
-    // Stub functions to avoid console errors if these exist elsewhere in your codebase
-    function updatePositionSizing(symbol) { /* implemented in your existing JS */ }
-    function fetchCoinDetails(symbol) { /* implemented in your existing JS */ }
-    function confirmTradeExecution() { return true; }
-    function editLeverageMod(symbol) { /* implemented in your existing JS */ }
-    function editTPSLMod() { /* implemented in your existing JS */ }
-    function closePosition(symbol) { /* implemented in your existing JS */ }
-    function partialClose(symbol) { /* implemented in your existing JS */ }
-    function moveTrailingSL(symbol) { /* implemented in your existing JS */ }
-    function closeAllPositions() { /* implemented in your existing JS */ }
-
+    }
 </script>
+
+<!-- TRADE STATUS TOAST — replaces the inline message that pushed TP/SL and Trades boxes out of view -->
+<div id="trade-toast" style="
+    display:none;
+    position:fixed;
+    bottom:22px;
+    right:22px;
+    z-index:99999;
+    min-width:260px;
+    max-width:380px;
+    padding:12px 16px;
+    border-radius:8px;
+    font-size:11px;
+    font-weight:600;
+    line-height:1.45;
+    box-shadow:0 4px 24px rgba(0,0,0,0.55);
+    animation:toastSlideIn 0.25s ease;
+    word-break:break-word;
+    cursor:pointer;
+" onclick="document.getElementById('trade-toast').style.display='none'">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+        <span id="trade-toast-msg"></span>
+        <span style="font-size:14px;opacity:0.7;flex-shrink:0;">&times;</span>
+    </div>
+    <div style="margin-top:6px;height:3px;border-radius:2px;background:rgba(255,255,255,0.15);overflow:hidden;">
+        <div id="trade-toast-bar" style="height:100%;border-radius:2px;background:rgba(255,255,255,0.5);transition:width linear;"></div>
+    </div>
+</div>
+<style>
+@keyframes toastSlideIn {
+    from { opacity:0; transform:translateY(18px); }
+    to   { opacity:1; transform:translateY(0); }
+}
+</style>
+<script>
+(function() {
+    var _tradeStatus = {{ trade_status | tojson if trade_status else 'null' }};
+    if (_tradeStatus) {
+        var toast   = document.getElementById('trade-toast');
+        var msgEl   = document.getElementById('trade-toast-msg');
+        var bar     = document.getElementById('trade-toast-bar');
+        var isOk    = _tradeStatus.success;
+        toast.style.background    = isOk ? 'linear-gradient(135deg,#0d3d1f,#0a4a1a)' : 'linear-gradient(135deg,#3d0d0d,#4a0a0a)';
+        toast.style.border        = isOk ? '1px solid #00cc66' : '1px solid #cc2222';
+        toast.style.color         = isOk ? '#00ff88' : '#ff8888';
+        msgEl.textContent         = _tradeStatus.message;
+        bar.style.background      = isOk ? '#00cc66' : '#cc2222';
+        toast.style.display       = 'block';
+        var DURATION = 7000;
+        bar.style.width           = '100%';
+        bar.style.transitionDuration = DURATION + 'ms';
+        setTimeout(function(){ bar.style.width = '0%'; }, 30);
+        var _timer = setTimeout(function(){ toast.style.display = 'none'; }, DURATION);
+        toast.addEventListener('click', function(){ clearTimeout(_timer); });
+    }
+})();
+</script>
+
+<div id="coin-details-modal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.7);" onclick="if(event.target.id === 'coin-details-modal') closeCoinModal()">
+    <div style="display:flex; align-items:center; justify-content:center; width:100%; height:100%;">
+        <div style="background-color: #0d1117; padding: 20px; border: 2px solid #00d4ff; border-radius: 8px; width: 90%; max-width: 600px; color: #fff; max-height: 90vh; overflow-y: auto; box-shadow: 0 0 30px rgba(0, 212, 255, 0.3);" onclick="event.stopPropagation();">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #00d4ff; padding-bottom: 10px; margin-bottom: 15px;">
+            <h3 style="color: #00d4ff; margin: 0; font-size: 16px;">ℹ️ <span id="modal-symbol" style="color: #00ff88;">{{ selected_symbol or 'BTCUSDT' }}</span></h3>
+            <span onclick="closeCoinModal()" style="color: #ff6b6b; font-size: 24px; font-weight: bold; cursor: pointer; line-height: 1;">&times;</span>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+            <div style="background: #1a1a2e; padding: 10px; border-radius: 6px; border-left: 3px solid #00ff88;">
+                <p style="margin: 0; font-size: 11px; color: #aaa;">Max Leverage</p>
+                <p style="margin: 4px 0; font-size: 22px; color: #00ff88; font-weight: bold;"><span id="modal-max-lev">-</span>x</p>
+            </div>
+            
+            <div style="background: #1a1a2e; padding: 10px; border-radius: 6px; border-left: 3px solid #ffaa00;">
+                <p style="margin: 0; font-size: 11px; color: #aaa;">Suggested Safe Lev</p>
+                <p style="margin: 4px 0; font-size: 22px; color: #ffaa00; font-weight: bold;"><span id="modal-sugg-lev">45</span>x</p>
+            </div>
+        </div>
+        
+        <div id="modal-position-details" style="margin-bottom: 10px; display: none;">
+            </div>
+        
+        <div id="modal-action-buttons" style="display: grid; gap: 8px; margin-bottom: 10px; grid-template-columns: 1fr 1fr 1fr;">
+            <button onclick="editLeverageMod()" style="padding: 8px; background: #ffaa00; color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.2s; white-space: nowrap;"><i icon="⚙️"></i> Leverage</button>
+            <button onclick="editTPSLMod()" style="padding: 8px; background: #00d4ff; color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.2s; white-space: nowrap;"><i icon="🎯"></i> TP/SL</button>
+            <button onclick="closePosModal()" style="padding: 8px; background: #ff6b6b; color: #fff; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.2s; white-space: nowrap;"><i icon="❌"></i> Close</button>
+        </div>
+        
+        <div style="background: #0d2a3a; padding: 10px; border-radius: 6px; border-left: 3px solid #00d4ff; margin-bottom: 10px;">
+            <p style="margin: 0; font-size: 11px; color: #aaa;">📌 Leverage Recommendations:</p>
+            <p style="margin: 4px 0; font-size: 12px; color: #fff;" id="modal-rec">Loading...</p>
+        </div>
+        
+        <button onclick="closeCoinModal()" style="width: 100%; padding: 10px; background: #00d4ff; color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
+            ✓ Close
+        </button>
+        </div>
+    </div>
 </body>
 </html>
