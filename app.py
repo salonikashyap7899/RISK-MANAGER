@@ -722,11 +722,13 @@ def index():
         )
         
         session["trade_status"] = result
-        # Invalidate position and trade history caches so next page load is always fresh
+        # Invalidate ALL relevant caches so fresh data shows immediately after trade
         logic._positions_cache.pop(f"positions_{current_user.id}", None)
         logic._positions_cache_time.pop(f"positions_{current_user.id}", None)
         logic._trade_history_cache.pop(f"trade_history_{current_user.id}", None)
         logic._trade_history_cache_time.pop(f"trade_history_{current_user.id}", None)
+        # CRITICAL FIX: Clear conditional orders cache so TP/SL appear immediately
+        logic._conditional_cache.pop(current_user.id, None)
         return redirect(url_for("index", symbol=selected_symbol))
 
     return render_template(
@@ -1105,9 +1107,18 @@ def api_cancel_conditional_order():
     symbol = data.get('symbol')
     if not order_id or not symbol:
         return jsonify({"success": False, "message": "Missing order_id or symbol"}), 400
+
+    # CRITICAL FIX: Virtual order IDs must never reach the Binance cancel API.
+    # They trigger -1102 "orderId was empty/null/malformed" because they are strings like "virtual_sl_5".
+    if str(order_id).startswith('virtual_'):
+        return jsonify({"success": True, "message": "Virtual order acknowledged (server-managed)"})
+
     try:
         # Use logic.cancel_order which handles both regular and algo orders
         success, message = logic.cancel_order(symbol, order_id, current_user.id)
+        # Clear conditional cache on successful cancel so panel refreshes immediately
+        if success:
+            logic._conditional_cache.pop(current_user.id, None)
         return jsonify({"success": success, "message": message})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
