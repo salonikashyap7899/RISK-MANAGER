@@ -219,22 +219,17 @@ def login():
         is_admin = getattr(user, 'is_admin', False) or user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
 
         if not is_admin:
-            if not user.is_subscribed:
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return jsonify({'success': False, 'message': 'Please subscribe to access the dashboard'}), 200
-                flash("Please subscribe to access the trading dashboard.", "warning")
-                return redirect(url_for('subscribe'))
-
             # Check if subscription has expired
-            if user.subscription_end:
-                if datetime.utcnow() > user.subscription_end:
-                    user.is_subscribed = False
-                    user.subscription_status = 'expired'
-                    db.session.commit()
-                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                        return jsonify({'success': False, 'message': 'Your subscription has expired'}), 200
-                    flash("Your subscription has expired. Please renew to access the dashboard.", "warning")
-                    return redirect(url_for('subscribe'))
+            if user.subscription_end and datetime.utcnow() > user.subscription_end:
+                user.is_subscribed = False
+                user.subscription_status = 'expired'
+                db.session.commit()
+
+            if not user.is_subscribed:
+                # Still log them in — redirect to subscribe page
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({'success': True, 'redirect': url_for('subscribe')}), 200
+                return redirect(url_for('subscribe'))
 
         # Login successful
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -244,8 +239,74 @@ def login():
     return render_template('login.html')
 
 @app.route('/login/google')
+@app.route('/google-login')
 def google_login():
-    return google.authorize_redirect(url_for('google_authorize', _external=True))
+    redirect_uri = url_for('google_authorize', _external=True)
+    return google.authorize_redirect(redirect_uri)
+
+
+@app.route('/login/google/callback')
+def google_authorize():
+    try:
+        token = google.authorize_access_token()
+        user_info = token.get('userinfo')
+        if not user_info:
+            user_info = google.get('userinfo').json()
+
+        email = (user_info.get('email') or '').strip().lower()
+        google_id = user_info.get('sub')
+        display_name = user_info.get('name', email.split('@')[0])
+
+        if not email or not google_id:
+            flash("Google login failed: could not retrieve account info.", "error")
+            return redirect(url_for('login'))
+
+        # Find existing user by google_id first, then by email
+        user = User.query.filter_by(google_id=google_id).first()
+        if not user:
+            user = User.query.filter_by(email=email).first()
+            if user:
+                user.google_id = google_id
+            else:
+                # Create a unique username from display name
+                base_username = display_name.replace(' ', '_').lower()
+                username = base_username
+                counter = 1
+                while User.query.filter_by(username=username).first():
+                    username = f"{base_username}{counter}"
+                    counter += 1
+
+                user = User(
+                    username=username,
+                    email=email,
+                    google_id=google_id,
+                    password=None
+                )
+                db.session.add(user)
+            db.session.commit()
+
+        login_user(user, remember=True)
+        session_id = str(uuid.uuid4())
+        session['session_id'] = session_id
+        session.permanent = True
+        user.active_session = session_id
+        db.session.commit()
+
+        is_admin = getattr(user, 'is_admin', False) or user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
+
+        if not is_admin:
+            if user.subscription_end and datetime.utcnow() > user.subscription_end:
+                user.is_subscribed = False
+                user.subscription_status = 'expired'
+                db.session.commit()
+            if not user.is_subscribed:
+                return redirect(url_for('subscribe'))
+
+        return redirect(url_for('index'))
+
+    except Exception as e:
+        flash(f"Google login error: {str(e)}", "error")
+        return redirect(url_for('login'))
 
 
 @app.route("/api/select_symbol", methods=["POST"])
@@ -881,14 +942,75 @@ def disconnect_exchange(conn_id):
 @app.route('/subscribe')
 @login_required
 def subscribe():
-    # If already subscribed and not expired, show status
     is_admin = getattr(current_user, 'is_admin', False) or current_user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
     
     if is_admin:
         flash("You have admin access with unlimited features.", "info")
         return redirect(url_for('index'))
         
-    return render_template('subscribe.html', user=current_user)
+    return render_template('subscribe.html', user=current_user, key_id=config.RAZORPAY_KEY_ID)
+
+
+@app.route('/create-subscription', methods=['POST'])
+@login_required
+def create_subscription():
+    data = request.get_json(silent=True) or {}
+    plan_type = data.get('plan_type', 'monthly')
+
+    if plan_type == 'yearly':
+        plan_id = config.RAZORPAY_YEARLY_PLAN_ID
+        total_count = 1
+    else:
+        plan_id = config.RAZORPAY_MONTHLY_PLAN_ID
+        total_count = 12
+
+    try:
+        subscription = razorpay_client.subscription.create({
+            'plan_id': plan_id,
+            'customer_notify': 1,
+            'quantity': 1,
+            'total_count': total_count,
+        })
+        return jsonify({'subscription_id': subscription['id']})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/verify-subscription', methods=['POST'])
+@login_required
+def verify_subscription():
+    data = request.get_json(silent=True) or {}
+
+    try:
+        razorpay_client.utility.verify_payment_signature({
+            'razorpay_payment_id': data['razorpay_payment_id'],
+            'razorpay_subscription_id': data['razorpay_subscription_id'],
+            'razorpay_signature': data['razorpay_signature']
+        })
+
+        plan_type = data.get('plan_type', 'monthly')
+        duration_days = 30 if plan_type == 'monthly' else 365
+
+        current_user.is_subscribed = True
+        current_user.subscription_status = 'active'
+        current_user.subscription_type = plan_type
+        current_user.subscription_id = data.get('razorpay_subscription_id')
+        current_user.subscription_start = datetime.utcnow()
+        current_user.subscription_end = datetime.utcnow() + timedelta(days=duration_days)
+
+        history = SubscriptionHistory(
+            user_id=current_user.id,
+            plan_type=plan_type,
+            start_date=current_user.subscription_start,
+            end_date=current_user.subscription_end,
+            status='active'
+        )
+        db.session.add(history)
+        db.session.commit()
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/payment/create', methods=['POST'])
 @login_required
@@ -1158,4 +1280,4 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         ensure_sqlite_trade_positions_columns()
-    app.run(debug=True, port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=False)
