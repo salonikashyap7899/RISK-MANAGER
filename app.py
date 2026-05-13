@@ -800,11 +800,11 @@ def exchange_connections():
         })
     
     # Supported exchanges list
-    supported_exchanges = [
-        {'id': 'binance', 'name': 'Binance Futures', 'icon': 'https://bin.bnbstatic.com/static/images/common/favicon.ico'},
-        {'id': 'bybit', 'name': 'Bybit (Coming Soon)', 'icon': 'https://www.bybit.com/favicon.ico'},
-        {'id': 'okx', 'name': 'OKX (Coming Soon)', 'icon': 'https://www.okx.com/favicon.ico'}
-    ]
+    supported_exchanges = {
+        'binance': {'name': 'Binance Futures', 'description': 'Connect your Binance Futures account'},
+        'bybit': {'name': 'Bybit (Coming Soon)', 'description': 'Connect your Bybit account'},
+        'okx': {'name': 'OKX (Coming Soon)', 'description': 'Connect your OKX account'}
+    }
     
     return render_template('exchange_connections.html', 
                           connections=formatted_connections, 
