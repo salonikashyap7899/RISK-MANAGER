@@ -127,7 +127,9 @@ def _classify_raw_orders(raw_orders, pos_map, seen_ids, tp1_orders, tp2_orders, 
             time_str = (datetime.fromtimestamp(int(ts_raw) / 1000).strftime('%Y-%m-%d %H:%M:%S')
                         if ts_raw else 'N/A')
 
-        db_pos = pos_map.get(symbol)
+        # FIX 2: Pick the first matching position for context (or most relevant)
+        db_pos_list = pos_map.get(symbol, [])
+        db_pos = db_pos_list[0] if db_pos_list else None
         
         # Safely extract position data with type checking
         position_entry = None
@@ -171,7 +173,7 @@ def _classify_raw_orders(raw_orders, pos_map, seen_ids, tp1_orders, tp2_orders, 
 
 
 # ─── Main public function ──────────────────────────────────────────────────────
-def get_tp1_and_sl_orders(user_id):
+def get_tp1_and_sl_orders(user_id, symbol_filter=None):
     try:
         # ── 1. Get Binance client ────────────────────────────────────────────
         client = logic.get_client(user_id)
@@ -186,10 +188,13 @@ def get_tp1_and_sl_orders(user_id):
             .order_by(TradePosition.created_at.desc())
             .all()
         )
+        
+        # FIX 1: Allow multiple DB positions per symbol
         pos_map = {}
         for p in db_positions:
             if p.symbol not in pos_map:
-                pos_map[p.symbol] = p
+                pos_map[p.symbol] = []
+            pos_map[p.symbol].append(p)
 
         tp1_orders, tp2_orders, sl_orders, seen_ids = [], [], [], set()
 
@@ -208,70 +213,80 @@ def get_tp1_and_sl_orders(user_id):
                                      tp1_orders, tp2_orders, sl_orders)
 
         # ── 4. Fetch LIVE Binance positions to guard against stale DB rows ───
-        # A DB position can remain 'open' even after it closes on Binance
-        # (e.g. TP/SL hit, manual close, liquidation).  If we inject a virtual
-        # order for a closed position we show phantom cards that confuse users.
         live_symbols = _direct_binance_live_symbols(client)
-        # live_symbols is None on API error → be safe and allow all DB symbols
         if live_symbols is None:
             live_symbols = set(pos_map.keys())
 
         # ── 5. Virtual fallbacks — only for truly open + order-missing positions ──
-        for sym, pos in pos_map.items():
-            # Skip if no live Binance position for this symbol
+        # FIX 1: Iterate over all positions for each symbol
+        for sym, pos_list in pos_map.items():
             if sym not in live_symbols:
                 print(f"[VIRTUAL SKIP] {sym} has no live Binance position — skipping virtual order")
                 continue
+            
+            for pos in pos_list:
+                side_close = 'SELL' if pos.side == 'LONG' else 'BUY'
 
-            side_close = 'SELL' if pos.side == 'LONG' else 'BUY'
-
-            if (pos.sl_price and pos.sl_price > 0
-                    and not any(o['symbol'] == sym for o in sl_orders)):
-                sl_orders.append({
-                    'orderId':      f"virtual_sl_{pos.id}",
-                    'symbol':       sym,
-                    'side':         side_close,
-                    'type':         'VIRTUAL_STOP',
-                    'label':        'SL',
-                    'triggerPrice': float(pos.current_sl or pos.sl_price),
-                    'qty':          float(pos.initial_qty),
-                    'time':         pos.updated_at.strftime('%Y-%m-%d %H:%M:%S') if pos.updated_at else 'N/A',
-                    'source':       'virtual',
-                })
-
-            if (pos.tp1_price and pos.tp1_price > 0
-                    and not any(o['symbol'] == sym for o in tp1_orders)):
-                tp1_qty = (float(pos.initial_qty) * (float(pos.tp1_qty_pct) / 100.0)
-                           if pos.tp1_qty_pct else float(pos.initial_qty))
-                tp1_orders.append({
-                    'orderId':      f"virtual_tp1_{pos.id}",
-                    'symbol':       sym,
-                    'side':         side_close,
-                    'type':         'VIRTUAL_TP',
-                    'label':        'TP1',
-                    'triggerPrice': float(pos.tp1_price),
-                    'qty':          tp1_qty,
-                    'time':         pos.updated_at.strftime('%Y-%m-%d %H:%M:%S') if pos.updated_at else 'N/A',
-                    'source':       'virtual',
-                })
-
-            if (pos.tp2_price and pos.tp2_price > 0
-                    and not any(o['symbol'] == sym for o in tp2_orders)):
-                tp1_qty = (float(pos.initial_qty) * (float(pos.tp1_qty_pct) / 100.0)
-                           if pos.tp1_qty_pct else 0)
-                tp2_qty = float(pos.initial_qty) - tp1_qty
-                if tp2_qty > 0:
-                    tp2_orders.append({
-                        'orderId':      f"virtual_tp2_{pos.id}",
+                # Check if SL virtual needed - use pos.id to make unique orderId
+                if (pos.sl_price and pos.sl_price > 0
+                        and not any(o['symbol'] == sym and o.get('orderId') == f"virtual_sl_{pos.id}" for o in sl_orders)
+                        and not any(o['symbol'] == sym and o.get('source') == 'regular' and 'STOP' in o.get('type', '') for o in sl_orders)):
+                    sl_orders.append({
+                        'orderId':      f"virtual_sl_{pos.id}",
                         'symbol':       sym,
                         'side':         side_close,
-                        'type':         'VIRTUAL_LIMIT',
-                        'label':        'TP2',
-                        'triggerPrice': float(pos.tp2_price),
-                        'qty':          tp2_qty,
+                        'type':         'VIRTUAL_STOP',
+                        'label':        'SL',
+                        'triggerPrice': float(pos.current_sl or pos.sl_price),
+                        'qty':          float(pos.initial_qty),
                         'time':         pos.updated_at.strftime('%Y-%m-%d %H:%M:%S') if pos.updated_at else 'N/A',
                         'source':       'virtual',
                     })
+
+                # Check if TP1 virtual needed
+                if (pos.tp1_price and pos.tp1_price > 0
+                        and not any(o['symbol'] == sym and o.get('orderId') == f"virtual_tp1_{pos.id}" for o in tp1_orders)
+                        and not any(o['symbol'] == sym and o.get('source') == 'regular' and 'TAKE_PROFIT' in o.get('type', '') for o in tp1_orders)):
+                    tp1_qty = (float(pos.initial_qty) * (float(pos.tp1_qty_pct) / 100.0)
+                               if pos.tp1_qty_pct else float(pos.initial_qty))
+                    tp1_orders.append({
+                        'orderId':      f"virtual_tp1_{pos.id}",
+                        'symbol':       sym,
+                        'side':         side_close,
+                        'type':         'VIRTUAL_TP',
+                        'label':        'TP1',
+                        'triggerPrice': float(pos.tp1_price),
+                        'qty':          tp1_qty,
+                        'time':         pos.updated_at.strftime('%Y-%m-%d %H:%M:%S') if pos.updated_at else 'N/A',
+                        'source':       'virtual',
+                    })
+
+                # Check if TP2 virtual needed
+                if (pos.tp2_price and pos.tp2_price > 0
+                        and not any(o['symbol'] == sym and o.get('orderId') == f"virtual_tp2_{pos.id}" for o in tp2_orders)
+                        and not any(o['symbol'] == sym and o.get('source') == 'regular' and o.get('type') == 'LIMIT' for o in tp2_orders)):
+                    tp1_qty = (float(pos.initial_qty) * (float(pos.tp1_qty_pct) / 100.0)
+                               if pos.tp1_qty_pct else 0)
+                    tp2_qty = float(pos.initial_qty) - tp1_qty
+                    if tp2_qty > 0:
+                        tp2_orders.append({
+                            'orderId':      f"virtual_tp2_{pos.id}",
+                            'symbol':       sym,
+                            'side':         side_close,
+                            'type':         'VIRTUAL_LIMIT',
+                            'label':        'TP2',
+                            'triggerPrice': float(pos.tp2_price),
+                            'qty':          tp2_qty,
+                            'time':         pos.updated_at.strftime('%Y-%m-%d %H:%M:%S') if pos.updated_at else 'N/A',
+                            'source':       'virtual',
+                        })
+
+        # FIX 3: Apply symbol filtering at the end
+        if symbol_filter:
+            target = symbol_filter.upper()
+            tp1_orders = [o for o in tp1_orders if o['symbol'] == target]
+            tp2_orders = [o for o in tp2_orders if o['symbol'] == target]
+            sl_orders  = [o for o in sl_orders  if o['symbol'] == target]
 
         return {
             "success":    True,
