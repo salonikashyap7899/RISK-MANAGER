@@ -1106,6 +1106,14 @@
                 const triggerStr = trigger > 0 ? '$' + trigger.toFixed(decimals) : 'Market';
                 const amtStr     = qty > 0 ? qty.toString() : 'Close All';
 
+                // Distance to trigger calculation
+                let distanceStr = '';
+                if (trigger > 0 && o.mark_price > 0) {
+                    const distPct = ((trigger - o.mark_price) / o.mark_price) * 100;
+                    const distColor = (isTP && distPct > 0) || (isSL && distPct < 0) ? '#0ecb81' : '#f6465d';
+                    distanceStr = `<span style="color:${distColor};font-size:8px;margin-left:5px;">(${distPct > 0 ? '+' : ''}${distPct.toFixed(2)}%)</span>`;
+                }
+
                 // Source badge for virtual orders
                 const isVirtual = (o.source === 'virtual') || String(o.orderId).startsWith('virtual_');
                 const sourceBadge = isVirtual
@@ -1138,7 +1146,7 @@
                 c +=   '<span style="font-weight:bold;color:#e9fbff;font-size:10px;">' + (o.symbol || '\u2014') + ' <span style="color:#888;font-weight:normal;font-size:8px;">Perp</span>' + sourceBadge + '</span>';
                 c +=   '<div style="display:flex;align-items:center;gap:4px;">';
                 c +=     '<span style="background:' + labelColor + '22;color:' + labelColor + ';border:1px solid ' + labelColor + '55;border-radius:3px;font-size:7px;font-weight:700;padding:0 4px;">' + labelTag + '</span>';
-                c +=     '<button onclick="cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')" style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
+                c +=     '<button id="cancel-btn-' + o.orderId + '" onclick="cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\',\'' + (o.source || 'regular') + '\')" style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
                 c +=   '</div>';
                 c += '</div>';
 
@@ -1159,7 +1167,7 @@
 
                 c += row('Amount', amtStr);
                 c += row('Price', 'Market', '#ccc');
-                c += row('Conditions', 'Mark Price ' + condSymbol + ' ' + triggerStr, '#f0b90b');
+                c += row('Conditions', 'Mark Price ' + condSymbol + ' ' + triggerStr + distanceStr, '#f0b90b');
                 if (o.position_entry) c += row('Entry Price', '$' + parseFloat(o.position_entry).toFixed(decimals), '#aaa');
                 c += row('Reduce Only', 'True', '#ccc');
                 c += '</div>';
@@ -1196,24 +1204,43 @@
         });
     }
 
-    function cancelOrder(symbol, orderId) {
+    function cancelOrder(symbol, orderId, source) {
         if (!confirm('Cancel order ' + orderId + ' for ' + symbol + '?')) return;
+
+        const btn = document.getElementById('cancel-btn-' + orderId);
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '...';
+            btn.style.opacity = '0.5';
+        }
 
         fetch('/api/cancel_conditional_order', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol: symbol, order_id: orderId })
+            body: JSON.stringify({ symbol: symbol, order_id: orderId, source: source })
         })
         .then(r => r.json())
         .then(data => {
             if (data.success) {
                 // Force a fresh fetch immediately (cache was cleared server-side)
-                setTimeout(function() { updateTP1SLOrders(true); }, 300);
+                updateTP1SLOrders(true);
             } else {
                 alert('Error: ' + (data.message || data.error || 'Unknown error'));
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Cancel';
+                    btn.style.opacity = '1';
+                }
             }
         })
-        .catch(function(err) { alert('Error: ' + err.message); });
+        .catch(function(err) { 
+            alert('Error: ' + err.message);
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Cancel';
+                btn.style.opacity = '1';
+            }
+        });
     }
 
     function updateTradeHistory() {
