@@ -119,6 +119,7 @@ def get_tp1_and_sl_orders(user_id):
                 'qty': qty,
                 'time': time_str,
                 'source': source,
+                'is_live': True, # Explicitly mark as live Binance data
                 'position_entry': float(db_pos.entry_price) if db_pos and db_pos.entry_price else None,
                 'position_sl': float(db_pos.sl_price) if db_pos and db_pos.sl_price else None,
                 'position_tp1': float(db_pos.tp1_price) if db_pos and db_pos.tp1_price else None,
@@ -176,7 +177,8 @@ def get_tp1_and_sl_orders(user_id):
                     'triggerPrice': float(pos.current_sl or pos.sl_price),
                     'qty': float(pos.initial_qty),
                     'time': pos.updated_at.strftime('%Y-%m-%d %H:%M:%S') if pos.updated_at else 'N/A',
-                    'source': 'virtual'
+                    'source': 'virtual',
+                    'is_live': False
                 })
 
             # Virtual TP1
@@ -191,7 +193,8 @@ def get_tp1_and_sl_orders(user_id):
                     'triggerPrice': float(pos.tp1_price),
                     'qty': tp1_qty,
                     'time': pos.updated_at.strftime('%Y-%m-%d %H:%M:%S') if pos.updated_at else 'N/A',
-                    'source': 'virtual'
+                    'source': 'virtual',
+                    'is_live': False
                 })
 
             # Virtual TP2
@@ -208,7 +211,8 @@ def get_tp1_and_sl_orders(user_id):
                         'triggerPrice': float(pos.tp2_price),
                         'qty': tp2_qty,
                         'time': pos.updated_at.strftime('%Y-%m-%d %H:%M:%S') if pos.updated_at else 'N/A',
-                        'source': 'virtual'
+                        'source': 'virtual',
+                        'is_live': False
                     })
 
         result = {
