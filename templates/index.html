@@ -987,7 +987,7 @@
                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px; font-size: 9px;">
                             <div style="background: rgba(${pnlColor.includes('88') ? '0,255,136' : '255,77,77'}, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid ${pnlColor};">
                                 <div style="color: #666; margin-bottom: 2px;">PnL</div>
-                                <div style="color: ${pnlColor}; font-weight: bold; font-size: 10px;">$${pos.unrealized_pnl.toFixed(2)}</div>
+                                <div style="color: ${pnlColor}; font-weight: bold; font-size: 10px;">$${(pos.unrealized_pnl || 0).toFixed(2)}</div>
                             </div>
                             <div style="background: rgba(${pnlColor.includes('88') ? '0,255,136' : '255,77,77'}, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid ${pnlColor};">
                                 <div style="color: #666; margin-bottom: 2px;">ROI</div>
@@ -1034,15 +1034,15 @@
                     const tpSlElement = document.getElementById(`tp_sl_details_${pos.symbol}`);
                     if (tpSlElement) {
                         let tpSlHtml = '';
-                        tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #ff6464;">🛑 SL:</strong> $${pos.sl_price.toFixed(4)}</div>`;
+                        tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #ff6464;">🛑 SL:</strong> $${(pos.sl_price || 0).toFixed(4)}</div>`;
                         if (pos.current_sl && pos.current_sl !== pos.sl_price) {
-                            tpSlHtml += `<div style="margin-bottom: 3px; font-size: 8px; color: #ffaa00;"><strong>Current SL:</strong> $${pos.current_sl.toFixed(4)}</div>`;
+                            tpSlHtml += `<div style="margin-bottom: 3px; font-size: 8px; color: #ffaa00;"><strong>Current SL:</strong> $${(pos.current_sl || 0).toFixed(4)}</div>`;
                         }
                         if (pos.tp1_price > 0) {
-                            tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #00ff88;">🎯 TP1:</strong> $${pos.tp1_price.toFixed(4)} (${pos.tp1_qty_pct}%)</div>`;
+                            tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #00ff88;">🎯 TP1:</strong> $${(pos.tp1_price || 0).toFixed(4)} (${pos.tp1_qty_pct}%)</div>`;
                         }
                         if (pos.tp2_price > 0) {
-                            tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #00ff88;">🎯 TP2:</strong> $${pos.tp2_price.toFixed(4)} (Remainder)</div>`;
+                            tpSlHtml += `<div style="margin-bottom: 3px;"><strong style="color: #00ff88;">🎯 TP2:</strong> $${(pos.tp2_price || 0).toFixed(4)} (Remainder)</div>`;
                         }
                         if (!tpSlHtml) {
                             tpSlHtml = '<div style="color: #666;">No TP/SL set</div>';
@@ -1239,7 +1239,7 @@
                         : '';
                     html += `<div style="padding: 6px 0; border-bottom: 1px solid #333; font-size: 11px; line-height: 1.4;">
                         <div><strong>${trade.time}</strong> | ${trade.side} ${trade.symbol}</div>
-                        <div>Price: $${trade.price.toFixed(4)} | Qty: ${trade.qty} | PnL: <span style="color: ${pnlColor};">${trade.realized_pnl.toFixed(3)}</span></div>
+                        <div>Price: $${(trade.price || 0).toFixed(4)} | Qty: ${trade.qty} | PnL: <span style="color: ${pnlColor};">${(trade.realized_pnl || 0).toFixed(3)}</span></div>
                         ${levelsLine}
                         <div style="color: #888; font-size: 10px;">Order: ${trade.order_id}</div>
                     </div>`;
@@ -1474,7 +1474,7 @@
     function closeAllPositions() {
         if(confirm('Close ALL positions?')) {
             fetch('/get_open_positions').then(r => r.json()).then(data => {
-                if (data.positions.length > 0) {
+                if (data.positions && data.positions.length > 0) {
                     Promise.all(data.positions.map(p => 
                         fetch(`/close_position/${p.symbol}`, {method: 'POST'})
                     )).then(() => {
@@ -1533,8 +1533,9 @@
 
     function updateTradeLimits() {
         fetch('/api/today_stats').then(r => r.json()).then(data => {
-            document.getElementById('total_trades_display').textContent = `${data.total_trades}/${data.max_trades}`;
-            const selectedSymbol = document.querySelector('select[name="symbol"]').value || '';
+            const totalDisplay = document.getElementById('total_trades_display');
+            if (totalDisplay) totalDisplay.textContent = `${data.total_trades}/${data.max_trades}`;
+            const selectedSymbol = (document.querySelector('select[name="symbol"]') || {}).value || '';
             const symbolCount = data.symbol_trades && data.symbol_trades[selectedSymbol] ? data.symbol_trades[selectedSymbol] : 0;
             const symbolDisplay = document.getElementById('symbol_trades_display');
             if (symbolDisplay) {
@@ -1588,7 +1589,7 @@
     document.addEventListener('DOMContentLoaded', function() {
         // Add validation listeners to key inputs
         const inputs =[
-            'entry_input',
+            '#entry_input',
             'input[name="sl_value"]',
             'input[name="tp1"]',
             'input[name="tp2"]',
@@ -2242,5 +2243,6 @@
         </button>
         </div>
     </div>
+</div>
 </body>
 </html>
