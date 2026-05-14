@@ -748,8 +748,38 @@ def cancel_order(symbol, order_id, user_id=None, source=None):
     # CRITICAL FIX: Virtual orders are server-managed — never send them to Binance
     # Virtual order IDs look like "virtual_sl_5", "virtual_tp1_3", etc.
     if str(order_id).startswith('virtual_'):
-        print(f"[cancel_order] Skipping Binance API for virtual order: {order_id}")
-        return True, "Virtual order acknowledged (managed by server-side guard)"
+        print(f"[cancel_order] Handling virtual order: {order_id}")
+        try:
+            from models import TradePosition, db
+            parts = str(order_id).split('_')
+            if len(parts) >= 3:
+                pos_id = parts[-1]
+                order_type = parts[1] # 'sl', 'tp1', 'tp2'
+                pos = TradePosition.query.get(pos_id)
+                if pos:
+                    if order_type == 'sl':
+                        pos.sl_price = 0
+                        pos.current_sl = 0
+                    elif order_type == 'tp1':
+                        pos.tp1_price = 0
+                        pos.tp1_qty_pct = 0
+                    elif order_type == 'tp2':
+                        pos.tp2_price = 0
+                    db.session.commit()
+                    
+                    # Invalidate caches
+                    _conditional_cache.pop(user_id, None)
+                    try:
+                        from conditional_orders_enhancement import invalidate_cache
+                        invalidate_cache(user_id)
+                    except ImportError:
+                        pass
+                        
+                    return True, f"Virtual {order_type.upper()} order cancelled and cleared from DB"
+            return True, "Virtual order acknowledged"
+        except Exception as e:
+            print(f"Error clearing virtual order from DB: {e}")
+            return False, f"Error clearing virtual order: {str(e)}"
 
     try:
         client = get_client(user_id)
