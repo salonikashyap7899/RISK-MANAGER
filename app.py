@@ -1246,13 +1246,16 @@ def api_conditional_orders():
 @login_required
 def api_tp1_and_sl_orders():
     """
-    Fetch ONLY TP1 and SL conditional orders with position context.
+    Fetch TP1, TP2, and SL conditional orders with position context.
+    Pass ?force=1 to bypass the server-side cache and fetch fresh data from Binance immediately.
     """
-    from conditional_orders_enhancement import get_tp1_and_sl_orders
+    from conditional_orders_enhancement import get_tp1_and_sl_orders, invalidate_cache
     try:
-       result = get_tp1_and_sl_orders(current_user.id)
+        if request.args.get('force') == '1':
+            invalidate_cache(current_user.id)
+        result = get_tp1_and_sl_orders(current_user.id)
     except Exception as e:
-        result = {"success": False, "error": str(e), "tp1_orders": [], "sl_orders": []}
+        result = {"success": False, "error": str(e), "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
     return jsonify(result)
 
 
@@ -1301,9 +1304,11 @@ def api_cancel_conditional_order():
     try:
         # Use logic.cancel_order which handles both regular and algo orders
         success, message = logic.cancel_order(symbol, order_id, current_user.id)
-        # Clear conditional cache on successful cancel so panel refreshes immediately
+        # Clear ALL caches on successful cancel so the panel refreshes immediately
         if success:
             logic._conditional_cache.pop(current_user.id, None)
+            from conditional_orders_enhancement import invalidate_cache as _inv_tpsl
+            _inv_tpsl(current_user.id)
         return jsonify({"success": success, "message": message})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
