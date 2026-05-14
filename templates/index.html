@@ -1114,11 +1114,15 @@
                     distanceStr = `<span style="color:${distColor};font-size:8px;margin-left:5px;">(${distPct > 0 ? '+' : ''}${distPct.toFixed(2)}%)</span>`;
                 }
 
-                // Source badge for virtual orders
+                // Source badge for live vs virtual orders
                 const isVirtual = (o.source === 'virtual') || String(o.orderId).startsWith('virtual_');
-                const sourceBadge = isVirtual
-                    ? '<span style="background:#2a1a00;color:#f0b90b;border:1px solid #f0b90b44;border-radius:2px;font-size:6.5px;padding:0 3px;margin-left:4px;">Virtual</span>'
-                    : '';
+                const isLive = o.is_live === true;
+                let sourceBadge = '';
+                if (isLive) {
+                    sourceBadge = '<span style="background:#002a1a;color:#0ecb81;border:1px solid #0ecb8144;border-radius:2px;font-size:6.5px;padding:0 3px;margin-left:4px;">LIVE BINANCE</span>';
+                } else if (isVirtual) {
+                    sourceBadge = '<span style="background:#2a1a00;color:#f0b90b;border:1px solid #f0b90b44;border-radius:2px;font-size:6.5px;padding:0 3px;margin-left:4px;">Virtual Guard</span>';
+                }
 
                 // Card colours
                 let borderColor, bgColor, labelColor, labelTag;
