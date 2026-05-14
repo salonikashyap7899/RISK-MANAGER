@@ -1293,6 +1293,7 @@ def api_cancel_conditional_order():
     data = request.get_json(silent=True) or {}
     order_id = data.get('order_id')
     symbol = data.get('symbol')
+    source = data.get('source')
     if not order_id or not symbol:
         return jsonify({"success": False, "message": "Missing order_id or symbol"}), 400
 
@@ -1303,7 +1304,7 @@ def api_cancel_conditional_order():
 
     try:
         # Use logic.cancel_order which handles both regular and algo orders
-        success, message = logic.cancel_order(symbol, order_id, current_user.id)
+        success, message = logic.cancel_order(symbol, order_id, current_user.id, source=source)
         # Clear ALL caches on successful cancel so the panel refreshes immediately
         if success:
             logic._conditional_cache.pop(current_user.id, None)
