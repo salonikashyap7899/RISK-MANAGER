@@ -67,7 +67,7 @@ def get_tp1_and_sl_orders(user_id):
                 algo_resp = client.futures_get_algo_orders(recvWindow=10000)
                 algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
             elif hasattr(client, '_request_futures_api'):
-                algo_resp = client._request_futures_api('get', 'algoOrder/openOrders', True, data={'recvWindow': 10000})
+                algo_resp = client._request_futures_api('get', 'algo/openOrders', True, data={'recvWindow': 10000})
                 algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
         except Exception as e:
             print(f"Error fetching algo orders: {e}")
@@ -126,7 +126,7 @@ def get_tp1_and_sl_orders(user_id):
             }
 
             # Classification Logic
-            # 1. TP1: Take profit market
+            # 1. TP1: Take profit market or Take profit
             if 'TAKE_PROFIT' in o_type and 'LIMIT' not in o_type:
                 context['label'] = 'TP1'
                 tp1_orders.append(context)
@@ -135,7 +135,7 @@ def get_tp1_and_sl_orders(user_id):
                 if o.get('reduceOnly') or o.get('closePosition'):
                     context['label'] = 'TP2'
                     tp2_orders.append(context)
-            # 3. SL: Stop market or trailing stop
+            # 3. SL: Stop market, Stop, or Stop Loss Market
             elif 'STOP' in o_type or 'TRAILING' in o_type:
                 context['label'] = 'Trail SL' if 'TRAILING' in o_type else 'SL'
                 sl_orders.append(context)
@@ -145,6 +145,21 @@ def get_tp1_and_sl_orders(user_id):
             _add_order(o, 'regular')
         for o in algo_orders:
             _add_order(o, 'algo')
+
+        # Enrich with mark price for distance-to-trigger display
+        all_found_orders = tp1_orders + tp2_orders + sl_orders
+        unique_symbols = list(set(o['symbol'] for o in all_found_orders if o.get('symbol')))
+        mark_prices = {}
+        for sym in unique_symbols:
+            try:
+                # Use a fast mark price fetch
+                mp_data = client.futures_mark_price(symbol=sym)
+                mark_prices[sym] = float(mp_data.get('markPrice', 0))
+            except Exception:
+                mark_prices[sym] = 0
+
+        for o in all_found_orders:
+            o['mark_price'] = mark_prices.get(o['symbol'], 0)
 
         # INJECT VIRTUAL ORDERS for positions that failed to place on Binance (e.g. < 5 USDT Min Notional)
         for sym, pos in pos_map.items():
