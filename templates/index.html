@@ -1065,19 +1065,21 @@
         });
     }
 
-    function updateTP1SLOrders() {
+    function updateTP1SLOrders(forceRefresh) {
         const container = document.getElementById('conditional_orders_left');
         const header = document.getElementById('conditional_header_left');
         if (!container) return;
 
-        fetch('/api/tp1_and_sl_orders')
+        const url = forceRefresh ? '/api/tp1_and_sl_orders?force=1' : '/api/tp1_and_sl_orders';
+        fetch(url)
         .then(r => r.json())
         .then(data => {
-            const tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders :[];
-            const slOrders  = Array.isArray(data.sl_orders)  ? data.sl_orders  :[];
-            const totalOrders = tp1Orders.length + slOrders.length;
+            const tp1Orders = Array.isArray(data.tp1_orders) ? data.tp1_orders : [];
+            const tp2Orders = Array.isArray(data.tp2_orders) ? data.tp2_orders : [];
+            const slOrders  = Array.isArray(data.sl_orders)  ? data.sl_orders  : [];
+            const totalOrders = tp1Orders.length + tp2Orders.length + slOrders.length;
 
-            if (header) header.textContent = '🎨 TP1 & SL (' + totalOrders + ')';
+            if (header) header.textContent = '\uD83C\uDFA8 TP1 & SL (' + totalOrders + ')';
 
             if (totalOrders === 0) {
                 container.innerHTML = '<div style="text-align:center;color:#444;padding:40px 0;font-size:10px;">No conditional orders</div>';
@@ -1089,38 +1091,60 @@
                 const qty      = parseFloat(o.qty || 0);
                 const side     = (o.side || '').toUpperCase();
                 const typeRaw  = (o.type || '').toUpperCase();
+                const label    = (o.label || orderTypeLabel || '').toUpperCase();
 
-                // Format dynamically e.g. "Take Profit Market / Sell"
-                let typeStr = typeRaw.replace(/_/g, ' ');
-                typeStr = typeStr.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-                let typeLabel = typeStr + ' / ' + (side === 'BUY' ? 'Buy' : 'Sell');
+                const isTP2    = label === 'TP2';
+                const isTP     = label === 'TP1' || isTP2 || typeRaw.includes('TAKE_PROFIT') || typeRaw.includes('VIRTUAL_TP') || typeRaw.includes('VIRTUAL_LIMIT');
+                const isSL     = !isTP;
 
-                const isTP = typeRaw.includes('TAKE_PROFIT');
-                const condSymbol = isTP ? '≥' : '≤';
-                
-                let decimals = trigger < 1 ? 7 : 2;
-                if (trigger < 0.1) decimals = 7;
-                
+                const condSymbol = isTP ? '\u2265' : '\u2264';
+
+                let decimals = 2;
+                if (trigger > 0 && trigger < 1) decimals = 6;
+                if (trigger > 0 && trigger < 0.01) decimals = 7;
+
                 const triggerStr = trigger > 0 ? '$' + trigger.toFixed(decimals) : 'Market';
                 const amtStr     = qty > 0 ? qty.toString() : 'Close All';
 
-                // card border / bg colour
-                let borderColor = isTP ? '#1a7a4a' : '#7a1a1a';
-                let bgColor     = isTP ? 'rgba(0,40,20,0.55)' : 'rgba(40,0,0,0.55)';
-                let labelColor  = isTP ? '#0ecb81' : '#f6465d';
+                // Source badge for virtual orders
+                const isVirtual = (o.source === 'virtual') || String(o.orderId).startsWith('virtual_');
+                const sourceBadge = isVirtual
+                    ? '<span style="background:#2a1a00;color:#f0b90b;border:1px solid #f0b90b44;border-radius:2px;font-size:6.5px;padding:0 3px;margin-left:4px;">Virtual</span>'
+                    : '';
+
+                // Card colours
+                let borderColor, bgColor, labelColor, labelTag;
+                if (label === 'SL' || label === 'TRAIL SL') {
+                    borderColor = '#7a1a1a'; bgColor = 'rgba(40,0,0,0.55)'; labelColor = '#f6465d';
+                    labelTag = label === 'TRAIL SL' ? 'Trail SL' : 'Stop Loss';
+                } else if (isTP2) {
+                    borderColor = '#1a5a7a'; bgColor = 'rgba(0,20,40,0.55)'; labelColor = '#00b8d9';
+                    labelTag = 'TP2';
+                } else {
+                    borderColor = '#1a7a4a'; bgColor = 'rgba(0,40,20,0.55)'; labelColor = '#0ecb81';
+                    labelTag = 'TP1';
+                }
+
+                // Direction label
+                let typeStr = typeRaw.replace(/_/g, ' ');
+                typeStr = typeStr.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+                const dirStr = typeStr + ' / ' + (side === 'BUY' ? 'Buy' : 'Sell');
 
                 let c = '';
                 c += '<div style="border:1px solid ' + borderColor + ';border-radius:5px;background:' + bgColor + ';padding:7px 8px;margin-bottom:7px;">';
-                
-                // Row 1 – symbol + Cancel
+
+                // Row 1 – symbol + label badge + Cancel
                 c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">';
-                c +=   '<span style="font-weight:bold;color:#e9fbff;font-size:10px;">' + (o.symbol || '—') + ' <span style="color:#888;font-weight:normal;font-size:8px;">Perp</span></span>';
-                c +=   '<button onclick="cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')" style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
+                c +=   '<span style="font-weight:bold;color:#e9fbff;font-size:10px;">' + (o.symbol || '\u2014') + ' <span style="color:#888;font-weight:normal;font-size:8px;">Perp</span>' + sourceBadge + '</span>';
+                c +=   '<div style="display:flex;align-items:center;gap:4px;">';
+                c +=     '<span style="background:' + labelColor + '22;color:' + labelColor + ';border:1px solid ' + labelColor + '55;border-radius:3px;font-size:7px;font-weight:700;padding:0 4px;">' + labelTag + '</span>';
+                c +=     '<button onclick="cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')" style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
+                c +=   '</div>';
                 c += '</div>';
 
-                // Row 2 – type label + date
+                // Row 2 – direction label + date
                 c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">';
-                c +=   '<span style="color:' + labelColor + ';font-size:8.5px;font-weight:600;">' + typeLabel + '</span>';
+                c +=   '<span style="color:' + labelColor + ';font-size:8.5px;font-weight:600;">' + dirStr + '</span>';
                 c +=   '<span style="color:#666;font-size:7.5px;">' + (o.time || '') + '</span>';
                 c += '</div>';
 
@@ -1136,6 +1160,7 @@
                 c += row('Amount', amtStr);
                 c += row('Price', 'Market', '#ccc');
                 c += row('Conditions', 'Mark Price ' + condSymbol + ' ' + triggerStr, '#f0b90b');
+                if (o.position_entry) c += row('Entry Price', '$' + parseFloat(o.position_entry).toFixed(decimals), '#aaa');
                 c += row('Reduce Only', 'True', '#ccc');
                 c += '</div>';
                 return c;
@@ -1144,12 +1169,24 @@
             let html = '';
 
             // TP1 cards
-            tp1Orders.forEach(o => { html += buildCard(o, 'TP1'); });
-            if (tp1Orders.length > 0 && slOrders.length > 0) {
-                html += '<div style="border-top:1px dashed #333;margin:4px 0 8px;"></div>';
+            if (tp1Orders.length > 0) {
+                html += '<div style="color:#0ecb81;font-size:7.5px;font-weight:700;letter-spacing:0.5px;margin-bottom:4px;padding:0 1px;">TAKE PROFIT 1</div>';
+                tp1Orders.forEach(o => { html += buildCard(o, 'TP1'); });
             }
+
+            // TP2 cards
+            if (tp2Orders.length > 0) {
+                if (tp1Orders.length > 0) html += '<div style="border-top:1px dashed #333;margin:4px 0 6px;"></div>';
+                html += '<div style="color:#00b8d9;font-size:7.5px;font-weight:700;letter-spacing:0.5px;margin-bottom:4px;padding:0 1px;">TAKE PROFIT 2</div>';
+                tp2Orders.forEach(o => { html += buildCard(o, 'TP2'); });
+            }
+
             // SL cards
-            slOrders.forEach(o => { html += buildCard(o, 'SL'); });
+            if (slOrders.length > 0) {
+                if (tp1Orders.length > 0 || tp2Orders.length > 0) html += '<div style="border-top:1px dashed #333;margin:4px 0 6px;"></div>';
+                html += '<div style="color:#f6465d;font-size:7.5px;font-weight:700;letter-spacing:0.5px;margin-bottom:4px;padding:0 1px;">STOP LOSS</div>';
+                slOrders.forEach(o => { html += buildCard(o, 'SL'); });
+            }
 
             container.innerHTML = html;
         })
@@ -1160,8 +1197,8 @@
     }
 
     function cancelOrder(symbol, orderId) {
-        if (!confirm(`Cancel order ${orderId} for ${symbol}?`)) return;
-        
+        if (!confirm('Cancel order ' + orderId + ' for ' + symbol + '?')) return;
+
         fetch('/api/cancel_conditional_order', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1170,12 +1207,13 @@
         .then(r => r.json())
         .then(data => {
             if (data.success) {
-                updateTP1SLOrders();
+                // Force a fresh fetch immediately (cache was cleared server-side)
+                setTimeout(function() { updateTP1SLOrders(true); }, 300);
             } else {
-                alert(`Error: ${data.message || data.error || 'Unknown error'}`);
+                alert('Error: ' + (data.message || data.error || 'Unknown error'));
             }
         })
-        .catch(err => alert(`Error: ${err.message}`));
+        .catch(function(err) { alert('Error: ' + err.message); });
     }
 
     function updateTradeHistory() {
