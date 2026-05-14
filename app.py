@@ -1297,13 +1297,8 @@ def api_cancel_conditional_order():
     if not order_id or not symbol:
         return jsonify({"success": False, "message": "Missing order_id or symbol"}), 400
 
-    # CRITICAL FIX: Virtual order IDs must never reach the Binance cancel API.
-    # They trigger -1102 "orderId was empty/null/malformed" because they are strings like "virtual_sl_5".
-    if str(order_id).startswith('virtual_'):
-        return jsonify({"success": True, "message": "Virtual order acknowledged (server-managed)"})
-
     try:
-        # Use logic.cancel_order which handles both regular and algo orders
+        # Use logic.cancel_order which handles both regular, algo, and virtual orders
         success, message = logic.cancel_order(symbol, order_id, current_user.id, source=source)
         # Clear ALL caches on successful cancel so the panel refreshes immediately
         if success:
