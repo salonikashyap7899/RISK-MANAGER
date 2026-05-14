@@ -744,7 +744,7 @@ def get_all_open_conditional_orders(user_id=None):
         print(f"Error fetching conditional orders: {e}")
         return []
 
-def cancel_order(symbol, order_id, user_id=None):
+def cancel_order(symbol, order_id, user_id=None, source=None):
     # CRITICAL FIX: Virtual orders are server-managed — never send them to Binance
     # Virtual order IDs look like "virtual_sl_5", "virtual_tp1_3", etc.
     if str(order_id).startswith('virtual_'):
@@ -756,29 +756,49 @@ def cancel_order(symbol, order_id, user_id=None):
         if client is None:
             return False, "Exchange connection not found"
 
-        # Convert orderId to int — Binance expects a LONG; python-binance sends it as
-        # a query-string parameter which Binance rejects if it looks non-numeric.
+        # Convert orderId to int — Binance expects a LONG for numeric IDs
         try:
             cancel_id = int(order_id)
         except (ValueError, TypeError):
             cancel_id = order_id
 
+        def invalidate_all_caches():
+            _conditional_cache.pop(user_id, None)
+            try:
+                from conditional_orders_enhancement import invalidate_cache
+                invalidate_cache(user_id)
+            except ImportError:
+                pass
+
+        # If source is explicitly 'algo', skip regular cancel
+        if source == 'algo':
+            try:
+                if hasattr(client, 'futures_cancel_algo_order'):
+                    client.futures_cancel_algo_order(algoId=cancel_id, recvWindow=10000)
+                elif hasattr(client, '_request_futures_api'):
+                    client._request_futures_api('delete', 'algo/order', True,
+                                                 data={'algoId': cancel_id, 'recvWindow': 10000})
+                invalidate_all_caches()
+                return True, "Algo order cancelled successfully"
+            except Exception as algo_err:
+                return False, f"Algo cancel failed: {str(algo_err)}"
+
         # Try regular cancel first
         try:
             client.futures_cancel_order(symbol=symbol, orderId=cancel_id, recvWindow=10000)
-            # Clear conditional cache so panel refreshes immediately after cancel
-            _conditional_cache.pop(user_id, None)
+            invalidate_all_caches()
             return True, "Order cancelled successfully"
         except BinanceAPIException as e:
-            # If regular cancel fails (-2011 / -2013), try algo cancel
+            # If regular cancel fails (-2011 / -2013), try algo cancel as fallback
             if e.code in [-2011, -2013]:
                 try:
                     if hasattr(client, 'futures_cancel_algo_order'):
                         client.futures_cancel_algo_order(algoId=cancel_id, recvWindow=10000)
                     elif hasattr(client, '_request_futures_api'):
-                        client._request_futures_api('delete', 'algoOrder', True,
+                        # Correct endpoint is algo/order for DELETE
+                        client._request_futures_api('delete', 'algo/order', True,
                                                      data={'algoId': cancel_id, 'recvWindow': 10000})
-                    _conditional_cache.pop(user_id, None)
+                    invalidate_all_caches()
                     return True, "Algo order cancelled successfully"
                 except Exception as algo_cancel_err:
                     return False, f"Algo cancel failed: {str(algo_cancel_err)}"
