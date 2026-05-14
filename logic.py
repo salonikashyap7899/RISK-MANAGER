@@ -687,7 +687,8 @@ def get_all_open_conditional_orders(user_id=None):
             
             if algo_resp is None and hasattr(client, '_request_futures_api'):
                 try:
-                    algo_resp = client._request_futures_api('get', 'algoOrder/openOrders', True, data={'recvWindow': 10000})
+                    # Correct Binance Futures path: /fapi/v1/algo/openOrders
+                    algo_resp = client._request_futures_api('get', 'algo/openOrders', True, data={'recvWindow': 10000})
                 except Exception as e2:
                     print(f"[DEBUG] _request_futures_api algo failed: {e2}")
             
@@ -755,20 +756,28 @@ def cancel_order(symbol, order_id, user_id=None):
         if client is None:
             return False, "Exchange connection not found"
 
+        # Convert orderId to int — Binance expects a LONG; python-binance sends it as
+        # a query-string parameter which Binance rejects if it looks non-numeric.
+        try:
+            cancel_id = int(order_id)
+        except (ValueError, TypeError):
+            cancel_id = order_id
+
         # Try regular cancel first
         try:
-            client.futures_cancel_order(symbol=symbol, orderId=order_id)
+            client.futures_cancel_order(symbol=symbol, orderId=cancel_id, recvWindow=10000)
             # Clear conditional cache so panel refreshes immediately after cancel
             _conditional_cache.pop(user_id, None)
             return True, "Order cancelled successfully"
         except BinanceAPIException as e:
-            # If regular cancel fails, try algo cancel
-            if e.code in [-2011, -2013]:  # Order does not exist as regular order
+            # If regular cancel fails (-2011 / -2013), try algo cancel
+            if e.code in [-2011, -2013]:
                 try:
                     if hasattr(client, 'futures_cancel_algo_order'):
-                        client.futures_cancel_algo_order(algoId=order_id)
+                        client.futures_cancel_algo_order(algoId=cancel_id, recvWindow=10000)
                     elif hasattr(client, '_request_futures_api'):
-                        client._request_futures_api('delete', 'algoOrder', True, data={'algoId': order_id})
+                        client._request_futures_api('delete', 'algoOrder', True,
+                                                     data={'algoId': cancel_id, 'recvWindow': 10000})
                     _conditional_cache.pop(user_id, None)
                     return True, "Algo order cancelled successfully"
                 except Exception as algo_cancel_err:
