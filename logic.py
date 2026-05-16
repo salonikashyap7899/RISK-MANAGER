@@ -116,6 +116,8 @@ def select_symbol(user_id, symbol):
 
 # User-specific client storage
 _user_clients = {}
+_user_client_time = {}          # {user_id: timestamp} — clients expire after 10 min
+USER_CLIENT_TTL = 600           # Refresh client every 10 minutes to avoid stale sessions
 
 def get_user_exchange_client(user_id):
     """
@@ -124,9 +126,17 @@ def get_user_exchange_client(user_id):
     """
     from models import ExchangeConnection
     import config  
-    # Check if we already have a cached client for this user
+    # Check if we already have a fresh cached client for this user
+    now = time.time()
     if user_id in _user_clients:
-        return _user_clients[user_id]
+        age = now - _user_client_time.get(user_id, 0)
+        if age < USER_CLIENT_TTL:
+            return _user_clients[user_id]
+        else:
+            # TTL expired — remove stale client so it gets recreated below
+            print(f"🔄 User {user_id} client TTL expired ({age:.0f}s) — refreshing")
+            del _user_clients[user_id]
+            _user_client_time.pop(user_id, None)
     
     # Get user's exchange connection from database
     connection = ExchangeConnection.query.filter_by(
@@ -171,6 +181,7 @@ def get_user_exchange_client(user_id):
         print(f"✅ User {user_id} Binance client created successfully")
         # Cache the client
         _user_clients[user_id] = client
+        _user_client_time[user_id] = time.time()
         return client
         
     except BinanceAPIException as e:
@@ -196,6 +207,7 @@ def clear_user_client(user_id):
     """Clear cached client for a user (when they disconnect)"""
     if user_id in _user_clients:
         del _user_clients[user_id]
+    _user_client_time.pop(user_id, None)
 
 def sync_time_with_binance():
     """Sync local time with Binance server time - ROBUST VERSION"""
@@ -890,7 +902,7 @@ def run_virtual_tp_sl_guard(user_id=None):
             tp2 = float(t.tp2_price or 0)
             if tp2 > 0 and _is_tp_hit(tp2):
                 close_position(sym, user_id)
-                log_trade_event("🎯 Virtual TP2 executed for {sym} @ {mark:.6f}", user_id)
+                log_trade_event("TRADE_CLOSE", f"🎯 Virtual TP2 executed for {sym} @ {mark:.6f}", user_id)
                 continue
         db.session.commit()
     except Exception as e:
@@ -967,6 +979,17 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
     client = get_client(user_id)
     if not client: 
         return {"success": False, "message": "❌ No Binance connection"}
+
+    # MULTI-COIN FIX: If balance is 0 (e.g. ban-cached zero from a prior rate-limit hit),
+    # fetch it directly from the client so a second trade on a different coin isn't blocked.
+    if balance <= 0:
+        try:
+            acc = client.futures_account(recvWindow=10000)
+            balance = float(acc.get('totalWalletBalance', 0.0))
+            print(f"✅ execute_trade_action: re-fetched balance = ${balance:.2f} for user {user_id}")
+        except Exception as _be:
+            print(f"⚠️ execute_trade_action: could not re-fetch balance: {_be}")
+            return {"success": False, "message": "❌ Could not fetch wallet balance. Please retry in a moment."}
     
     try:
         # STRICT MANDATORY SL CHECK - Must be > 0
@@ -1390,65 +1413,90 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         tp2_error = None
         try:
             if tp2 > 0 and ((side=="LONG" and tp2>entry) or (side=="SHORT" and tp2<entry)):
-                # TP2 is the remaining quantity (Total Qty - TP1 Qty)
-                # If TP1 failed or was not set, TP2 uses the full quantity
-                actual_tp1_qty = tp1_qty if tp1_created else 0
-                tp2_qty = round_qty(symbol, qty - actual_tp1_qty, user_id)
+                # TP2 qty = remaining quantity after TP1.
+                # Compute from the raw (un-rounded) TP1 qty to avoid floating-point step loss.
+                raw_tp1_qty = (qty * (tp1_pct / 100)) if (tp1 and tp1 > 0 and tp1_pct > 0) else 0
+                actual_tp1_qty_raw = raw_tp1_qty if tp1_created else 0
+                raw_tp2_qty = max(qty - actual_tp1_qty_raw, 0)
+                tp2_qty = round_qty(symbol, raw_tp2_qty, user_id)
 
                 if tp2_qty > 0:
                     tp2_price = round_price(symbol, tp2, user_id)
-                    # TP2 is a Basic order (LIMIT or TAKE_PROFIT_MARKET with explicit quantity)
-                    tp2_variants = [
-                        {
-                            "symbol": symbol,
-                            "side": x_side,
-                            "type": "LIMIT",
-                            "price": tp2_price,
-                            "quantity": tp2_qty,
-                            "timeInForce": "GTC",
-                            "reduceOnly": True,
-                        },
-                        {
-                            "symbol": symbol,
-                            "side": x_side,
-                            "type": "TAKE_PROFIT_MARKET",
-                            "stopPrice": tp2_price,
-                            "quantity": tp2_qty,
-                            "reduceOnly": True,
-                            "workingType": "MARK_PRICE",
-                        },
-                    ]
-                    tp2_created, tp2_order, tp2_error = _create_order_with_fallbacks(tp2_variants)
-                    if tp2_created and tp2_order and tp2_order.get("orderId"):
-                        tp2_created = True
-                        print(f"✅ TP2 order created: {tp2_order['orderId']}")
-                    
-                    if not tp2_created:
-                        # Fallback to algo if regular fails
-                        tp2_algo_variants = [
+                    # Check min notional before attempting TP2 order
+                    min_notional = get_min_notional(symbol, user_id)
+                    tp2_notional = tp2_qty * tp2_price if tp2_price > 0 else 0
+                    if tp2_notional < min_notional:
+                        tp2_error = f"TP2 qty {tp2_qty} × ${tp2_price:.4f} = ${tp2_notional:.4f} below min notional ${min_notional}"
+                        print(f"⚠️ TP2 below min notional — stored as virtual: {tp2_error}")
+                        log_trade_event("TRADE_WARN", f"⚠️ TP2 below min notional for {symbol}: {tp2_error}", user_id)
+                        # Don't fail — virtual guard will close at TP2 price
+                    else:
+                        # Determine if TP2 covers the full remaining position
+                        is_full_close = (tp2_qty >= qty * 0.99)
+                        # TP2 is a Basic order (LIMIT or TAKE_PROFIT_MARKET with explicit quantity)
+                        tp2_variants = [
                             {
                                 "symbol": symbol,
-                                "algoType": "CONDITIONAL",
+                                "side": x_side,
+                                "type": "LIMIT",
+                                "price": tp2_price,
+                                "quantity": tp2_qty,
+                                "timeInForce": "GTC",
+                                "reduceOnly": True,
+                            },
+                            {
+                                "symbol": symbol,
                                 "side": x_side,
                                 "type": "TAKE_PROFIT_MARKET",
-                                "triggerPrice": tp2_price,
+                                "stopPrice": tp2_price,
                                 "quantity": tp2_qty,
-                                "reduceOnly": "true",
+                                "reduceOnly": True,
                                 "workingType": "MARK_PRICE",
-                            }
+                            },
                         ]
-                        tp2_created, tp2_algo_order, tp2_algo_error = _create_algo_order_with_fallbacks(tp2_algo_variants)
-                        if tp2_created:
-                            tp2_order = tp2_algo_order
-                            tp2_error = None
-                            print(f"✅ TP2 algo order created: {tp2_order}")
-                        else:
-                            tp2_error = tp2_error or tp2_algo_error
+                        # If TP2 is a full-position close, also try closePosition=True variant
+                        if is_full_close:
+                            tp2_variants.insert(1, {
+                                "symbol": symbol,
+                                "side": x_side,
+                                "type": "TAKE_PROFIT_MARKET",
+                                "stopPrice": tp2_price,
+                                "closePosition": True,
+                                "workingType": "MARK_PRICE",
+                            })
+                        tp2_created, tp2_order, tp2_error = _create_order_with_fallbacks(tp2_variants)
+                        if tp2_created and tp2_order and tp2_order.get("orderId"):
+                            tp2_created = True
+                            print(f"✅ TP2 order created: {tp2_order['orderId']}")
+                        
+                        if not tp2_created:
+                            # Fallback to algo if regular fails
+                            tp2_algo_variants = [
+                                {
+                                    "symbol": symbol,
+                                    "algoType": "CONDITIONAL",
+                                    "side": x_side,
+                                    "type": "TAKE_PROFIT_MARKET",
+                                    "triggerPrice": tp2_price,
+                                    "quantity": tp2_qty,
+                                    "reduceOnly": "true",
+                                    "workingType": "MARK_PRICE",
+                                }
+                            ]
+                            tp2_created, tp2_algo_order, tp2_algo_error = _create_algo_order_with_fallbacks(tp2_algo_variants)
+                            if tp2_created:
+                                tp2_order = tp2_algo_order
+                                tp2_error = None
+                                print(f"✅ TP2 algo order created: {tp2_order}")
+                            else:
+                                tp2_error = tp2_error or tp2_algo_error
         except Exception as e:
             tp2_error = str(e)
             print(f"⚠️ TP2 order creation failed: {e}")
             log_trade_event("TRADE_WARN", f"⚠️ TP2 order failed: {tp2_error}", user_id)
         # PERSIST TO DATABASE
+        # IMPORTANT: Always store TP1/TP2 prices even if Binance order failed —
+        # the virtual guard reads them from DB and enforces them server-side.
         pos = TradePosition(
             user_id=user_id,
             symbol=symbol,
@@ -1458,9 +1506,9 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
             remain_qty_pct=100.0,
             sl_price=sl_p,
             current_sl=sl_p,
-            tp1_price=tp1 if tp1_created else None,
-            tp1_qty_pct=tp1_pct if tp1_created else 0,
-            tp2_price=tp2 if tp2_created else None,
+            tp1_price=tp1 if (tp1 and tp1 > 0) else None,
+            tp1_qty_pct=tp1_pct if (tp1 and tp1 > 0) else 0,
+            tp2_price=tp2 if (tp2 and tp2 > 0) else None,
             opening_order_id=main_order_id,
             status='open'
         )
