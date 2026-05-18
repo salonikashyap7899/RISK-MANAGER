@@ -12,6 +12,9 @@ TP1_SL_CACHE_DURATION = 10  # seconds — short enough for near-real-time update
 def invalidate_cache(user_id):
     """Call this after placing or cancelling orders so the next poll fetches fresh data."""
     _tp1_sl_cache.pop(user_id, None)
+    # Also invalidate the main conditional orders cache in logic.py
+    logic._conditional_cache.pop(user_id, None)
+
 
 
 def get_tp1_and_sl_orders(user_id):
@@ -73,9 +76,12 @@ def get_tp1_and_sl_orders(user_id):
             print(f"Error fetching algo orders: {e}")
 
         # Get ONLY OPEN DB positions to provide context and virtual guard fallbacks
+        # CRITICAL: Only consider positions that have a TP1 or TP2 price set in the DB
+        # This prevents 'ghost' virtual orders for positions that were closed or never had TP/SL
         db_positions = (
             TradePosition.query
             .filter_by(user_id=user_id, status='open')
+            .filter( (TradePosition.tp1_price > 0) | (TradePosition.tp2_price > 0) | (TradePosition.sl_price > 0) )
             .order_by(TradePosition.created_at.desc())
             .all()
         )
@@ -167,7 +173,9 @@ def get_tp1_and_sl_orders(user_id):
             side_close = 'SELL' if pos.side == 'LONG' else 'BUY'
 
             # Virtual SL
-            if pos.sl_price and pos.sl_price > 0 and not any(o['symbol'] == sym for o in sl_orders):
+            # Only inject virtual SL if there's no live SL AND the position is still open in DB
+            if pos.sl_price and pos.sl_price > 0 and not any(o['symbol'] == sym and o['label'] == 'SL' for o in sl_orders):
+
                 sl_orders.append({
                     'orderId': f"virtual_sl_{pos.id}",
                     'symbol': sym,
@@ -182,7 +190,9 @@ def get_tp1_and_sl_orders(user_id):
                 })
 
             # Virtual TP1
-            if pos.tp1_price and pos.tp1_price > 0 and not any(o['symbol'] == sym for o in tp1_orders):
+            # Only inject virtual TP1 if there's no live TP1 AND the position is still open in DB
+            if pos.tp1_price and pos.tp1_price > 0 and not any(o['symbol'] == sym and o['label'] == 'TP1' for o in tp1_orders):
+
                 tp1_qty = float(pos.initial_qty) * (float(pos.tp1_qty_pct) / 100.0) if pos.tp1_qty_pct else float(pos.initial_qty)
                 tp1_orders.append({
                     'orderId': f"virtual_tp1_{pos.id}",
@@ -198,7 +208,9 @@ def get_tp1_and_sl_orders(user_id):
                 })
 
             # Virtual TP2
-            if pos.tp2_price and pos.tp2_price > 0 and not any(o['symbol'] == sym for o in tp2_orders):
+            # Only inject virtual TP2 if there's no live TP2 AND the position is still open in DB
+            if pos.tp2_price and pos.tp2_price > 0 and not any(o['symbol'] == sym and o['label'] == 'TP2' for o in tp2_orders):
+
                 tp1_qty = float(pos.initial_qty) * (float(pos.tp1_qty_pct) / 100.0) if pos.tp1_qty_pct else 0
                 tp2_qty = float(pos.initial_qty) - tp1_qty
                 if tp2_qty > 0:
