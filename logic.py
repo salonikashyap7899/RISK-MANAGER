@@ -1425,7 +1425,9 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                     # Check min notional before attempting TP2 order
                     min_notional = get_min_notional(symbol, user_id)
                     tp2_notional = tp2_qty * tp2_price if tp2_price > 0 else 0
-                    if tp2_notional < min_notional:
+                        # Check min notional before attempting TP2 order
+                        if tp2_notional < min_notional and tp2_qty > 0:
+
                         tp2_error = f"TP2 qty {tp2_qty} × ${tp2_price:.4f} = ${tp2_notional:.4f} below min notional ${min_notional}"
                         print(f"⚠️ TP2 below min notional — stored as virtual: {tp2_error}")
                         log_trade_event("TRADE_WARN", f"⚠️ TP2 below min notional for {symbol}: {tp2_error}", user_id)
@@ -1441,6 +1443,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                                 "type": "LIMIT",
                                 "price": tp2_price,
                                 "quantity": tp2_qty,
+                                "newClientOrderId": f"TP2_{symbol}_{int(time.time() * 1000)}",
                                 "timeInForce": "GTC",
                                 "reduceOnly": True,
                             },
@@ -1450,6 +1453,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                                 "type": "TAKE_PROFIT_MARKET",
                                 "stopPrice": tp2_price,
                                 "quantity": tp2_qty,
+                                "newClientOrderId": f"TP2_{symbol}_{int(time.time() * 1000)}",
                                 "reduceOnly": True,
                                 "workingType": "MARK_PRICE",
                             },
@@ -1462,6 +1466,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                                 "type": "TAKE_PROFIT_MARKET",
                                 "stopPrice": tp2_price,
                                 "closePosition": True,
+                                "newClientOrderId": f"TP2_FULL_{symbol}_{int(time.time() * 1000)}",
                                 "workingType": "MARK_PRICE",
                             })
                         tp2_created, tp2_order, tp2_error = _create_order_with_fallbacks(tp2_variants)
@@ -1479,6 +1484,7 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                                     "type": "TAKE_PROFIT_MARKET",
                                     "triggerPrice": tp2_price,
                                     "quantity": tp2_qty,
+                                    "newClientOrderId": f"TP2_ALGO_{symbol}_{int(time.time() * 1000)}",
                                     "reduceOnly": "true",
                                     "workingType": "MARK_PRICE",
                                 }
@@ -1493,6 +1499,13 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         except Exception as e:
             tp2_error = str(e)
             print(f"⚠️ TP2 order creation failed: {e}")
+            if "-2010" in str(e): # Filter too much error
+                tp2_error = "TP2 order failed: Filter too much (quantity/price precision)"
+            elif "-1013" in str(e): # Min notional error
+                tp2_error = "TP2 order failed: Min notional not met"
+            else:
+                tp2_error = str(e)
+
             log_trade_event("TRADE_WARN", f"⚠️ TP2 order failed: {tp2_error}", user_id)
         # PERSIST TO DATABASE
         # IMPORTANT: Always store TP1/TP2 prices even if Binance order failed —
@@ -1546,8 +1559,11 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
             user_id
         )
         # Cache invalidation — clear ALL relevant caches so fresh data is shown immediately
+        from conditional_orders_enhancement import invalidate_cache as invalidate_conditional_cache
+        invalidate_conditional_cache(user_id)
         cache_key_pos = f"positions_{user_id or 'public'}"
         _positions_cache.pop(cache_key_pos, None)
+
         _positions_cache_time.pop(cache_key_pos, None)
         cache_key_hist = f"trade_history_{user_id or 'public'}"
         _trade_history_cache.pop(cache_key_hist, None)
