@@ -1358,16 +1358,30 @@ def api_cancel_conditional_order():
         return jsonify({"success": False, "message": "Missing order_id or symbol"}), 400
 
     try:
+        print(f"\n[API] 🔴 Cancel request: symbol={symbol}, order_id={order_id}, source={source}")
+        
         # Use logic.cancel_order which handles both regular, algo, and virtual orders
         success, message = logic.cancel_order(symbol, order_id, current_user.id, source=source)
-        # Clear ALL caches on successful cancel so the panel refreshes immediately
+        
+        # CRITICAL FIX: Only clear caches if Binance cancellation actually succeeded
         if success:
+            print(f"[API] ✅ Cancel successful on Binance: {message}")
             logic._conditional_cache.pop(current_user.id, None)
-            from conditional_orders_enhancement import invalidate_cache as _inv_tpsl
-            _inv_tpsl(current_user.id)
-        return jsonify({"success": success, "message": message})
+            try:
+                from conditional_orders_enhancement import invalidate_cache as _inv_tpsl
+                _inv_tpsl(current_user.id)
+            except Exception as inv_err:
+                print(f"[API] Warning: Cache invalidation error: {inv_err}")
+            return jsonify({"success": True, "message": message})
+        else:
+            print(f"[API] ❌ Cancel failed on Binance: {message}")
+            # Return error but don't clear caches — order is still live on Binance
+            return jsonify({"success": False, "message": message}), 400
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
+        print(f"[API] ❌ Exception in api_cancel_conditional_order: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
 
 if __name__ == '__main__':
     with app.app_context():
