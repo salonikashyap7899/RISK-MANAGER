@@ -812,39 +812,104 @@ def cancel_order(symbol, order_id, user_id=None, source=None):
             except ImportError:
                 pass
 
-        # If source is explicitly 'algo', skip regular cancel
-        if source == 'algo':
-            try:
-                if hasattr(client, 'futures_cancel_algo_order'):
-                    client.futures_cancel_algo_order(algoId=cancel_id, recvWindow=10000)
-                elif hasattr(client, '_request_futures_api'):
-                    client._request_futures_api('delete', 'algo/order', True,
-                                                 data={'algoId': cancel_id, 'recvWindow': 10000})
-                invalidate_all_caches()
-                return True, "Algo order cancelled successfully"
-            except Exception as algo_err:
-                return False, f"Algo cancel failed: {str(algo_err)}"
+        def _check_resp_for_error(resp):
+            """Return (is_error, code, msg) for a raw Binance API response dict.
+            python-binance sometimes returns the error dict instead of raising."""
+            if isinstance(resp, dict):
+                code = resp.get('code', 0)
+                if isinstance(code, int) and code < 0:
+                    return True, code, resp.get('msg', str(resp))
+            return False, 0, ''
 
-        # Try regular cancel first
+        def _verify_order_gone(sym, oid):
+            """Return True if the order no longer exists on Binance (cancelled successfully)."""
+            try:
+                result = client.futures_get_order(symbol=sym, orderId=oid, recvWindow=10000)
+                status = (result.get('status') or '').upper()
+                # CANCELED / EXPIRED / FILLED = order is no longer active
+                return status in ('CANCELED', 'EXPIRED', 'FILLED')
+            except BinanceAPIException as e:
+                # -2013 = Order does not exist → definitely gone
+                if e.code in [-2013, -2011]:
+                    return True
+                return False
+            except Exception:
+                return False
+
+        # ----------------------------------------------------------------
+        # STEP 1 — Always try regular futures cancel first.
+        # Binance Conditional orders (TAKE_PROFIT_MARKET, STOP_MARKET etc.)
+        # placed via the mobile app or web UI are regular futures orders and
+        # MUST be cancelled via DELETE /fapi/v1/order — NOT via algo/order.
+        # ----------------------------------------------------------------
+        regular_cancel_succeeded = False
+        regular_cancel_error = None
         try:
-            client.futures_cancel_order(symbol=symbol, orderId=cancel_id, recvWindow=10000)
-            invalidate_all_caches()
-            return True, "Order cancelled successfully"
+            resp = client.futures_cancel_order(symbol=symbol, orderId=cancel_id, recvWindow=10000)
+            is_err, err_code, err_msg = _check_resp_for_error(resp)
+            if is_err:
+                regular_cancel_error = f"Binance error {err_code}: {err_msg}"
+                print(f"[cancel_order] Regular cancel returned error body: {regular_cancel_error}")
+            else:
+                regular_cancel_succeeded = True
+                print(f"[cancel_order] Regular cancel OK for orderId={cancel_id} symbol={symbol}")
         except BinanceAPIException as e:
-            # If regular cancel fails (-2011 / -2013), try algo cancel as fallback
-            if e.code in [-2011, -2013]:
-                try:
-                    if hasattr(client, 'futures_cancel_algo_order'):
-                        client.futures_cancel_algo_order(algoId=cancel_id, recvWindow=10000)
-                    elif hasattr(client, '_request_futures_api'):
-                        # Correct endpoint is algo/order for DELETE
-                        client._request_futures_api('delete', 'algo/order', True,
-                                                     data={'algoId': cancel_id, 'recvWindow': 10000})
-                    invalidate_all_caches()
-                    return True, "Algo order cancelled successfully"
-                except Exception as algo_cancel_err:
-                    return False, f"Algo cancel failed: {str(algo_cancel_err)}"
-            return False, str(e)
+            regular_cancel_error = str(e)
+            print(f"[cancel_order] Regular cancel BinanceAPIException code={e.code}: {e}")
+        except Exception as e:
+            regular_cancel_error = str(e)
+            print(f"[cancel_order] Regular cancel Exception: {e}")
+
+        if regular_cancel_succeeded:
+            invalidate_all_caches()
+            return True, "Order cancelled successfully on Binance"
+
+        # ----------------------------------------------------------------
+        # STEP 2 — Regular cancel failed. Try algo/order DELETE endpoint.
+        # This covers genuine TWAP/VP algo orders (algoId-based).
+        # ----------------------------------------------------------------
+        print(f"[cancel_order] Regular cancel failed ({regular_cancel_error}), trying algo endpoint…")
+        algo_cancel_succeeded = False
+        algo_cancel_error = None
+        try:
+            if hasattr(client, 'futures_cancel_algo_order'):
+                resp = client.futures_cancel_algo_order(algoId=cancel_id, recvWindow=10000)
+            elif hasattr(client, '_request_futures_api'):
+                resp = client._request_futures_api('delete', 'algo/order', True,
+                                                    data={'algoId': cancel_id, 'recvWindow': 10000})
+            else:
+                resp = None
+
+            if resp is not None:
+                is_err, err_code, err_msg = _check_resp_for_error(resp)
+                if is_err:
+                    algo_cancel_error = f"Binance algo error {err_code}: {err_msg}"
+                    print(f"[cancel_order] Algo cancel returned error body: {algo_cancel_error}")
+                else:
+                    algo_cancel_succeeded = True
+                    print(f"[cancel_order] Algo cancel OK for algoId={cancel_id}")
+        except Exception as e:
+            algo_cancel_error = str(e)
+            print(f"[cancel_order] Algo cancel Exception: {e}")
+
+        if algo_cancel_succeeded:
+            invalidate_all_caches()
+            return True, "Conditional order cancelled successfully on Binance"
+
+        # ----------------------------------------------------------------
+        # STEP 3 — Both endpoints failed. Verify the order is actually gone
+        # (e.g. it may have been filled between the cancel attempt and now).
+        # ----------------------------------------------------------------
+        if _verify_order_gone(symbol, cancel_id):
+            print(f"[cancel_order] Order {cancel_id} verified gone (filled/cancelled before our request)")
+            invalidate_all_caches()
+            return True, "Order is no longer active on Binance (already filled or cancelled)"
+
+        # Both methods failed and the order is still live — surface the real error
+        combined_error = f"Regular: {regular_cancel_error} | Algo: {algo_cancel_error}"
+        print(f"[cancel_order] All cancel methods failed: {combined_error}")
+        return False, f"Could not cancel order on Binance. {combined_error}"
+
     except Exception as e:
         print(f"Error cancelling order {order_id}: {e}")
         return False, str(e)
