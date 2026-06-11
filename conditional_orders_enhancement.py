@@ -64,34 +64,20 @@ def get_tp1_and_sl_orders(user_id):
                 return cached[1]
             return {"success": False, "error": err_str, "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
 
-        # Fetch all conditional algo orders (Trailing stops, Take Profit Market, etc)
+        # Fetch conditional/algo orders using the library's built-in conditional=True flag.
+        # This correctly calls /fapi/v1/openAlgoOrders and avoids the KeyError: 'data'
+        # bug that occurs when passing loose kwargs to signed _request_futures_api calls.
         algo_orders = []
         try:
-            # Try direct REST call first — pass recvWindow as a kwarg, NOT inside data={}
-            # (python-binance's _request_futures_api merges kwargs into the query string for GET)
-            if hasattr(client, '_request_futures_api'):
-                try:
-                    algo_resp = client._request_futures_api('get', 'algo/openOrders', True, recvWindow=10000)
-                    if isinstance(algo_resp, dict) and algo_resp.get('code', 0) < 0:
-                        print(f"[algo_orders] ❌ Binance error response: {algo_resp}")
-                    else:
-                        algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
-                        print(f"[algo_orders] ✅ Fetched {len(algo_orders)} algo orders via _request_futures_api")
-                except Exception as e1:
-                    print(f"[algo_orders] ❌ _request_futures_api failed: {e1}")
-                    if hasattr(client, 'futures_get_algo_orders'):
-                        try:
-                            algo_resp = client.futures_get_algo_orders(recvWindow=10000)
-                            algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
-                            print(f"[algo_orders] ✅ Fetched {len(algo_orders)} algo orders via futures_get_algo_orders")
-                        except Exception as e2:
-                            print(f"[algo_orders] ❌ futures_get_algo_orders also failed: {e2}")
-            elif hasattr(client, 'futures_get_algo_orders'):
-                algo_resp = client.futures_get_algo_orders(recvWindow=10000)
-                algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
-                print(f"[algo_orders] ✅ Fetched {len(algo_orders)} algo orders")
+            algo_resp = client.futures_get_open_orders(conditional=True, recvWindow=10000)
+            algo_orders = algo_resp if isinstance(algo_resp, list) else (algo_resp.get('orders') or [])
+            print(f"[algo_orders] ✅ Fetched {len(algo_orders)} conditional/algo orders")
         except Exception as e:
-            print(f"❌ Error fetching algo orders: {e}")
+            algo_err_str = str(e)
+            print(f"[algo_orders] ❌ conditional fetch failed: {algo_err_str}")
+            # -4120 = algo orders not supported for this account type — non-fatal, skip silently
+            if '-4120' not in algo_err_str:
+                print(f"[algo_orders] ℹ️ If you see this repeatedly, check API permissions")
 
         # Get ONLY OPEN DB positions to provide context and virtual guard fallbacks
         # CRITICAL: Only consider positions that have a TP1 or TP2 price set in the DB

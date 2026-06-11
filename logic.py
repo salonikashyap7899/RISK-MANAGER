@@ -859,63 +859,52 @@ def get_all_open_conditional_orders(user_id=None):
                         'source': 'regular'
                     })
 
-        # --- Fetch algo/conditional orders (TP1 lives here) ---
+        # --- Fetch algo/conditional orders using the library's built-in conditional=True ---
+        # Using futures_get_open_orders(conditional=True) calls /fapi/v1/openAlgoOrders
+        # and correctly passes signed params via data={}, avoiding KeyError: 'data'.
         try:
-            algo_resp = None
-            if hasattr(client, 'futures_get_algo_orders'):
-                try:
-                    algo_resp = client.futures_get_algo_orders(recvWindow=10000)
-                except Exception as e1:
-                    print(f"[DEBUG] futures_get_algo_orders failed: {e1}")
-            
-            if algo_resp is None and hasattr(client, '_request_futures_api'):
-                try:
-                    # Correct Binance Futures path: /fapi/v1/algo/openOrders
-                    algo_resp = client._request_futures_api('get', 'algo/openOrders', True, data={'recvWindow': 10000})
-                except Exception as e2:
-                    print(f"[DEBUG] _request_futures_api algo failed: {e2}")
-            
-            if algo_resp is not None:
-                algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
-                print(f"[DEBUG] Algo open orders count: {len(algo_orders)}")
-                
-                for o in algo_orders:
-                    o_type = (o.get('type') or o.get('algoType') or '').upper()
-                    algo_id = str(o.get('algoId') or o.get('orderId') or '')
-                    trigger_price = float(o.get('triggerPrice') or o.get('stopPrice') or 0)
-                    qty = float(o.get('qty') or o.get('origQty') or 0)
-                    book_time = o.get('bookTime') or o.get('time') or 0
+            algo_resp = client.futures_get_open_orders(conditional=True, recvWindow=10000)
+            algo_orders = algo_resp if isinstance(algo_resp, list) else (algo_resp.get('orders') or [])
+            print(f"[DEBUG] Algo/conditional open orders count: {len(algo_orders)}")
 
-                    # Better labeling for TP1 vs SL
+            for o in algo_orders:
+                o_type = (o.get('type') or o.get('algoType') or '').upper()
+                algo_id = str(o.get('algoId') or o.get('orderId') or '')
+                trigger_price = float(o.get('triggerPrice') or o.get('stopPrice') or 0)
+                qty = float(o.get('qty') or o.get('origQty') or 0)
+                book_time = o.get('bookTime') or o.get('time') or 0
+
+                if 'TAKE_PROFIT' in o_type and 'LIMIT' in o_type:
+                    label = 'TP2'
+                elif 'TAKE_PROFIT' in o_type:
+                    label = 'TP1'
+                elif 'TRAILING' in o_type:
+                    label = 'Trail SL'
+                else:
                     label = 'SL'
-                    if 'TAKE_PROFIT' in o_type:
-                        label = 'TP1'
-                    elif 'TRAILING' in o_type:
-                        label = 'Trail SL'
-                    elif 'STOP' in o_type or 'STOP_LOSS' in o_type:
-                        label = 'SL'
 
-                    if algo_id not in seen_ids:
-                        seen_ids.add(algo_id)
-                        conditional_orders.append({
-                            'orderId': algo_id,
-                            'symbol': o.get('symbol'),
-                            'type': o_type,
-                            'label': label,
-                            'side': o.get('side'),
-                            'stopPrice': trigger_price,
-                            'price': float(o.get('price') or 0),
-                            'origQty': qty,
-                            'time': datetime.fromtimestamp(int(book_time) / 1000).strftime('%Y-%m-%d %H:%M:%S') if book_time else 'N/A',
-                            'reduceOnly': o.get('reduceOnly', True),
-                            'source': 'algo'
-                        })
-        except Exception as algo_err:
-            from binance.exceptions import BinanceAPIException
-            if isinstance(algo_err, BinanceAPIException) and algo_err.code == -4120:
-                print(f"[DEBUG] Algo orders not supported (-4120), using regular orders only")
+                if algo_id not in seen_ids:
+                    seen_ids.add(algo_id)
+                    conditional_orders.append({
+                        'orderId': algo_id,
+                        'symbol': o.get('symbol'),
+                        'type': o_type,
+                        'label': label,
+                        'side': o.get('side'),
+                        'stopPrice': trigger_price,
+                        'price': float(o.get('price') or 0),
+                        'origQty': qty,
+                        'time': datetime.fromtimestamp(int(book_time) / 1000).strftime('%Y-%m-%d %H:%M:%S') if book_time else 'N/A',
+                        'reduceOnly': o.get('reduceOnly', True),
+                        'source': 'algo'
+                    })
+        except BinanceAPIException as algo_err:
+            if algo_err.code == -4120:
+                print(f"[DEBUG] Algo orders not supported for this account (-4120), skipping")
             else:
-                print(f"[DEBUG] Algo orders fetch failed (non-fatal): {algo_err}")
+                print(f"[DEBUG] Algo orders fetch failed (BinanceAPIException code={algo_err.code}): {algo_err}")
+        except Exception as algo_err:
+            print(f"[DEBUG] Algo orders fetch failed (non-fatal): {algo_err}")
 
         # Sort by time descending
         conditional_orders.sort(key=lambda x: x['time'], reverse=True)
