@@ -7,177 +7,7 @@ import math
 import traceback
 import time
 import requests
-from functools import wraps
 from models import db, TradeDailyStats, TradeLog
-
-
-# ============================================================
-# RETRY DECORATOR — wraps Binance API calls with configurable
-# retries, exponential back-off, and rate-limit awareness.
-# ============================================================
-def binance_retry(max_retries=3, base_delay=1.0, retryable_codes=(-1003, -1021)):
-    """
-    Decorator: retries a Binance API call on transient errors.
-    - Skips retry on -2011 (unknown order) and similar hard failures.
-    - Adds exponential back-off: delay * 2^attempt.
-    - Honours the global IP-ban tracker so banned calls short-circuit.
-    """
-    def decorator(fn):
-        @wraps(fn)
-        def wrapper(*args, **kwargs):
-            last_exc = None
-            for attempt in range(max_retries):
-                now_ms = int(time.time() * 1000)
-                if now_ms < _api_ban_until_ms:
-                    raise BinanceAPIException(None, -1003, '{"code":-1003,"msg":"IP banned — retries suppressed"}')
-                try:
-                    return fn(*args, **kwargs)
-                except BinanceAPIException as e:
-                    last_exc = e
-                    if e.code == -1003 and "banned until" in str(e):
-                        try:
-                            ban_ts = int(str(e).split("banned until")[1].split(".")[0].strip())
-                            globals()['_api_ban_until_ms'] = ban_ts
-                        except Exception:
-                            globals()['_api_ban_until_ms'] = int(time.time() * 1000) + 120_000
-                        print(f"[retry] IP ban detected — aborting retries for {fn.__name__}")
-                        raise
-                    if e.code not in retryable_codes:
-                        raise
-                    delay = base_delay * (2 ** attempt)
-                    print(f"[retry] {fn.__name__} attempt {attempt+1}/{max_retries} failed (code={e.code}), retrying in {delay:.1f}s…")
-                    time.sleep(delay)
-                except Exception as e:
-                    last_exc = e
-                    delay = base_delay * (2 ** attempt)
-                    print(f"[retry] {fn.__name__} attempt {attempt+1}/{max_retries} exception: {e}, retrying in {delay:.1f}s…")
-                    time.sleep(delay)
-            raise last_exc
-        return wrapper
-    return decorator
-
-
-def reconcile_binance_orders(user_id):
-    """
-    Two-way reconciliation: compares DB open positions against live Binance orders.
-    Returns a dict with mismatches, stale DB records, and a summary.
-    This is non-destructive — it only reports findings.
-    Call /api/reconcile_orders to trigger it.
-    """
-    from models import TradePosition
-    result = {
-        "success": False,
-        "summary": "",
-        "live_order_count": 0,
-        "db_open_positions": 0,
-        "mismatches": [],
-        "stale_db_positions": [],
-        "missing_orders": [],
-        "errors": [],
-    }
-
-    try:
-        client = get_client(user_id)
-        if not client:
-            result["summary"] = "No Binance connection — cannot reconcile"
-            return result
-
-        # 1. Fetch all live orders from Binance
-        live_orders = []
-        try:
-            live_orders = client.futures_get_open_orders(recvWindow=10000)
-            print(f"[reconcile] Fetched {len(live_orders)} live orders from Binance")
-        except Exception as e:
-            result["errors"].append(f"Failed to fetch live orders: {e}")
-            print(f"[reconcile] ❌ Failed to fetch live orders: {e}")
-
-        live_order_ids = {str(o.get('orderId')) for o in live_orders}
-        result["live_order_count"] = len(live_orders)
-
-        # 2. Fetch open positions from DB
-        db_positions = TradePosition.query.filter_by(user_id=user_id, status='open').all()
-        result["db_open_positions"] = len(db_positions)
-        print(f"[reconcile] DB has {len(db_positions)} open positions")
-
-        # 3. Fetch live Binance positions (accounts for filled/closed positions)
-        live_positions = {}
-        try:
-            account = client.futures_account(recvWindow=10000)
-            for p in account.get('positions', []):
-                amt = float(p.get('positionAmt', 0))
-                if abs(amt) > 0:
-                    live_positions[p['symbol']] = amt
-        except Exception as e:
-            result["errors"].append(f"Failed to fetch live positions: {e}")
-            print(f"[reconcile] ❌ Failed to fetch live positions: {e}")
-
-        # 4. Check for DB positions that are no longer open on Binance
-        for pos in db_positions:
-            sym = pos.symbol
-            if sym not in live_positions:
-                mismatch = {
-                    "type": "stale_db_position",
-                    "symbol": sym,
-                    "db_id": pos.id,
-                    "db_side": pos.side,
-                    "entry_price": pos.entry_price,
-                    "message": f"Position {sym} is OPEN in DB but NOT found on Binance — may need to be closed"
-                }
-                result["stale_db_positions"].append(mismatch)
-                print(f"[reconcile] ⚠️ Stale DB position: {sym} (id={pos.id})")
-
-        # 5. Check for missing SL/TP orders
-        for pos in db_positions:
-            sym = pos.symbol
-            sym_live_orders = [o for o in live_orders if o.get('symbol') == sym]
-            sym_order_types = {o.get('type', '').upper() for o in sym_live_orders}
-
-            sl_types = {'STOP_MARKET', 'STOP', 'STOP_LOSS', 'STOP_LOSS_LIMIT', 'TRAILING_STOP_MARKET'}
-            tp_types = {'TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_LIMIT'}
-
-            has_live_sl = bool(sl_types & sym_order_types)
-            has_live_tp = bool(tp_types & sym_order_types)
-
-            if pos.sl_price and pos.sl_price > 0 and not has_live_sl:
-                result["missing_orders"].append({
-                    "type": "missing_sl",
-                    "symbol": sym,
-                    "db_id": pos.id,
-                    "expected_sl": pos.current_sl or pos.sl_price,
-                    "message": f"{sym} has SL in DB (${pos.current_sl or pos.sl_price}) but NO live SL order on Binance"
-                })
-                print(f"[reconcile] ⚠️ Missing SL for {sym}: DB has ${pos.current_sl or pos.sl_price}, no live order")
-
-            if pos.tp1_price and pos.tp1_price > 0 and not has_live_tp:
-                result["missing_orders"].append({
-                    "type": "missing_tp",
-                    "symbol": sym,
-                    "db_id": pos.id,
-                    "expected_tp1": pos.tp1_price,
-                    "message": f"{sym} has TP1 in DB (${pos.tp1_price}) but NO live TP order on Binance"
-                })
-                print(f"[reconcile] ⚠️ Missing TP1 for {sym}: DB has ${pos.tp1_price}, no live order")
-
-        total_issues = len(result["stale_db_positions"]) + len(result["missing_orders"]) + len(result["errors"])
-        if total_issues == 0:
-            result["summary"] = f"✅ All clear — {len(db_positions)} DB positions match Binance ({len(live_orders)} live orders)"
-        else:
-            result["summary"] = (
-                f"⚠️ {total_issues} issue(s) found: "
-                f"{len(result['stale_db_positions'])} stale DB positions, "
-                f"{len(result['missing_orders'])} missing orders, "
-                f"{len(result['errors'])} errors"
-            )
-
-        result["success"] = True
-        print(f"[reconcile] Done: {result['summary']}")
-        return result
-
-    except Exception as e:
-        traceback.print_exc()
-        result["errors"].append(str(e))
-        result["summary"] = f"Reconciliation failed: {e}"
-        return result
 
 # Global variables - Default client (for demo/fallback)
 _default_client = None
@@ -199,15 +29,7 @@ _virtual_guard_last_run = {}
 # Prevents the duplicate UI pollers from hammering Binance and triggering -1003 IP bans.
 _conditional_cache = {}          # {user_id: (ts_ms, [orders])}
 _conditional_ban_until = 0       # ms epoch; while now < this, skip the call
-CONDITIONAL_CACHE_MS = 30_000    # Cache conditional orders for 30 seconds (was 1s — caused rate ban)
-
-# Wallet balance cache — prevents hammering futures_account() on every page load
-_balance_cache = {}              # {cache_key: ((balance, margin_used), error)}
-_balance_cache_time = {}         # {cache_key: timestamp}
-BALANCE_CACHE_DURATION = 30      # Cache wallet balance for 30 seconds
-
-# Shared IP-ban tracker — all endpoints honour this to stop compounding the ban
-_api_ban_until_ms = 0            # ms epoch; while now_ms < this, skip ALL signed requests
+CONDITIONAL_CACHE_MS = 3000
 
 # Known leverage limits for common coins (updated based on Binance data)
 # These serve as fallback when API fails
@@ -286,8 +108,6 @@ def select_symbol(user_id, symbol):
 
 # User-specific client storage
 _user_clients = {}
-_user_client_time = {}          # {user_id: timestamp} — clients expire after 10 min
-USER_CLIENT_TTL = 600           # Refresh client every 10 minutes to avoid stale sessions
 
 def get_user_exchange_client(user_id):
     """
@@ -296,17 +116,9 @@ def get_user_exchange_client(user_id):
     """
     from models import ExchangeConnection
     import config  
-    # Check if we already have a fresh cached client for this user
-    now = time.time()
+    # Check if we already have a cached client for this user
     if user_id in _user_clients:
-        age = now - _user_client_time.get(user_id, 0)
-        if age < USER_CLIENT_TTL:
-            return _user_clients[user_id]
-        else:
-            # TTL expired — remove stale client so it gets recreated below
-            print(f"🔄 User {user_id} client TTL expired ({age:.0f}s) — refreshing")
-            del _user_clients[user_id]
-            _user_client_time.pop(user_id, None)
+        return _user_clients[user_id]
     
     # Get user's exchange connection from database
     connection = ExchangeConnection.query.filter_by(
@@ -351,7 +163,6 @@ def get_user_exchange_client(user_id):
         print(f"✅ User {user_id} Binance client created successfully")
         # Cache the client
         _user_clients[user_id] = client
-        _user_client_time[user_id] = time.time()
         return client
         
     except BinanceAPIException as e:
@@ -377,7 +188,6 @@ def clear_user_client(user_id):
     """Clear cached client for a user (when they disconnect)"""
     if user_id in _user_clients:
         del _user_clients[user_id]
-    _user_client_time.pop(user_id, None)
 
 def sync_time_with_binance():
     """Sync local time with Binance server time - ROBUST VERSION"""
@@ -671,20 +481,10 @@ def get_open_positions(user_id=None, force_refresh=False):
 
 def get_open_positions_live(user_id=None):
     """
-    ✅ LIVE VERSION - Fetches fresh position data with a short 3-second cache.
-    Previously had NO caching — caused hundreds of signed API calls per minute
-    and triggered -1003 IP bans. Now uses a brief cache to stay under rate limits.
+    ✅ LIVE VERSION - Fetches fresh position data WITHOUT caching
+    Used specifically for real-time liquidation price updates
+    This bypasses all caching to ensure the most current data
     """
-    global _api_ban_until_ms
-    now_ms = int(time.time() * 1000)
-
-    # Honour global IP ban — return cached positions instead of making more calls
-    if now_ms < _api_ban_until_ms:
-        cache_key = f"positions_{user_id or 'public'}"
-        cached = _positions_cache.get(cache_key)
-        print(f"⛔ IP ban active — returning cached positions for user {user_id}")
-        return cached if cached else []
-
     try:
         # Virtual TP/SL fallback enforcement (for accounts/symbols rejecting algo orders)
         run_virtual_tp_sl_guard(user_id)
@@ -774,17 +574,16 @@ def cancel_open_order(symbol, order_id, user_id=None):
         return {"success": False, "message": str(e)}
 
 def get_all_open_conditional_orders(user_id=None):
-    global _conditional_ban_until, _api_ban_until_ms
+    global _conditional_ban_until
     now_ms = int(time.time() * 1000)
 
-    # Serve from 30-second TTL cache when available — kills duplicate-poll storms.
+    # Serve from short TTL cache when available — kills duplicate-poll storms.
     cached = _conditional_cache.get(user_id)
-    if cached and (now_ms - cached[0]) < CONDITIONAL_CACHE_MS:
+    if cached and (now_ms - cached[0]) < CONDITIONAL_CACHE_MS and len(cached[1]) > 0:
         return list(cached[1])
 
-    # Honour both the conditional-specific ban and the global IP ban.
-    effective_ban = max(_conditional_ban_until, _api_ban_until_ms)
-    if now_ms < effective_ban:
+    # If Binance has banned us, don't issue more requests until the window passes.
+    if now_ms < _conditional_ban_until:
         return list(cached[1]) if cached else []
 
     try:
@@ -795,8 +594,9 @@ def get_all_open_conditional_orders(user_id=None):
         # --- Fetch regular open orders ---
         all_orders = []
         try:
+            # FIX: Ensure we fetch all open orders including conditional ones
             all_orders = client.futures_get_open_orders(recvWindow=10000)
-            print(f"[DEBUG] Raw regular open orders: {all_orders}")
+            print(f"[DEBUG] ALL raw orders from Binance (unfiltered): {all_orders}")
             print(f"[DEBUG] Regular open orders count: {len(all_orders)}")
         except Exception as e:
             msg = str(e)
@@ -804,13 +604,9 @@ def get_all_open_conditional_orders(user_id=None):
             # Honour Binance IP-ban so we stop hammering and extending the ban.
             if "-1003" in msg and "banned until" in msg:
                 try:
-                    ban_ts = int(msg.split("banned until")[1].split(".")[0].strip())
-                    _conditional_ban_until = ban_ts
-                    _api_ban_until_ms = ban_ts  # Also set global ban so ALL calls stop
-                    print(f"⛔ IP ban detected in conditional orders — blocked until {ban_ts}ms")
+                    _conditional_ban_until = int(msg.split("banned until")[1].split(".")[0].strip())
                 except Exception:
-                    _conditional_ban_until = now_ms + 120_000
-                    _api_ban_until_ms = now_ms + 120_000
+                    _conditional_ban_until = now_ms + 60_000
                 return list(cached[1]) if cached else []
 
 
@@ -831,22 +627,21 @@ def get_all_open_conditional_orders(user_id=None):
             has_activate_price = float(o.get('activatePrice', 0)) > 0
 
             if o_type in conditional_types or has_stop_price or has_activate_price:
-                # Consistent labeling: TAKE_PROFIT_LIMIT → TP2, TAKE_PROFIT_MARKET → TP1, STOP* → SL
-                if 'TAKE_PROFIT' in o_type and 'LIMIT' in o_type:
-                    label = 'TP2'
-                elif 'TAKE_PROFIT' in o_type:
+                # Better labeling for TP1 vs SL
+                label = 'SL'
+                if 'TAKE_PROFIT' in o_type:
                     label = 'TP1'
                 elif 'TRAILING' in o_type:
                     label = 'Trail SL'
-                else:
+                elif 'STOP' in o_type or 'STOP_LOSS' in o_type:
                     label = 'SL'
                 
-                oid = str(o.get('orderId', ''))
-                if oid not in seen_ids:
+                oid = str(o.get('orderId') or '')
+                if oid and oid not in seen_ids:
                     seen_ids.add(oid)
                     qty = float(o.get('origQty', 0))
                     conditional_orders.append({
-                        'orderId': o.get('orderId'),
+                        'orderId': oid,
                         'symbol': o.get('symbol'),
                         'type': o_type,
                         'label': label,
@@ -859,13 +654,29 @@ def get_all_open_conditional_orders(user_id=None):
                         'source': 'regular'
                     })
 
-        # --- Fetch algo/conditional orders using the library's built-in conditional=True ---
-        # Using futures_get_open_orders(conditional=True) calls /fapi/v1/openAlgoOrders
-        # and correctly passes signed params via data={}, avoiding KeyError: 'data'.
+        # --- Fetch algo/conditional orders (TP1 lives here) ---
         try:
-            algo_resp = client.futures_get_open_orders(conditional=True, recvWindow=10000)
-            algo_orders = algo_resp if isinstance(algo_resp, list) else (algo_resp.get('orders') or [])
-            print(f"[DEBUG] Algo/conditional open orders count: {len(algo_orders)}")
+            algo_orders = []
+
+            # Method 1: standard python-binance method
+            if hasattr(client, 'futures_get_algo_orders'):
+                try:
+                    resp = client.futures_get_algo_orders(recvWindow=10000)
+                    if resp:
+                        algo_orders = resp if isinstance(resp, list) else resp.get('orders', [])
+                        print(f"[DEBUG] Algo orders via futures_get_algo_orders: {len(algo_orders)}")
+                except Exception as e1:
+                    print(f"[DEBUG] futures_get_algo_orders failed: {e1}")
+
+            # Method 2: fallback to raw request if Method 1 failed or returned nothing
+            if not algo_orders and hasattr(client, '_request_futures_api'):
+                try:
+                    resp = client._request_futures_api('get', 'algoOrder/openOrders', True, data={'recvWindow': 10000})
+                    if resp:
+                        algo_orders = resp if isinstance(resp, list) else resp.get('orders', [])
+                        print(f"[DEBUG] Algo orders via _request_futures_api: {len(algo_orders)}")
+                except Exception as e2:
+                    print(f"[DEBUG] _request_futures_api algo failed: {e2}")
 
             for o in algo_orders:
                 o_type = (o.get('type') or o.get('algoType') or '').upper()
@@ -874,13 +685,12 @@ def get_all_open_conditional_orders(user_id=None):
                 qty = float(o.get('qty') or o.get('origQty') or 0)
                 book_time = o.get('bookTime') or o.get('time') or 0
 
-                if 'TAKE_PROFIT' in o_type and 'LIMIT' in o_type:
-                    label = 'TP2'
-                elif 'TAKE_PROFIT' in o_type:
+                label = 'SL'
+                if 'TAKE_PROFIT' in o_type:
                     label = 'TP1'
                 elif 'TRAILING' in o_type:
                     label = 'Trail SL'
-                else:
+                elif 'STOP' in o_type or 'STOP_LOSS' in o_type:
                     label = 'SL'
 
                 if algo_id not in seen_ids:
@@ -898,16 +708,26 @@ def get_all_open_conditional_orders(user_id=None):
                         'reduceOnly': o.get('reduceOnly', True),
                         'source': 'algo'
                     })
-        except BinanceAPIException as algo_err:
-            if algo_err.code == -4120:
-                print(f"[DEBUG] Algo orders not supported for this account (-4120), skipping")
-            else:
-                print(f"[DEBUG] Algo orders fetch failed (BinanceAPIException code={algo_err.code}): {algo_err}")
         except Exception as algo_err:
             print(f"[DEBUG] Algo orders fetch failed (non-fatal): {algo_err}")
 
         # Sort by time descending
         conditional_orders.sort(key=lambda x: x['time'], reverse=True)
+        
+        # FIX: Reset virtual_guard_active flag if real orders exist for a symbol
+        try:
+            from models import TradePosition, db
+            if conditional_orders:
+                symbols_with_orders = set(o['symbol'] for o in conditional_orders)
+                for sym in symbols_with_orders:
+                    pos = TradePosition.query.filter_by(user_id=user_id, symbol=sym, status='open').first()
+                    if pos and pos.virtual_guard_active:
+                        print(f"[FIX] Resetting virtual_guard_active for {sym} as real orders found")
+                        pos.virtual_guard_active = False
+                        db.session.commit()
+        except Exception as e:
+            print(f"[DEBUG] Error resetting virtual guard flag: {e}")
+
         print(f"[DEBUG] Final conditional_orders to return: {conditional_orders}")
         _conditional_cache[user_id] = (now_ms, list(conditional_orders))
         return conditional_orders
@@ -916,153 +736,31 @@ def get_all_open_conditional_orders(user_id=None):
         print(f"Error fetching conditional orders: {e}")
         return []
 
-def cancel_order(symbol, order_id, user_id=None, source=None):
-    # CRITICAL FIX: Virtual orders are server-managed — never send them to Binance
-    # Virtual order IDs look like "virtual_sl_5", "virtual_tp1_3", etc.
-    if str(order_id).startswith('virtual_'):
-        print(f"[cancel_order] Handling virtual order: {order_id}")
-        try:
-            from models import TradePosition, db
-            parts = str(order_id).split('_')
-            if len(parts) >= 3:
-                pos_id = parts[-1]
-                order_type = parts[1] # 'sl', 'tp1', 'tp2'
-                pos = TradePosition.query.get(pos_id)
-                if pos:
-                    if order_type == 'sl':
-                        pos.sl_price = 0
-                        pos.current_sl = 0
-                    elif order_type == 'tp1':
-                        pos.tp1_price = 0
-                        pos.tp1_qty_pct = 0
-                    elif order_type == 'tp2':
-                        pos.tp2_price = 0
-                    db.session.commit()
-                    
-                    # Invalidate caches
-                    _conditional_cache.pop(user_id, None)
-                    try:
-                        from conditional_orders_enhancement import invalidate_cache
-                        invalidate_cache(user_id)
-                    except ImportError:
-                        pass
-                        
-                    return True, f"Virtual {order_type.upper()} order cancelled and cleared from DB"
-            return True, "Virtual order acknowledged"
-        except Exception as e:
-            print(f"Error clearing virtual order from DB: {e}")
-            return False, f"Error clearing virtual order: {str(e)}"
-        
+def cancel_order(symbol, order_id, user_id=None):
     try:
         client = get_client(user_id)
         if client is None:
             return False, "Exchange connection not found"
 
-        # Convert orderId to int — Binance expects a LONG for numeric IDs
+        # Try regular cancel first
         try:
-            cancel_id = int(order_id)
-        except (ValueError, TypeError):
-            cancel_id = order_id
-
-        def invalidate_all_caches():
-            _conditional_cache.pop(user_id, None)
-            try:
-                from conditional_orders_enhancement import invalidate_cache
-                invalidate_cache(user_id)
-            except ImportError:
-                pass
-
-        def _check_resp_for_error(resp):
-            """Return (is_error, code, msg) for a raw Binance API response dict.
-            python-binance sometimes returns the error dict instead of raising."""
-            if isinstance(resp, dict):
-                code = resp.get('code', 0)
-                if isinstance(code, int) and code < 0:
-                    return True, code, resp.get('msg', str(resp))
-            return False, 0, ''
-
-        # ================================================================
-        # STEP 1 — Try regular futures cancel.
-        # Handles TAKE_PROFIT_MARKET, STOP_MARKET, LIMIT etc. (regular orderId).
-        # ================================================================
-        regular_cancel_error = None
-        binance_cancel_succeeded = False
-        try:
-            resp = client.futures_cancel_order(symbol=symbol, orderId=cancel_id, recvWindow=10000)
-            is_err, err_code, err_msg = _check_resp_for_error(resp)
-            if not is_err:
-                print(f"[cancel_order] ✅ Regular cancel OK for orderId={cancel_id} symbol={symbol}")
-                binance_cancel_succeeded = True
-                invalidate_all_caches()
-                return True, "✅ Order cancelled successfully on Binance"
-            regular_cancel_error = f"Binance error {err_code}: {err_msg}"
-            print(f"[cancel_order] Regular cancel error body: {regular_cancel_error}")
+            client.futures_cancel_order(symbol=symbol, orderId=order_id)
+            return True, "Order cancelled successfully"
         except BinanceAPIException as e:
-            regular_cancel_error = str(e)
-            print(f"[cancel_order] Regular cancel BinanceAPIException code={e.code}: {e}")
-        except Exception as e:
-            regular_cancel_error = str(e)
-            print(f"[cancel_order] Regular cancel Exception: {e}")
-
-        # ================================================================
-        # STEP 2 — Regular cancel failed. Try algo/order DELETE endpoint.
-        # Handles genuine TWAP/VP conditional algo orders (algoId-based).
-        # Pass algoId as a direct kwarg so it ends up in the signed params.
-        # ================================================================
-        print(f"[cancel_order] Regular cancel failed ({regular_cancel_error}), trying algo endpoint…")
-        algo_cancel_error = None
-        try:
-            if hasattr(client, 'futures_cancel_algo_order'):
-                resp = client.futures_cancel_algo_order(algoId=cancel_id, recvWindow=10000)
-            elif hasattr(client, '_request_futures_api'):
-                # Pass as kwargs so python-binance merges them into the signed payload
-                resp = client._request_futures_api('delete', 'algo/order', True,
-                                                    algoId=cancel_id, recvWindow=10000)
-            else:
-                resp = None
-
-            if resp is not None:
-                is_err, err_code, err_msg = _check_resp_for_error(resp)
-                if not is_err:
-                    print(f"[cancel_order] ✅ Algo cancel OK for algoId={cancel_id}")
-                    binance_cancel_succeeded = True
-                    invalidate_all_caches()
-                    return True, "✅ Conditional order cancelled successfully on Binance"
-                algo_cancel_error = f"Binance algo error {err_code}: {err_msg}"
-                print(f"[cancel_order] Algo cancel error body: {algo_cancel_error}")
-            else:
-                algo_cancel_error = "No algo cancel method available"
-        except Exception as e:
-            algo_cancel_error = str(e)
-            print(f"[cancel_order] Algo cancel Exception: {e}")
-
-        # ================================================================
-        # STEP 3 — If source is 'virtual', try one more thing:
-        # Attempt to cancel by orderId string as fallback for some edge cases
-        # ================================================================
-        if not binance_cancel_succeeded and (source == 'virtual' or source == 'algo'):
-            print(f"[cancel_order] Attempting string-based orderId cancel as final fallback…")
-            try:
-                resp = client.futures_cancel_order(symbol=symbol, orderId=str(cancel_id), recvWindow=10000)
-                is_err, err_code, err_msg = _check_resp_for_error(resp)
-                if not is_err:
-                    print(f"[cancel_order] ✅ String-based cancel OK for orderId={cancel_id}")
-                    binance_cancel_succeeded = True
-                    invalidate_all_caches()
-                    return True, "✅ Order cancelled successfully on Binance"
-            except Exception as e:
-                print(f"[cancel_order] String-based cancel also failed: {e}")
-
-        # ================================================================
-        # All methods failed — return detailed error for UI debugging
-        # ================================================================
-        combined_error = f"Regular: {regular_cancel_error} | Algo: {algo_cancel_error}"
-        print(f"[cancel_order] ❌ All cancel methods failed: {combined_error}")
-        return False, f"❌ Could not cancel order on Binance. Details: {combined_error}"
-
+            # If regular cancel fails, try algo cancel
+            if e.code in [-2011, -2013]:  # Order does not exist as regular order
+                try:
+                    if hasattr(client, 'futures_cancel_algo_order'):
+                        client.futures_cancel_algo_order(algoId=order_id)
+                    elif hasattr(client, '_request_futures_api'):
+                        client._request_futures_api('delete', 'algoOrder', True, data={'algoId': order_id})
+                    return True, "Algo order cancelled successfully"
+                except Exception as algo_cancel_err:
+                    return False, f"Algo cancel failed: {str(algo_cancel_err)}"
+            return False, str(e)
     except Exception as e:
-        print(f"❌ Error cancelling order {order_id}: {e}")
-        return False, f"❌ {str(e)}"
+        print(f"Error cancelling order {order_id}: {e}")
+        return False, str(e)
 
 def run_virtual_tp_sl_guard(user_id=None):
     """
@@ -1075,7 +773,8 @@ def run_virtual_tp_sl_guard(user_id=None):
     
     if not user_id: return
     now = time.time()
-    if now - _virtual_guard_last_run.get(user_id, 0) < 1.0: return
+    interval = getattr(config, 'VIRTUAL_GUARD_INTERVAL_SECONDS', 1.0)
+    if now - _virtual_guard_last_run.get(user_id, 0) < interval: return
     _virtual_guard_last_run[user_id] = now
     
     try:
@@ -1117,7 +816,7 @@ def run_virtual_tp_sl_guard(user_id=None):
             tp2 = float(t.tp2_price or 0)
             if tp2 > 0 and _is_tp_hit(tp2):
                 close_position(sym, user_id)
-                log_trade_event("TRADE_CLOSE", f"🎯 Virtual TP2 executed for {sym} @ {mark:.6f}", user_id)
+                log_trade_event("🎯 Virtual TP2 executed for {sym} @ {mark:.6f}", user_id)
                 continue
         db.session.commit()
     except Exception as e:
@@ -1194,17 +893,6 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
     client = get_client(user_id)
     if not client: 
         return {"success": False, "message": "❌ No Binance connection"}
-
-    # MULTI-COIN FIX: If balance is 0 (e.g. ban-cached zero from a prior rate-limit hit),
-    # fetch it directly from the client so a second trade on a different coin isn't blocked.
-    if balance <= 0:
-        try:
-            acc = client.futures_account(recvWindow=10000)
-            balance = float(acc.get('totalWalletBalance', 0.0))
-            print(f"✅ execute_trade_action: re-fetched balance = ${balance:.2f} for user {user_id}")
-        except Exception as _be:
-            print(f"⚠️ execute_trade_action: could not re-fetch balance: {_be}")
-            return {"success": False, "message": "❌ Could not fetch wallet balance. Please retry in a moment."}
     
     try:
         # STRICT MANDATORY SL CHECK - Must be > 0
@@ -1628,102 +1316,65 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         tp2_error = None
         try:
             if tp2 > 0 and ((side=="LONG" and tp2>entry) or (side=="SHORT" and tp2<entry)):
-                # TP2 qty = remaining quantity after TP1.
-                # Compute from the raw (un-rounded) TP1 qty to avoid floating-point step loss.
-                raw_tp1_qty = (qty * (tp1_pct / 100)) if (tp1 and tp1 > 0 and tp1_pct > 0) else 0
-                actual_tp1_qty_raw = raw_tp1_qty if tp1_created else 0
-                raw_tp2_qty = max(qty - actual_tp1_qty_raw, 0)
-                tp2_qty = round_qty(symbol, raw_tp2_qty, user_id)
+                # TP2 is the remaining quantity (Total Qty - TP1 Qty)
+                # If TP1 failed or was not set, TP2 uses the full quantity
+                actual_tp1_qty = tp1_qty if tp1_created else 0
+                tp2_qty = round_qty(symbol, qty - actual_tp1_qty, user_id)
 
                 if tp2_qty > 0:
                     tp2_price = round_price(symbol, tp2, user_id)
-                    # Check min notional before attempting TP2 order
-                    min_notional = get_min_notional(symbol, user_id)
-                    tp2_notional = tp2_qty * tp2_price if tp2_price > 0 else 0
-                    # Check min notional before attempting TP2 order
-                    if tp2_notional < min_notional and tp2_qty > 0:
-                        tp2_error = f"TP2 qty {tp2_qty} × ${tp2_price:.4f} = ${tp2_notional:.4f} below min notional ${min_notional}"
-                        print(f"⚠️ TP2 below min notional — stored as virtual: {tp2_error}")
-                        log_trade_event("TRADE_WARN", f"⚠️ TP2 below min notional for {symbol}: {tp2_error}", user_id)
-                        # Don't fail — virtual guard will close at TP2 price
-                    else:
-                        # Determine if TP2 covers the full remaining position
-                        is_full_close = (tp2_qty >= qty * 0.99)
-                        # TP2 is a Basic order (LIMIT or TAKE_PROFIT_MARKET with explicit quantity)
-                        tp2_variants = [
+                    # TP2 is a Basic order (LIMIT or TAKE_PROFIT_MARKET with explicit quantity)
+                    tp2_variants = [
+                        {
+                            "symbol": symbol,
+                            "side": x_side,
+                            "type": "LIMIT",
+                            "price": tp2_price,
+                            "quantity": tp2_qty,
+                            "timeInForce": "GTC",
+                            "reduceOnly": True,
+                        },
+                        {
+                            "symbol": symbol,
+                            "side": x_side,
+                            "type": "TAKE_PROFIT_MARKET",
+                            "stopPrice": tp2_price,
+                            "quantity": tp2_qty,
+                            "reduceOnly": True,
+                            "workingType": "MARK_PRICE",
+                        },
+                    ]
+                    tp2_created, tp2_order, tp2_error = _create_order_with_fallbacks(tp2_variants)
+                    if tp2_created and tp2_order and tp2_order.get("orderId"):
+                        tp2_created = True
+                        print(f"✅ TP2 order created: {tp2_order['orderId']}")
+                    
+                    if not tp2_created:
+                        # Fallback to algo if regular fails
+                        tp2_algo_variants = [
                             {
                                 "symbol": symbol,
-                                "side": x_side,
-                                "type": "LIMIT",
-                                "price": tp2_price,
-                                "quantity": tp2_qty,
-                                "newClientOrderId": f"TP2_{symbol}_{int(time.time() * 1000)}",
-                                "timeInForce": "GTC",
-                                "reduceOnly": True,
-                            },
-                            {
-                                "symbol": symbol,
+                                "algoType": "CONDITIONAL",
                                 "side": x_side,
                                 "type": "TAKE_PROFIT_MARKET",
-                                "stopPrice": tp2_price,
+                                "triggerPrice": tp2_price,
                                 "quantity": tp2_qty,
-                                "newClientOrderId": f"TP2_{symbol}_{int(time.time() * 1000)}",
-                                "reduceOnly": True,
+                                "reduceOnly": "true",
                                 "workingType": "MARK_PRICE",
-                            },
+                            }
                         ]
-                        # If TP2 is a full-position close, also try closePosition=True variant
-                        if is_full_close:
-                            tp2_variants.insert(1, {
-                                "symbol": symbol,
-                                "side": x_side,
-                                "type": "TAKE_PROFIT_MARKET",
-                                "stopPrice": tp2_price,
-                                "closePosition": True,
-                                "newClientOrderId": f"TP2_FULL_{symbol}_{int(time.time() * 1000)}",
-                                "workingType": "MARK_PRICE",
-                            })
-                        tp2_created, tp2_order, tp2_error = _create_order_with_fallbacks(tp2_variants)
-                        if tp2_created and tp2_order and tp2_order.get("orderId"):
-                            tp2_created = True
-                            print(f"✅ TP2 order created: {tp2_order['orderId']}")
-                        
-                        if not tp2_created:
-                            # Fallback to algo if regular fails
-                            tp2_algo_variants = [
-                                {
-                                    "symbol": symbol,
-                                    "algoType": "CONDITIONAL",
-                                    "side": x_side,
-                                    "type": "TAKE_PROFIT_MARKET",
-                                    "triggerPrice": tp2_price,
-                                    "quantity": tp2_qty,
-                                    "newClientOrderId": f"TP2_ALGO_{symbol}_{int(time.time() * 1000)}",
-                                    "reduceOnly": "true",
-                                    "workingType": "MARK_PRICE",
-                                }
-                            ]
-                            tp2_created, tp2_algo_order, tp2_algo_error = _create_algo_order_with_fallbacks(tp2_algo_variants)
-                            if tp2_created:
-                                tp2_order = tp2_algo_order
-                                tp2_error = None
-                                print(f"✅ TP2 algo order created: {tp2_order}")
-                            else:
-                                tp2_error = tp2_error or tp2_algo_error
+                        tp2_created, tp2_algo_order, tp2_algo_error = _create_algo_order_with_fallbacks(tp2_algo_variants)
+                        if tp2_created:
+                            tp2_order = tp2_algo_order
+                            tp2_error = None
+                            print(f"✅ TP2 algo order created: {tp2_order}")
+                        else:
+                            tp2_error = tp2_error or tp2_algo_error
         except Exception as e:
             tp2_error = str(e)
             print(f"⚠️ TP2 order creation failed: {e}")
-            if "-2010" in str(e): # Filter too much error
-                tp2_error = "TP2 order failed: Filter too much (quantity/price precision)"
-            elif "-1013" in str(e): # Min notional error
-                tp2_error = "TP2 order failed: Min notional not met"
-            else:
-                tp2_error = str(e)
-
             log_trade_event("TRADE_WARN", f"⚠️ TP2 order failed: {tp2_error}", user_id)
         # PERSIST TO DATABASE
-        # IMPORTANT: Always store TP1/TP2 prices even if Binance order failed —
-        # the virtual guard reads them from DB and enforces them server-side.
         pos = TradePosition(
             user_id=user_id,
             symbol=symbol,
@@ -1733,11 +1384,12 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
             remain_qty_pct=100.0,
             sl_price=sl_p,
             current_sl=sl_p,
-            tp1_price=tp1 if (tp1 and tp1 > 0) else None,
-            tp1_qty_pct=tp1_pct if (tp1 and tp1 > 0) else 0,
-            tp2_price=tp2 if (tp2 and tp2 > 0) else None,
+            tp1_price=tp1 if tp1_created else None,
+            tp1_qty_pct=tp1_pct if tp1_created else 0,
+            tp2_price=tp2 if tp2_created else None,
             opening_order_id=main_order_id,
-            status='open'
+            status='open',
+            virtual_guard_active=virtual_guard_enabled
         )
         db.session.add(pos)
         update_trade_stats(symbol, user_id)
@@ -1772,18 +1424,13 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
             f"✅ 1% RISK {side} {symbol} | Entry:${entry:.4f} SL:${sl_p:.4f}{tp_note} Qty:{qty} Lev:{lev}x{lev_note} | {status_msg}",
             user_id
         )
-        # Cache invalidation — clear ALL relevant caches so fresh data is shown immediately
-        from conditional_orders_enhancement import invalidate_cache as invalidate_conditional_cache
-        invalidate_conditional_cache(user_id)
+        # Cache invalidation
         cache_key_pos = f"positions_{user_id or 'public'}"
         _positions_cache.pop(cache_key_pos, None)
-
         _positions_cache_time.pop(cache_key_pos, None)
         cache_key_hist = f"trade_history_{user_id or 'public'}"
         _trade_history_cache.pop(cache_key_hist, None)
         _trade_history_cache_time.pop(cache_key_hist, None)
-        # CRITICAL FIX: Clear conditional orders cache so TP/SL appear immediately after order execution
-        _conditional_cache.pop(user_id, None)
         # Final response with order status
         main_message = f"✅ {side} {symbol} executed (1% risk) @ {lev}x leverage{lev_note}"
         
@@ -2259,10 +1906,10 @@ def get_live_price(symbol, user_id=None):
     # ✅ CRITICAL: Per-symbol, per-user cache key to prevent symbol mixing
     cache_key = f"{symbol}_{user_id or 'public'}"
     
-    # ✅ Check cache with per-symbol expiration (5 second TTL — was 2s, too aggressive)
+    # ✅ Check cache with per-symbol expiration (10 second TTL)
     if cache_key in _price_cache and cache_key in _price_cache_time:
         cache_age = current_time - _price_cache_time[cache_key]
-        if cache_age < 5:
+        if cache_age < 2:
             cached_price = _price_cache[cache_key]
             print(f"✓ PRICE CACHE HIT [{cache_age:.1f}s old]: {symbol} = ${cached_price}")
             return cached_price
@@ -2270,15 +1917,6 @@ def get_live_price(symbol, user_id=None):
             print(f"🔄 PRICE CACHE EXPIRED [{cache_age:.1f}s]: {symbol} - fetching fresh...")
     else:
         print(f"🔄 PRICE CACHE MISS: {symbol} - fetching fresh...")
-
-    # If IP is banned, use stale cache instead of making another call that extends the ban
-    global _api_ban_until_ms
-    now_ms_price = int(current_time * 1000)
-    if now_ms_price < _api_ban_until_ms:
-        if cache_key in _price_cache:
-            print(f"⛔ IP ban active — returning stale price for {symbol}")
-            return _price_cache[cache_key]
-        return 0.0
     
     # ✅ ATTEMPT 1: Try client API (if user has connected exchange)
     try:
@@ -2425,58 +2063,20 @@ def round_price(symbol, price, user_id=None):
             return round(price - (price % tick), precision)
     return round(price, 2)
 
-def get_live_balance(user_id, force_refresh=False):
+def get_live_balance(user_id):
     """
-    Fetch futures wallet balance and margin used from Binance.
-    Caches for BALANCE_CACHE_DURATION seconds to prevent -1003 IP bans.
+    Fetch the real-time futures wallet balance and margin used from Binance.
     Returns a tuple ((balance, margin_used), error_msg).
     """
-    global _balance_cache, _balance_cache_time, _api_ban_until_ms
-    now_ms = int(time.time() * 1000)
-    now = time.time()
-    cache_key = f"balance_{user_id}"
-
-    # If Binance has banned this IP, return cached value immediately — do NOT make another call
-    if now_ms < _api_ban_until_ms:
-        cached = _balance_cache.get(cache_key)
-        if cached:
-            print(f"⛔ IP ban active, serving cached balance for user {user_id}")
-            return cached
-        return ((0.0, 0.0), f"IP temporarily banned until {_api_ban_until_ms} — please wait")
-
-    # Serve from cache if fresh and not force-refreshed
-    if not force_refresh and cache_key in _balance_cache and (now - _balance_cache_time.get(cache_key, 0)) < BALANCE_CACHE_DURATION:
-        print(f"✓ BALANCE CACHE HIT for user {user_id}")
-        return _balance_cache[cache_key]
-
     try:
         client = get_user_exchange_client(user_id)
         if not client:
             return ((0.0, 0.0), "Exchange not connected")
-
+        
         acc = client.futures_account(recvWindow=10000)
         balance = float(acc.get('totalWalletBalance', 0.0))
         margin_used = float(acc.get('totalInitialMargin', 0.0))
-        result = ((balance, margin_used), None)
-        # Store in cache
-        _balance_cache[cache_key] = result
-        _balance_cache_time[cache_key] = now
-        return result
+        return ((balance, margin_used), None)
     except Exception as e:
-        err_str = str(e)
         print(f"❌ Error fetching live balance for user {user_id}: {e}")
-        # Detect -1003 IP ban and record the ban window so ALL subsequent calls skip Binance
-        if "-1003" in err_str and "banned until" in err_str:
-            try:
-                ban_ts = int(err_str.split("banned until")[1].split(".")[0].strip())
-                _api_ban_until_ms = ban_ts
-                _conditional_ban_until = ban_ts
-                print(f"⛔ IP ban detected — blocked until {ban_ts}ms. All Binance calls paused.")
-            except Exception:
-                _api_ban_until_ms = now_ms + 120_000  # Default 2-minute cooldown
-        # Return cached balance if available rather than zeros
-        cached = _balance_cache.get(cache_key)
-        if cached:
-            print(f"⚠️ Returning cached balance after error for user {user_id}")
-            return cached
-        return ((0.0, 0.0), err_str)
+        return ((0.0, 0.0), str(e))

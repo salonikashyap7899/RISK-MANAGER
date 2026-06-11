@@ -128,6 +128,7 @@ class TradePosition(db.Model):
     current_sl = db.Column(db.Float, nullable=False)  # Live trailed SL
     unrealized_pnl = db.Column(db.Float, default=0.0)
     status = db.Column(db.String(20), default='open')  # open/closed/partial
+    virtual_guard_active = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -69,120 +69,6 @@
         @keyframes slideUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .modal-close { position: absolute; top: 1rem; right: 1rem; width: 2rem; height: 2rem; background: rgba(6, 182, 212, 0.2); border: none; border-radius: 0.5rem; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #06b6d4; font-size: 1.5rem; transition: all 0.3s ease; }
         .modal-close:hover { background: rgba(6, 182, 212, 0.4); }
-
-        /* ── Enhanced modal & form styles ── */
-        .modal-content {
-            background: rgba(8, 12, 22, 0.98);
-            border: 1px solid rgba(6, 182, 212, 0.35);
-            box-shadow: 0 0 60px rgba(6, 182, 212, 0.12), 0 30px 80px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.04);
-        }
-        .neon-input {
-            background: rgba(0, 0, 0, 0.45);
-            border: 1px solid rgba(255,255,255,0.08);
-            color: #f1f5f9;
-            width: 100%;
-            padding: 13px 16px;
-            border-radius: 10px;
-            font-size: 0.92rem;
-            transition: all 0.25s ease;
-            outline: none;
-        }
-        .neon-input:focus {
-            border-color: rgba(6, 182, 212, 0.7);
-            box-shadow: 0 0 0 3px rgba(6,182,212,0.1), 0 0 20px rgba(6,182,212,0.07);
-            background: rgba(6,182,212,0.04);
-        }
-        .neon-input::placeholder { color: rgba(148,163,184,0.5); }
-        .field-label {
-            display: block;
-            font-size: 0.72rem;
-            font-weight: 600;
-            color: #94a3b8;
-            margin-bottom: 7px;
-            letter-spacing: 0.07em;
-            text-transform: uppercase;
-        }
-        .btn-glow {
-            background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #8b5cf6 100%);
-            background-size: 200% 200%;
-            animation: gradientShift 3s ease infinite;
-            color: white;
-            border: none;
-            padding: 13px 24px;
-            border-radius: 10px;
-            font-weight: 700;
-            font-size: 0.95rem;
-            cursor: pointer;
-            width: 100%;
-            transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
-            box-shadow: 0 4px 24px rgba(6,182,212,0.3);
-            letter-spacing: 0.02em;
-        }
-        .btn-glow:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 35px rgba(6,182,212,0.5); }
-        .btn-glow:disabled { opacity: 0.6; cursor: not-allowed; }
-        @keyframes gradientShift { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
-        @keyframes shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
-        .shimmer-text {
-            background: linear-gradient(90deg, #06b6d4 0%, #8b5cf6 30%, #3b82f6 60%, #06b6d4 100%);
-            background-size: 200% auto;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            animation: shimmer 4s linear infinite;
-        }
-        /* Password strength bars */
-        .sbar { height: 4px; border-radius: 2px; flex: 1; background: rgba(255,255,255,0.08); transition: all 0.3s ease; }
-        .sbar.weak   { background: #ef4444; }
-        .sbar.fair   { background: #f97316; }
-        .sbar.good   { background: #eab308; }
-        .sbar.strong { background: #22c55e; }
-        /* Modal alert box */
-        .modal-alert {
-            padding: 10px 14px;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            line-height: 1.4;
-            margin-bottom: 14px;
-            display: none;
-        }
-        .modal-alert.error { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; }
-        .modal-alert.success { background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.3); color: #86efac; }
-        .modal-alert.show { display: block; }
-        /* Modal icon badge */
-        .modal-badge {
-            width: 52px; height: 52px;
-            border-radius: 14px;
-            display: inline-flex; align-items: center; justify-content: center;
-            margin-bottom: 14px;
-        }
-        /* Google button */
-        .google-btn {
-            display: flex; align-items: center; justify-content: center; gap: 10px;
-            width: 100%; padding: 12px 20px;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 10px;
-            color: #f1f5f9;
-            font-weight: 600; font-size: 0.9rem;
-            text-decoration: none;
-            transition: all 0.2s ease;
-        }
-        .google-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.22); color: #fff; }
-        /* Divider */
-        .or-divider { display: flex; align-items: center; gap: 12px; margin: 14px 0; }
-        .or-divider::before, .or-divider::after { content:''; flex: 1; height: 1px; background: rgba(255,255,255,0.07); }
-        .or-divider span { font-size: 0.72rem; color: rgba(148,163,184,0.5); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
-        /* Hero mesh grid */
-        #hero { position: relative; }
-        #hero::before {
-            content: '';
-            position: absolute; inset: 0;
-            background-image: linear-gradient(rgba(6,182,212,0.025) 1px, transparent 1px),
-                              linear-gradient(90deg, rgba(6,182,212,0.025) 1px, transparent 1px);
-            background-size: 60px 60px;
-            pointer-events: none;
-            z-index: 0;
-        }
     </style>
 </head>
 <body class="font-sans text-gray-100">
@@ -716,226 +602,164 @@
 </script>
     <!-- Login Modal -->
     <div id="loginModal" class="modal">
-        <div class="modal-content" style="max-width:420px;width:92%;">
+        <div class="modal-content">
             <button class="modal-close" onclick="closeLoginModal()">&times;</button>
-            <!-- Header -->
-            <div class="text-center mb-6">
-                <div class="modal-badge" style="background:linear-gradient(135deg,rgba(6,182,212,.18),rgba(139,92,246,.18));border:1px solid rgba(6,182,212,.35);">
-                    <svg style="width:24px;height:24px;color:#06b6d4;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                </div>
-                <h2 class="text-2xl font-bold text-white">Welcome Back</h2>
-                <p style="color:rgba(148,163,184,.7);font-size:.85rem;margin-top:4px;">Sign in to your MRC account</p>
-            </div>
-            <div id="loginAlert" class="modal-alert error"></div>
-            <form id="loginForm" style="display:flex;flex-direction:column;gap:16px;">
+            <h2 class="text-3xl font-bold text-white mb-6 gradient-text">Login</h2>
+            <form id="loginForm" class="space-y-4">
                 <div>
-                    <label class="field-label">Email Address</label>
-                    <input type="email" name="email" required class="neon-input" placeholder="you@example.com" autocomplete="email">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Email</label>
+                    <input type="email" name="email" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="your@email.com">
                 </div>
                 <div>
-                    <label class="field-label">Password</label>
-                    <input type="password" name="password" required class="neon-input" placeholder="Your password" autocomplete="current-password">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                    <input type="password" name="password" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="Your password">
                 </div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <input type="checkbox" id="remember" name="remember" style="width:16px;height:16px;accent-color:#06b6d4;cursor:pointer;">
-                    <label for="remember" style="font-size:.85rem;color:rgba(148,163,184,.8);cursor:pointer;">Remember me</label>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="remember" name="remember" class="w-4 h-4">
+                    <label for="remember" class="text-sm text-gray-400">Remember me</label>
                 </div>
-                <button type="submit" class="btn-glow" id="loginSubmitBtn">Sign In</button>
+                <button type="submit" class="w-full btn-primary text-white px-4 py-3 rounded-lg font-semibold">Login</button>
             </form>
-            <div class="or-divider"><span>or continue with</span></div>
-            <a href="/google-login" class="google-btn">
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18" alt="Google">
-                Continue with Google
-            </a>
-            <p style="margin-top:20px;text-align:center;font-size:.85rem;color:rgba(148,163,184,.7);">
-                Don't have an account?
-                <button onclick="switchToRegister()" style="background:none;border:none;color:#06b6d4;font-weight:700;cursor:pointer;font-size:.85rem;padding:0;transition:color .2s;" onmouseover="this.style.color='#67e8f9'" onmouseout="this.style.color='#06b6d4'">Create one free</button>
-            </p>
+            <div class="mt-6 text-center">
+                <p class="text-gray-400">Don't have an account? <button onclick="switchToRegister()" class="text-cyan-400 hover:text-cyan-300 font-semibold">Register here</button></p>
+            </div>
         </div>
     </div>
 
     <!-- Register Modal -->
     <div id="registerModal" class="modal">
-        <div class="modal-content" style="max-width:420px;width:92%;">
+        <div class="modal-content">
             <button class="modal-close" onclick="closeRegisterModal()">&times;</button>
-            <!-- Header -->
-            <div class="text-center mb-6">
-                <div class="modal-badge" style="background:linear-gradient(135deg,rgba(139,92,246,.18),rgba(6,182,212,.18));border:1px solid rgba(139,92,246,.35);">
-                    <svg style="width:24px;height:24px;color:#a78bfa;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                </div>
-                <h2 class="text-2xl font-bold text-white">Create Account</h2>
-                <p style="color:rgba(148,163,184,.7);font-size:.85rem;margin-top:4px;">Join MindRiskControl today</p>
-            </div>
-            <div id="registerAlert" class="modal-alert error"></div>
-            <form id="registerForm" style="display:flex;flex-direction:column;gap:14px;">
+            <h2 class="text-3xl font-bold text-white mb-6 gradient-text">Create Account</h2>
+            <form id="registerForm" class="space-y-4">
                 <div>
-                    <label class="field-label">Username</label>
-                    <input type="text" name="username" required class="neon-input" placeholder="Choose a username" autocomplete="username" minlength="3">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Username</label>
+                    <input type="text" name="username" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="Choose a username">
                 </div>
                 <div>
-                    <label class="field-label">Email Address</label>
-                    <input type="email" name="email" required class="neon-input" placeholder="you@example.com" autocomplete="email">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Email</label>
+                    <input type="email" name="email" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="your@email.com">
                 </div>
                 <div>
-                    <label class="field-label">Password</label>
-                    <input type="password" name="password" id="regPassword" required class="neon-input" placeholder="Min 8 chars, uppercase, number, symbol" autocomplete="new-password">
-                    <!-- Strength bars -->
-                    <div style="display:flex;gap:5px;margin-top:8px;">
-                        <div class="sbar" id="sb1"></div>
-                        <div class="sbar" id="sb2"></div>
-                        <div class="sbar" id="sb3"></div>
-                        <div class="sbar" id="sb4"></div>
-                    </div>
-                    <p id="strengthLabel" style="font-size:.75rem;margin-top:5px;color:rgba(148,163,184,.6);min-height:14px;"></p>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                    <input type="password" name="password" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="Create a password">
                 </div>
                 <div>
-                    <label class="field-label">Confirm Password</label>
-                    <input type="password" name="confirm_password" id="regConfirm" required class="neon-input" placeholder="Repeat your password" autocomplete="new-password">
-                    <p id="confirmLabel" style="font-size:.75rem;margin-top:5px;min-height:14px;color:rgba(148,163,184,.6);"></p>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Confirm Password</label>
+                    <input type="password" name="confirm_password" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="Confirm password">
                 </div>
-                <button type="submit" class="btn-glow" id="regSubmitBtn" style="margin-top:4px;">Create Account</button>
+                <button type="submit" class="w-full btn-primary text-white px-4 py-3 rounded-lg font-semibold">Register</button>
             </form>
-            <p style="margin-top:18px;text-align:center;font-size:.85rem;color:rgba(148,163,184,.7);">
-                Already have an account?
-                <button onclick="switchToLogin()" style="background:none;border:none;color:#06b6d4;font-weight:700;cursor:pointer;font-size:.85rem;padding:0;transition:color .2s;" onmouseover="this.style.color='#67e8f9'" onmouseout="this.style.color='#06b6d4'">Sign in</button>
-            </p>
+            <div class="mt-6 text-center">
+                <p class="text-gray-400">Already have an account? <button onclick="switchToLogin()" class="text-cyan-400 hover:text-cyan-300 font-semibold">Login here</button></p>
+            </div>
         </div>
     </div>
 
     <script>
-        /* ── Modal helpers ── */
-        function openLoginModal()    { document.getElementById('loginModal').classList.add('active');    document.body.style.overflow='hidden'; }
-        function closeLoginModal()   { document.getElementById('loginModal').classList.remove('active'); document.body.style.overflow='auto';   clearAlert('loginAlert'); }
-        function openRegisterModal() { document.getElementById('registerModal').classList.add('active');    document.body.style.overflow='hidden'; }
-        function closeRegisterModal(){ document.getElementById('registerModal').classList.remove('active'); document.body.style.overflow='auto';   clearAlert('registerAlert'); }
-        function switchToLogin()     { closeRegisterModal(); setTimeout(openLoginModal, 80); }
-        function switchToRegister()  { closeLoginModal();    setTimeout(openRegisterModal, 80); }
-        function handleLogout()      { window.location.href = '/logout'; }
-
-        function showAlert(id, msg, type='error') {
-            const el = document.getElementById(id);
-            el.className = 'modal-alert ' + type + ' show';
-            el.textContent = msg;
+        // Modal Management
+        function openLoginModal() { document.getElementById('loginModal').classList.add('active'); document.body.style.overflow = 'hidden'; }
+        function closeLoginModal() { document.getElementById('loginModal').classList.remove('active'); document.body.style.overflow = 'auto'; }
+        function openRegisterModal() { document.getElementById('registerModal').classList.add('active'); document.body.style.overflow = 'hidden'; }
+        function closeRegisterModal() { document.getElementById('registerModal').classList.remove('active'); document.body.style.overflow = 'auto'; }
+        function switchToLogin() { closeRegisterModal(); openLoginModal(); }
+        function switchToRegister() { closeLoginModal(); openRegisterModal(); }
+        
+        // Logout Handler
+        function handleLogout() {
+            window.location.href = '/logout';
         }
-        function clearAlert(id) {
-            const el = document.getElementById(id);
-            if(el){ el.className = 'modal-alert error'; el.textContent = ''; }
-        }
-
-        /* Close on backdrop click */
-        document.getElementById('loginModal').addEventListener('click',    e => { if(e.target.id==='loginModal')    closeLoginModal(); });
-        document.getElementById('registerModal').addEventListener('click', e => { if(e.target.id==='registerModal') closeRegisterModal(); });
-        document.addEventListener('keydown', e => { if(e.key==='Escape'){ closeLoginModal(); closeRegisterModal(); } });
-
-        /* ── Password strength meter ── */
-        function getStrength(pw) {
-            let score = 0;
-            if(pw.length >= 8)                              score++;
-            if(/[A-Z]/.test(pw))                            score++;
-            if(/[0-9]/.test(pw))                            score++;
-            if(/[!@#$%^&*()\-_=+\[\]{}|;:,.<>?/]/.test(pw)) score++;
-            return score; // 0-4
-        }
-        const bars   = ['sb1','sb2','sb3','sb4'];
-        const labels = ['','Weak — add uppercase, numbers & symbols','Fair — add numbers & symbols','Good — add a special character','Strong'];
-        const colors = ['','weak','fair','good','strong'];
-
-        document.getElementById('regPassword').addEventListener('input', function(){
-            const pw = this.value;
-            const s  = pw.length ? getStrength(pw) : 0;
-            bars.forEach((id, i) => {
-                const el = document.getElementById(id);
-                el.className = 'sbar' + (i < s ? ' ' + colors[s] : '');
-            });
-            document.getElementById('strengthLabel').textContent = pw.length ? labels[s] : '';
-        });
-
-        document.getElementById('regConfirm').addEventListener('input', function(){
-            const pw  = document.getElementById('regPassword').value;
-            const lbl = document.getElementById('confirmLabel');
-            if(!this.value) { lbl.textContent=''; lbl.style.color='rgba(148,163,184,.6)'; return; }
-            if(this.value === pw) { lbl.textContent='✓ Passwords match'; lbl.style.color='#4ade80'; }
-            else                  { lbl.textContent='✗ Passwords do not match'; lbl.style.color='#f87171'; }
-        });
-
-        /* ── Client-side password validation ── */
-        function clientValidatePassword(pw) {
-            if(pw.length < 8)                return 'Password must be at least 8 characters long.';
-            if(!/[A-Z]/.test(pw))           return 'Password must contain at least one uppercase letter (A-Z).';
-            if(!/[a-z]/.test(pw))           return 'Password must contain at least one lowercase letter (a-z).';
-            if(!/[0-9]/.test(pw))           return 'Password must contain at least one number (0-9).';
-            if(!/[!@#$%^&*()\-_=+\[\]{}|;:,.<>?/]/.test(pw)) return 'Password must contain at least one special character (!@#$%^&* etc).';
-            return null;
-        }
-
-        /* ── Login form ── */
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
+        
+        // Close modal when clicking outside
+        document.getElementById('loginModal').addEventListener('click', (e) => { if (e.target.id === 'loginModal') closeLoginModal(); });
+        document.getElementById('registerModal').addEventListener('click', (e) => { if (e.target.id === 'registerModal') closeRegisterModal(); });
+        
+        // Login Form Submission
+        document.getElementById('loginForm').addEventListener('submit', (e) => {
             e.preventDefault();
-            clearAlert('loginAlert');
-            const btn = document.getElementById('loginSubmitBtn');
-            btn.disabled = true; btn.textContent = 'Signing in…';
-
-            fetch('/login', {
-                method: 'POST',
-                body: new URLSearchParams(new FormData(this)),
-                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            const formData = new FormData(e.target);
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Logging in...';
+            
+            fetch('/login', { 
+                method: 'POST', 
+                body: new URLSearchParams(formData),
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
                 credentials: 'same-origin'
             })
-            .then(r => r.json().then(d => ({ ok: r.ok, d })))
-            .then(({ ok, d }) => {
-                if(d.success) {
+            .then(res => res.json().then(data => ({status: res.status, data: data})))
+            .then(({status, data}) => {
+                if (data.success) {
                     closeLoginModal();
-                    setTimeout(() => { window.location.href = d.redirect || '/index'; }, 200);
+                    setTimeout(() => {
+                        window.location.href = data.redirect || '/index';
+                    }, 300);
                 } else {
-                    showAlert('loginAlert', d.message || 'Login failed. Check your credentials.');
-                    btn.disabled = false; btn.textContent = 'Sign In';
+                    throw new Error(data.message || 'Login failed');
                 }
             })
-            .catch(() => {
-                showAlert('loginAlert', 'Network error. Please try again.');
-                btn.disabled = false; btn.textContent = 'Sign In';
+            .catch(err => { 
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Login';
+                alert('Login failed: ' + err.message);
             });
         });
-
-        /* ── Register form ── */
-        document.getElementById('registerForm').addEventListener('submit', function(e) {
+        
+        // Register Form Submission
+        document.getElementById('registerForm').addEventListener('submit', (e) => {
             e.preventDefault();
-            clearAlert('registerAlert');
-            const pw  = document.getElementById('regPassword').value;
-            const cpw = document.getElementById('regConfirm').value;
-
-            const pwErr = clientValidatePassword(pw);
-            if(pwErr)       { showAlert('registerAlert', pwErr); return; }
-            if(pw !== cpw)  { showAlert('registerAlert', 'Passwords do not match.'); return; }
-
-            const btn = document.getElementById('regSubmitBtn');
-            btn.disabled = true; btn.textContent = 'Creating account…';
-
-            fetch('/register', {
-                method: 'POST',
-                body: new URLSearchParams(new FormData(this)),
-                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            const password = e.target.querySelector('input[name="password"]').value;
+            const confirmPassword = e.target.querySelector('input[name="confirm_password"]').value;
+            
+            // Validate passwords match
+            if (password !== confirmPassword) {
+                alert('Passwords do not match!');
+                return;
+            }
+            
+            if (password.length < 6) {
+                alert('Password must be at least 6 characters!');
+                return;
+            }
+            
+            const formData = new FormData(e.target);
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Registering...';
+            
+            fetch('/register', { 
+                method: 'POST', 
+                body: new URLSearchParams(formData),
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
                 credentials: 'same-origin'
             })
-            .then(r => r.json().then(d => ({ ok: r.ok, d })))
-            .then(({ ok, d }) => {
-                if(d.success) {
-                    showAlert('registerAlert', d.message || 'Account created! Please sign in.', 'success');
-                    this.reset();
-                    bars.forEach(id => { document.getElementById(id).className='sbar'; });
-                    document.getElementById('strengthLabel').textContent = '';
-                    document.getElementById('confirmLabel').textContent  = '';
-                    setTimeout(() => { switchToLogin(); }, 1800);
+            .then(res => res.json().then(data => ({status: res.status, data: data})))
+            .then(({status, data}) => {
+                if (data.success) {
+                    alert(data.message);
+                    e.target.reset();
+                    switchToLogin();
+                    document.getElementById('loginForm').reset();
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Register';
                 } else {
-                    showAlert('registerAlert', d.message || 'Registration failed.');
+                    throw new Error(data.message || 'Registration failed');
                 }
-                btn.disabled = false; btn.textContent = 'Create Account';
             })
-            .catch(() => {
-                showAlert('registerAlert', 'Network error. Please try again.');
-                btn.disabled = false; btn.textContent = 'Create Account';
+            .catch(err => { 
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Register';
+                alert('Error: ' + err.message);
             });
         });
+        
+        // Close modals with Escape key
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeLoginModal(); closeRegisterModal(); } });
     </script>
 </body>
 </html>

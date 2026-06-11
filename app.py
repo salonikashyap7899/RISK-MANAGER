@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from functools import wraps
 from models import db, User, ExchangeConnection, SubscriptionHistory, TradeDailyStats, TradeLog
-from flask import Flask, render_template, redirect, url_for, flash, jsonify, request, session, make_response
+from flask import jsonify, request, session
 from logic import select_symbol
 import logic
 import config
@@ -16,7 +16,6 @@ import io
 import uuid
 import razorpay
 import time
-import re
 
 # Load environment variables
 load_dotenv()
@@ -24,7 +23,7 @@ load_dotenv()
 app = Flask(__name__)
 
 # Secure secret key - use environment variable or generate one
-app.secret_key = os.getenv('SESSION_SECRET') or os.getenv('SECRET_KEY', 'dev-fallback-change-in-production')
+app.secret_key = os.getenv('SECRET_KEY', os.urandom(32).hex())
 
 # Session configuration for persistent login
 app.config['SESSION_PERMANENT'] = True
@@ -65,42 +64,6 @@ google = oauth.register(
 
 razorpay_client = razorpay.Client(auth=(config.RAZORPAY_KEY_ID, config.RAZORPAY_KEY_SECRET))
 
-DISPOSABLE_DOMAINS = {
-    'mailinator.com', 'tempmail.com', 'throwaway.email', 'guerrillamail.com',
-    'yopmail.com', 'trashmail.com', 'sharklasers.com', 'maildrop.cc',
-    'fakeinbox.com', 'tempinbox.com', 'trashmail.me', 'trashmail.net',
-    'temp-mail.org', 'mohmal.com', 'discard.email', 'spamgourmet.com',
-    'mailexp.com', 'throwam.com', 'spam4.me', 'dispostable.com',
-    'mailnull.com', 'getairmail.com', 'filzmail.com', 'trbvm.com',
-    'grr.la', 'guerrillamail.info', 'guerrillamail.biz', 'guerrillamail.de',
-    'guerrillamail.net', 'guerrillamail.org', 'cuvox.de', 'dayrep.com',
-    'einrot.com', 'fleckens.hu', 'superrito.com', 'teleworm.us',
-    'rhyta.com', 'armyspy.com', 'guam.net', 'inoutmail.eu',
-    'spamgourmet.net', 'spamgourmet.org', 'spamgourmet.com', 'mailnesia.com',
-}
-
-def validate_email_address(email):
-    pattern = r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$'
-    if not re.match(pattern, email):
-        return False, 'Please enter a valid email address.'
-    domain = email.split('@')[1].lower()
-    if domain in DISPOSABLE_DOMAINS:
-        return False, 'Disposable or temporary email addresses are not allowed.'
-    return True, ''
-
-def validate_password_strength(password):
-    if len(password) < 8:
-        return False, 'Password must be at least 8 characters long.'
-    if not re.search(r'[A-Z]', password):
-        return False, 'Password must contain at least one uppercase letter (A-Z).'
-    if not re.search(r'[a-z]', password):
-        return False, 'Password must contain at least one lowercase letter (a-z).'
-    if not re.search(r'[0-9]', password):
-        return False, 'Password must contain at least one number (0-9).'
-    if not re.search(r'[!@#$%^&*()\-_=+\[\]{}|;:,.<>?/]', password):
-        return False, 'Password must contain at least one special character (!@#$%^&* etc).'
-    return True, ''
-
 def get_month_end(dt=None):
     if not dt:
         dt = datetime.utcnow()
@@ -135,19 +98,20 @@ def subscription_required(f):
             flash("Please subscribe to access the trading dashboard.", "warning")
             return redirect(url_for('subscribe'))
         
-        # Always require subscription_end to be set for regular users
-        if not current_user.subscription_end:
-            flash("Your subscription details are incomplete. Please subscribe to access the dashboard.", "warning")
-            return redirect(url_for('subscribe'))
-
-        # Block access the moment subscription_end has passed
-        if now >= current_user.subscription_end:
-            current_user.is_subscribed = False
-            current_user.subscription_status = 'expired'
-            db.session.commit()
-            flash("Your subscription has expired. Please renew to continue accessing the dashboard.", "warning")
-            return redirect(url_for('subscribe'))
-
+        # Check if subscription has expired - only if subscription_end is set
+        if current_user.subscription_end:
+            if now > current_user.subscription_end:
+                # Subscription has expired
+                current_user.is_subscribed = False
+                current_user.subscription_status = 'expired'
+                db.session.commit()
+                flash("Your subscription has expired. Please renew to access the dashboard.", "warning")
+                return redirect(url_for('subscribe'))
+        else:
+            # If subscription_end is not set but is_subscribed is True, 
+            # treat as active for monthly subscribers
+            pass
+            
         return f(*args, **kwargs)
     return decorated_function
 
@@ -177,53 +141,57 @@ def privacy():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    if request.method == 'GET':
-        return redirect(url_for('home'))
+    if request.method == 'POST':
+        email = (request.form.get('email') or '').strip().lower()
+        username = (request.form.get('username') or '').strip()
+        password = request.form.get('password') or ''
+        confirm_password = request.form.get('confirm_password') or ''
 
-    email = (request.form.get('email') or '').strip().lower()
-    username = (request.form.get('username') or '').strip()
-    password = request.form.get('password') or ''
-    confirm_password = request.form.get('confirm_password') or ''
+        # Check if passwords match
+        if password != confirm_password:
+            msg = 'Passwords do not match.'
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': False, 'message': msg}), 400
+            flash(msg, 'error')
+            return render_template('register.html'), 400
 
-    def ajax_error(msg, code=400):
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({'success': False, 'message': msg}), code
-        flash(msg, 'error')
-        return redirect(url_for('home'))
+        if User.query.filter_by(email=email).first():
+            msg = 'Email already registered. Please log in or use another email.'
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': False, 'message': msg}), 400
+            flash(msg, 'error')
+            return render_template('register.html'), 400
 
-    # Validate email format and block disposable domains
-    email_ok, email_err = validate_email_address(email)
-    if not email_ok:
-        return ajax_error(email_err)
+        if User.query.filter_by(username=username).first():
+            msg = 'Username already taken. Choose a different username.'
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': False, 'message': msg}), 400
+            flash(msg, 'error')
+            return render_template('register.html'), 400
 
-    # Enforce strong password
-    pw_ok, pw_err = validate_password_strength(password)
-    if not pw_ok:
-        return ajax_error(pw_err)
+        hashed_pw = generate_password_hash(password)
+        new_user = User(
+            username=username,
+            email=email,
+            password=hashed_pw
+        )
+        try:
+            db.session.add(new_user)
+            db.session.commit()
+            msg = 'Registration successful. Please log in.'
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': True, 'message': msg}), 200
+            flash(msg, 'success')
+            return redirect(url_for('login'))
+        except Exception as e:
+            db.session.rollback()
+            msg = 'An error occurred during registration. Please try again.'
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': False, 'message': msg}), 500
+            flash(msg, 'error')
+            return render_template('register.html'), 500
 
-    # Check passwords match
-    if password != confirm_password:
-        return ajax_error('Passwords do not match.')
-
-    if User.query.filter_by(email=email).first():
-        return ajax_error('Email already registered. Please log in or use another email.')
-
-    if User.query.filter_by(username=username).first():
-        return ajax_error('Username already taken. Choose a different username.')
-
-    hashed_pw = generate_password_hash(password)
-    new_user = User(username=username, email=email, password=hashed_pw)
-    try:
-        db.session.add(new_user)
-        db.session.commit()
-        msg = 'Registration successful! Please log in.'
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({'success': True, 'message': msg}), 200
-        flash(msg, 'success')
-        return redirect(url_for('home'))
-    except Exception:
-        db.session.rollback()
-        return ajax_error('An error occurred during registration. Please try again.', 500)
+    return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -251,94 +219,33 @@ def login():
         is_admin = getattr(user, 'is_admin', False) or user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
 
         if not is_admin:
-            # Check if subscription has expired
-            if user.subscription_end and datetime.utcnow() > user.subscription_end:
-                user.is_subscribed = False
-                user.subscription_status = 'expired'
-                db.session.commit()
-
             if not user.is_subscribed:
-                # Still log them in — redirect to subscribe page
                 if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return jsonify({'success': True, 'redirect': url_for('subscribe')}), 200
+                    return jsonify({'success': False, 'message': 'Please subscribe to access the dashboard'}), 200
+                flash("Please subscribe to access the trading dashboard.", "warning")
                 return redirect(url_for('subscribe'))
+
+            # Check if subscription has expired
+            if user.subscription_end:
+                if datetime.utcnow() > user.subscription_end:
+                    user.is_subscribed = False
+                    user.subscription_status = 'expired'
+                    db.session.commit()
+                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                        return jsonify({'success': False, 'message': 'Your subscription has expired'}), 200
+                    flash("Your subscription has expired. Please renew to access the dashboard.", "warning")
+                    return redirect(url_for('subscribe'))
 
         # Login successful
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'success': True, 'redirect': url_for('index')}), 200
         return redirect(url_for('index'))
 
-    return redirect(url_for('home'))
+    return render_template('login.html')
 
 @app.route('/login/google')
-@app.route('/google-login')
 def google_login():
-    redirect_uri = url_for('google_authorize', _external=True)
-    return google.authorize_redirect(redirect_uri)
-
-
-@app.route('/login/google/callback')
-def google_authorize():
-    try:
-        token = google.authorize_access_token()
-        user_info = token.get('userinfo')
-        if not user_info:
-            user_info = google.get('userinfo').json()
-
-        email = (user_info.get('email') or '').strip().lower()
-        google_id = user_info.get('sub')
-        display_name = user_info.get('name', email.split('@')[0])
-
-        if not email or not google_id:
-            flash("Google login failed: could not retrieve account info.", "error")
-            return redirect(url_for('login'))
-
-        # Find existing user by google_id first, then by email
-        user = User.query.filter_by(google_id=google_id).first()
-        if not user:
-            user = User.query.filter_by(email=email).first()
-            if user:
-                user.google_id = google_id
-            else:
-                # Create a unique username from display name
-                base_username = display_name.replace(' ', '_').lower()
-                username = base_username
-                counter = 1
-                while User.query.filter_by(username=username).first():
-                    username = f"{base_username}{counter}"
-                    counter += 1
-
-                user = User(
-                    username=username,
-                    email=email,
-                    google_id=google_id,
-                    password=None
-                )
-                db.session.add(user)
-            db.session.commit()
-
-        login_user(user, remember=True)
-        session_id = str(uuid.uuid4())
-        session['session_id'] = session_id
-        session.permanent = True
-        user.active_session = session_id
-        db.session.commit()
-
-        is_admin = getattr(user, 'is_admin', False) or user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
-
-        if not is_admin:
-            if user.subscription_end and datetime.utcnow() > user.subscription_end:
-                user.is_subscribed = False
-                user.subscription_status = 'expired'
-                db.session.commit()
-            if not user.is_subscribed:
-                return redirect(url_for('subscribe'))
-
-        return redirect(url_for('index'))
-
-    except Exception as e:
-        flash(f"Google login error: {str(e)}", "error")
-        return redirect(url_for('login'))
+    return google.authorize_redirect(url_for('google_authorize', _external=True))
 
 
 @app.route("/api/select_symbol", methods=["POST"])
@@ -697,14 +604,8 @@ def logout():
         db.session.commit()
     logout_user()
     session.clear()
-    
-    # Clear all session cookies
-    response = make_response(redirect(url_for('login')))
-    response.set_cookie('session', '', expires=0)
-    response.set_cookie('remember_token', '', expires=0)
-    
     flash("Logged out successfully.", "info")
-    return response
+    return redirect(url_for('login'))
 
 @app.route('/index', methods=['GET', 'POST'])
 @login_required
@@ -821,13 +722,11 @@ def index():
         )
         
         session["trade_status"] = result
-        # Invalidate ALL relevant caches so fresh data shows immediately after trade
+        # Invalidate position and trade history caches so next page load is always fresh
         logic._positions_cache.pop(f"positions_{current_user.id}", None)
         logic._positions_cache_time.pop(f"positions_{current_user.id}", None)
         logic._trade_history_cache.pop(f"trade_history_{current_user.id}", None)
         logic._trade_history_cache_time.pop(f"trade_history_{current_user.id}", None)
-        # CRITICAL FIX: Clear conditional orders cache so TP/SL appear immediately
-        logic._conditional_cache.pop(current_user.id, None)
         return redirect(url_for("index", symbol=selected_symbol))
 
     return render_template(
@@ -863,6 +762,8 @@ def ensure_sqlite_trade_positions_columns():
             cols = [row[1] for row in r.fetchall()]
             if "opening_order_id" not in cols:
                 conn.execute(text("ALTER TABLE trade_positions ADD COLUMN opening_order_id VARCHAR(64)"))
+            if "virtual_guard_active" not in cols:
+                conn.execute(text("ALTER TABLE trade_positions ADD COLUMN virtual_guard_active BOOLEAN DEFAULT 0"))
     except Exception as e:
         print(f"SQLite schema patch (trade_positions): {e}")
 
@@ -875,29 +776,20 @@ def exchange_connections():
     # Format for UI
     formatted_connections = []
     for conn in connections:
-        # Ensure last_verified is a datetime object or None
-        last_verified_str = "Never"
-        if conn.last_verified:
-            if isinstance(conn.last_verified, datetime):
-                last_verified_str = conn.last_verified.strftime("%Y-%m-%d %H:%M")
-            else:
-                # If it's already a string, just use it
-                last_verified_str = str(conn.last_verified)
-
         formatted_connections.append({
             'id': conn.id,
             'exchange_type': conn.exchange_type,
             'connection_name': conn.connection_name or f"{conn.exchange_type.capitalize()} Connection",
             'is_connected': conn.is_connected,
-            'last_verified': last_verified_str
+            'last_verified': conn.last_verified.strftime("%Y-%m-%d %H:%M") if conn.last_verified else "Never"
         })
     
     # Supported exchanges list
-    supported_exchanges = {
-        'binance': {'name': 'Binance Futures', 'description': 'Connect your Binance Futures account'},
-        'bybit': {'name': 'Bybit (Coming Soon)', 'description': 'Connect your Bybit account'},
-        'okx': {'name': 'OKX (Coming Soon)', 'description': 'Connect your OKX account'}
-    }
+    supported_exchanges = [
+        {'id': 'binance', 'name': 'Binance Futures', 'icon': 'https://bin.bnbstatic.com/static/images/common/favicon.ico'},
+        {'id': 'bybit', 'name': 'Bybit (Coming Soon)', 'icon': 'https://www.bybit.com/favicon.ico'},
+        {'id': 'okx', 'name': 'OKX (Coming Soon)', 'icon': 'https://www.okx.com/favicon.ico'}
+    ]
     
     return render_template('exchange_connections.html', 
                           connections=formatted_connections, 
@@ -974,75 +866,14 @@ def disconnect_exchange(conn_id):
 @app.route('/subscribe')
 @login_required
 def subscribe():
+    # If already subscribed and not expired, show status
     is_admin = getattr(current_user, 'is_admin', False) or current_user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
     
     if is_admin:
         flash("You have admin access with unlimited features.", "info")
         return redirect(url_for('index'))
         
-    return render_template('subscribe.html', user=current_user, key_id=config.RAZORPAY_KEY_ID)
-
-
-@app.route('/create-subscription', methods=['POST'])
-@login_required
-def create_subscription():
-    data = request.get_json(silent=True) or {}
-    plan_type = data.get('plan_type', 'monthly')
-
-    if plan_type == 'yearly':
-        plan_id = config.RAZORPAY_YEARLY_PLAN_ID
-        total_count = 1
-    else:
-        plan_id = config.RAZORPAY_MONTHLY_PLAN_ID
-        total_count = 12
-
-    try:
-        subscription = razorpay_client.subscription.create({
-            'plan_id': plan_id,
-            'customer_notify': 1,
-            'quantity': 1,
-            'total_count': total_count,
-        })
-        return jsonify({'subscription_id': subscription['id']})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/verify-subscription', methods=['POST'])
-@login_required
-def verify_subscription():
-    data = request.get_json(silent=True) or {}
-
-    try:
-        razorpay_client.utility.verify_payment_signature({
-            'razorpay_payment_id': data['razorpay_payment_id'],
-            'razorpay_subscription_id': data['razorpay_subscription_id'],
-            'razorpay_signature': data['razorpay_signature']
-        })
-
-        plan_type = data.get('plan_type', 'monthly')
-        duration_days = 30 if plan_type == 'monthly' else 365
-
-        current_user.is_subscribed = True
-        current_user.subscription_status = 'active'
-        current_user.subscription_type = plan_type
-        current_user.subscription_id = data.get('razorpay_subscription_id')
-        current_user.subscription_start = datetime.utcnow()
-        current_user.subscription_end = datetime.utcnow() + timedelta(days=duration_days)
-
-        history = SubscriptionHistory(
-            user_id=current_user.id,
-            plan_type=plan_type,
-            start_date=current_user.subscription_start,
-            end_date=current_user.subscription_end,
-            status='active'
-        )
-        db.session.add(history)
-        db.session.commit()
-
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+    return render_template('subscribe.html', user=current_user)
 
 @app.route('/payment/create', methods=['POST'])
 @login_required
@@ -1246,16 +1077,14 @@ def api_conditional_orders():
 @login_required
 def api_tp1_and_sl_orders():
     """
-    Fetch TP1, TP2, and SL conditional orders with position context.
-    Pass ?force=1 to bypass the server-side cache and fetch fresh data from Binance immediately.
+    Fetch ONLY TP1 and SL conditional orders with position context.
     """
-    from conditional_orders_enhancement import get_tp1_and_sl_orders, invalidate_cache
+    from conditional_orders_enhancement import get_tp1_and_sl_orders
     try:
-        if request.args.get('force') == '1':
-            invalidate_cache(current_user.id)
         result = get_tp1_and_sl_orders(current_user.id)
     except Exception as e:
-        result = {"success": False, "error": str(e), "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
+        result = {"success": False, "error": str(e),
+                  "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
     return jsonify(result)
 
 
@@ -1269,83 +1098,67 @@ def api_debug_conditional_orders():
     Delete this route once confirmed working.
     """
     raw = logic.get_all_open_conditional_orders(current_user.id)
-    return jsonify({"count": len(raw), "orders": raw})
-
-@app.route('/api/cache_status', methods=['GET'])
-@login_required
-def api_cache_status():
-    """Lightweight endpoint so the frontend status pill can show IP ban state and cache freshness."""
-    import time
-    now_ms = int(time.time() * 1000)
-    banned = now_ms < logic._api_ban_until_ms
+    # Also get raw unfiltered orders for deeper debugging
+    unfiltered = []
+    client = logic.get_client(current_user.id)
+    if client:
+        try:
+            unfiltered = client.futures_get_open_orders(recvWindow=10000)
+        except:
+            pass
     return jsonify({
-        "ip_banned": banned,
-        "ban_until_ms": logic._api_ban_until_ms if banned else 0,
-        "price_cache_ttl_s": 5,
-        "balance_cache_ttl_s": 30,
-        "conditional_cache_ttl_s": 30,
+        "count": len(raw), 
+        "orders": raw,
+        "raw_unfiltered_count": len(unfiltered),
+        "raw_unfiltered": unfiltered
     })
 
-
-@app.route('/api/raw_open_orders')
+@app.route('/api/debug_tp1_sl')
 @login_required
-def api_raw_open_orders():
+def api_debug_tp1_sl():
+    from conditional_orders_enhancement import get_tp1_and_sl_orders
+    result = get_tp1_and_sl_orders(current_user.id)
+    return jsonify(result)
+
+@app.route('/api/tp_sl_mode')
+@login_required
+def api_tp_sl_mode():
     """
-    Fetch ALL open orders from Binance (regular + conditional/algo) in raw form.
-    Used by the Manual Cancel panel to show every live order.
+    Returns the TP/SL management mode for each open position.
+    Cross-references database records with live Binance open orders.
     """
     try:
-        client = logic.get_client(current_user.id)
-        if not client:
-            return jsonify({"success": False, "error": "No exchange connection", "orders": []})
-
-        all_orders = []
-
-        # Regular open orders
-        try:
-            regular = client.futures_get_open_orders(recvWindow=10000)
-            for o in regular:
-                all_orders.append({
-                    "orderId": str(o.get('orderId', '')),
-                    "symbol": o.get('symbol', ''),
-                    "type": o.get('type', ''),
-                    "side": o.get('side', ''),
-                    "price": float(o.get('price') or 0),
-                    "stopPrice": float(o.get('stopPrice') or 0),
-                    "origQty": float(o.get('origQty') or 0),
-                    "reduceOnly": o.get('reduceOnly', False),
-                    "source": "regular",
-                    "timeStr": datetime.fromtimestamp(int(o['time']) / 1000).strftime('%Y-%m-%d %H:%M:%S') if o.get('time') else 'N/A',
-                })
-        except Exception as e:
-            print(f"[raw_open_orders] regular fetch error: {e}")
-
-        # Conditional / algo orders
-        try:
-            if hasattr(client, '_request_futures_api'):
-                algo_resp = client._request_futures_api('get', 'algo/openOrders', True, recvWindow=10000)
-                algo_list = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
-                for o in algo_list:
-                    all_orders.append({
-                        "orderId": str(o.get('algoId', o.get('orderId', ''))),
-                        "symbol": o.get('symbol', ''),
-                        "type": o.get('algoType', o.get('type', '')),
-                        "side": o.get('side', ''),
-                        "price": float(o.get('price') or 0),
-                        "stopPrice": float(o.get('triggerPrice') or o.get('stopPrice') or 0),
-                        "origQty": float(o.get('qty') or o.get('origQty') or 0),
-                        "amount": float(o.get('amount') or 0),
-                        "reduceOnly": o.get('reduceOnly', True),
-                        "source": "algo",
-                        "timeStr": datetime.fromtimestamp(int(o['bookTime']) / 1000).strftime('%Y-%m-%d %H:%M:%S') if o.get('bookTime') else 'N/A',
-                    })
-        except Exception as e:
-            print(f"[raw_open_orders] algo fetch error: {e}")
-
-        return jsonify({"success": True, "orders": all_orders, "count": len(all_orders)})
+        from models import TradePosition
+        open_positions = TradePosition.query.filter_by(user_id=current_user.id, status='open').all()
+        exchange_orders = logic.get_all_open_conditional_orders(current_user.id)
+        
+        # Map exchange orders by symbol for quick lookup
+        orders_by_symbol = {}
+        for o in exchange_orders:
+            sym = o.get('symbol')
+            if sym not in orders_by_symbol:
+                orders_by_symbol[sym] = []
+            orders_by_symbol[sym].append(o)
+            
+        results = []
+        for pos in open_positions:
+            sym_orders = orders_by_symbol.get(pos.symbol, [])
+            # A position is managed by exchange if it has at least one real order on Binance
+            has_exchange_orders = len(sym_orders) > 0
+            
+            results.append({
+                "symbol": pos.symbol,
+                "virtual_guard_active": bool(pos.virtual_guard_active),
+                "has_exchange_orders": has_exchange_orders,
+                "mode": "Virtual Guard" if pos.virtual_guard_active or not has_exchange_orders else "Exchange Orders",
+                "exchange_order_count": len(sym_orders),
+                "db_sl": pos.sl_price,
+                "db_tp1": pos.tp1_price
+            })
+            
+        return jsonify({"success": True, "positions": results})
     except Exception as e:
-        return jsonify({"success": False, "error": str(e), "orders": []})
-
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/cancel_conditional_order', methods=['POST'])
 @login_required
@@ -1353,251 +1166,17 @@ def api_cancel_conditional_order():
     data = request.get_json(silent=True) or {}
     order_id = data.get('order_id')
     symbol = data.get('symbol')
-    source = data.get('source')
     if not order_id or not symbol:
         return jsonify({"success": False, "message": "Missing order_id or symbol"}), 400
-
     try:
-        print(f"\n[API] 🔴 Cancel request: symbol={symbol}, order_id={order_id}, source={source}")
-        
-        # Use logic.cancel_order which handles both regular, algo, and virtual orders
-        success, message = logic.cancel_order(symbol, order_id, current_user.id, source=source)
-        
-        # CRITICAL FIX: Only clear caches if Binance cancellation actually succeeded
-        if success:
-            print(f"[API] ✅ Cancel successful on Binance: {message}")
-            logic._conditional_cache.pop(current_user.id, None)
-            try:
-                from conditional_orders_enhancement import invalidate_cache as _inv_tpsl
-                _inv_tpsl(current_user.id)
-            except Exception as inv_err:
-                print(f"[API] Warning: Cache invalidation error: {inv_err}")
-            return jsonify({"success": True, "message": message})
-        else:
-            print(f"[API] ❌ Cancel failed on Binance: {message}")
-            # Return error but don't clear caches — order is still live on Binance
-            return jsonify({"success": False, "message": message}), 400
+        # Use logic.cancel_order which handles both regular and algo orders
+        success, message = logic.cancel_order(symbol, order_id, current_user.id)
+        return jsonify({"success": success, "message": message})
     except Exception as e:
-        print(f"[API] ❌ Exception in api_cancel_conditional_order: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
-
-@app.route('/api/reconcile_orders', methods=['GET'])
-@login_required
-def api_reconcile_orders():
-    """
-    Reconciliation endpoint: compares DB open positions against live Binance orders.
-    Non-destructive — reports mismatches only. Returns JSON with full mismatch detail.
-    Call with ?fix=1 to auto-close stale DB positions that are no longer open on Binance.
-    """
-    try:
-        result = logic.reconcile_binance_orders(current_user.id)
-
-        # Optional: auto-close stale DB positions flagged by reconciliation
-        if request.args.get('fix') == '1' and result.get('stale_db_positions'):
-            from models import TradePosition
-            fixed = []
-            for item in result['stale_db_positions']:
-                pos = TradePosition.query.get(item['db_id'])
-                if pos and pos.status == 'open':
-                    pos.status = 'closed'
-                    pos.updated_at = datetime.utcnow()
-                    fixed.append(item['symbol'])
-            if fixed:
-                db.session.commit()
-                # Invalidate order caches so UI reflects changes immediately
-                logic._conditional_cache.pop(current_user.id, None)
-                try:
-                    from conditional_orders_enhancement import invalidate_cache
-                    invalidate_cache(current_user.id)
-                except Exception:
-                    pass
-                result['auto_fixed'] = fixed
-                result['summary'] += f" — Auto-closed {len(fixed)} stale DB position(s): {', '.join(fixed)}"
-                print(f"[reconcile/fix] Auto-closed stale positions: {fixed}")
-
-        return jsonify(result)
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route('/api/full_binance_diagnostic')
-@login_required
-def api_full_binance_diagnostic():
-    """
-    Complete Binance diagnostic — bypasses every cache and calls every relevant
-    endpoint directly. Use this to find out exactly what Binance is returning.
-    Visit /api/full_binance_diagnostic while logged in.
-    """
-    import traceback as tb
-    result = {
-        "user_id": current_user.id,
-        "exchange_connected": False,
-        "regular_open_orders": {"count": 0, "orders": [], "error": None},
-        "algo_open_orders":    {"count": 0, "orders": [], "error": None},
-        "open_positions":      {"count": 0, "positions": [], "error": None},
-        "summary": "",
-    }
-
-    # Force-clear caches for this user so we get totally fresh data
-    logic._conditional_cache.pop(current_user.id, None)
-    logic._positions_cache.pop(f"positions_{current_user.id}", None)
-    try:
-        from conditional_orders_enhancement import invalidate_cache
-        invalidate_cache(current_user.id)
-    except Exception:
-        pass
-
-    client = logic.get_client(current_user.id)
-    if not client:
-        result["summary"] = "❌ No Binance client — exchange not connected or API keys invalid"
-        return jsonify(result)
-
-    result["exchange_connected"] = True
-
-    # 1. Regular open orders (STOP_MARKET, TAKE_PROFIT_MARKET, LIMIT, etc.)
-    try:
-        regular = client.futures_get_open_orders(recvWindow=10000)
-        result["regular_open_orders"]["count"] = len(regular)
-
-        # Per-symbol fallback: if all-symbol returns 0, scan open positions + all DB symbols
-        # This catches TP/SL orders that outlive their position (positionAmt=0 but order still live)
-        if len(regular) == 0:
-            try:
-                fallback_syms = set()
-                # Source A — open Binance positions
-                try:
-                    pos_info = client.futures_position_information(recvWindow=10000)
-                    for p in pos_info:
-                        if float(p.get('positionAmt', 0)) != 0:
-                            fallback_syms.add(p['symbol'])
-                except Exception:
-                    pass
-                # Source B — every symbol ever traded in DB for this user
-                try:
-                    from models import TradePosition as TP, db as _db
-                    db_syms = _db.session.query(TP.symbol).filter_by(user_id=current_user.id).distinct().all()
-                    for row in db_syms:
-                        fallback_syms.add(row.symbol)
-                except Exception:
-                    pass
-                fallback_syms = list(fallback_syms)
-                result["regular_open_orders"]["per_symbol_fallback_symbols"] = fallback_syms
-                seen = set()
-                for sym in fallback_syms:
-                    try:
-                        sym_orders = client.futures_get_open_orders(symbol=sym, recvWindow=10000)
-                        for o in sym_orders:
-                            if str(o.get('orderId')) not in seen:
-                                seen.add(str(o.get('orderId')))
-                                regular.append(o)
-                    except Exception as se:
-                        result["regular_open_orders"].setdefault("per_symbol_errors", {})[sym] = str(se)
-                result["regular_open_orders"]["count"] = len(regular)
-                result["regular_open_orders"]["per_symbol_fallback_used"] = len(regular) > 0
-            except Exception as pfe:
-                result["regular_open_orders"]["per_symbol_fallback_error"] = str(pfe)
-
-        # Portfolio Margin fallback — PM accounts use /papi/v1/um/openOrders, not /fapi/
-        if len(regular) == 0:
-            try:
-                papi_orders = client.papi_get_um_open_orders(recvWindow=10000)
-                if isinstance(papi_orders, list) and papi_orders:
-                    regular.extend(papi_orders)
-                    result["regular_open_orders"]["portfolio_margin_fallback_used"] = True
-                try:
-                    papi_cond = client.papi_get_um_conditional_open_orders(recvWindow=10000)
-                    if isinstance(papi_cond, list) and papi_cond:
-                        seen_pm = {str(o.get('orderId', o.get('strategyId',''))) for o in regular}
-                        for o in papi_cond:
-                            oid = str(o.get('strategyId', o.get('orderId', '')))
-                            if oid not in seen_pm:
-                                seen_pm.add(oid)
-                                regular.append(o)
-                except Exception:
-                    pass
-                result["regular_open_orders"]["count"] = len(regular)
-            except Exception as pme:
-                result["regular_open_orders"]["portfolio_margin_error"] = str(pme)
-
-        result["regular_open_orders"]["orders"] = [
-            {
-                "orderId": o.get("orderId"),
-                "symbol": o.get("symbol"),
-                "type": o.get("type"),
-                "side": o.get("side"),
-                "price": float(o.get("price") or 0),
-                "stopPrice": float(o.get("stopPrice") or 0),
-                "origQty": float(o.get("origQty") or 0),
-                "reduceOnly": o.get("reduceOnly"),
-                "status": o.get("status"),
-            }
-            for o in regular
-        ]
-    except Exception as e:
-        result["regular_open_orders"]["error"] = str(e)
-        tb.print_exc()
-
-    # 2. Algo / conditional open orders
-    try:
-        algo_resp = client.futures_get_open_orders(conditional=True, recvWindow=10000)
-        algo_list = algo_resp if isinstance(algo_resp, list) else (algo_resp.get("orders") or [])
-        result["algo_open_orders"]["count"] = len(algo_list)
-        result["algo_open_orders"]["orders"] = [
-            {
-                "algoId":  o.get("algoId") or o.get("orderId"),
-                "symbol":  o.get("symbol"),
-                "type":    o.get("algoType") or o.get("type"),
-                "side":    o.get("side"),
-                "triggerPrice": float(o.get("triggerPrice") or o.get("stopPrice") or 0),
-                "qty":     float(o.get("qty") or o.get("origQty") or 0),
-            }
-            for o in algo_list
-        ]
-    except Exception as e:
-        result["algo_open_orders"]["error"] = str(e)
-
-    # 3. Open futures positions
-    try:
-        pos_info = client.futures_position_information(recvWindow=10000)
-        open_pos = [p for p in pos_info if float(p.get("positionAmt", 0)) != 0]
-        result["open_positions"]["count"] = len(open_pos)
-        result["open_positions"]["positions"] = [
-            {
-                "symbol":       p.get("symbol"),
-                "positionAmt":  float(p.get("positionAmt", 0)),
-                "entryPrice":   float(p.get("entryPrice", 0)),
-                "markPrice":    float(p.get("markPrice", 0)),
-                "unrealizedPnl": float(p.get("unrealizedProfit", 0)),
-                "leverage":     p.get("leverage"),
-                "marginType":   p.get("marginType"),
-            }
-            for p in open_pos
-        ]
-    except Exception as e:
-        result["open_positions"]["error"] = str(e)
-
-    total_orders = result["regular_open_orders"]["count"] + result["algo_open_orders"]["count"]
-    result["summary"] = (
-        f"✅ Connected | "
-        f"{result['regular_open_orders']['count']} regular orders | "
-        f"{result['algo_open_orders']['count']} algo orders | "
-        f"{result['open_positions']['count']} open positions"
-        if total_orders > 0 else
-        f"⚠️ Connected but 0 open orders found on Binance Futures USDT-M. "
-        f"If you have TP/SL orders they may have already been triggered, "
-        f"or they were placed on Coin-M/Spot (different account type). "
-        f"Open positions: {result['open_positions']['count']}"
-    )
-
-    return jsonify(result)
-
+        return jsonify({"success": False, "message": str(e)}), 500
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         ensure_sqlite_trade_positions_columns()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(debug=True, port=5000)
