@@ -87,6 +87,43 @@ def get_tp1_and_sl_orders(user_id):
                 except Exception as fe:
                     print(f"[fallback] direct fetch failed: {fe}")
 
+        # If still no orders, try papi endpoint
+        if not tp1_orders and not sl_orders:
+            try:
+                papi_raw = logic._fetch_papi(client, '/papi/v1/um/openOrders', {'recvWindow': 10000})
+                if papi_raw and isinstance(papi_raw, list):
+                    for o in papi_raw:
+                        o_type = o.get('type', '').upper()
+                        has_stop = float(o.get('stopPrice', 0)) > 0
+                        if o_type in ['STOP', 'STOP_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_MARKET', 'TRAILING_STOP_MARKET'] or has_stop:
+                            symbol = o.get('symbol', '')
+                            db_pos = pos_map.get(symbol)
+                            label = 'SL'
+                            if 'TAKE_PROFIT' in o_type:
+                                label = 'TP1'
+                            context = {
+                                'orderId': o.get('orderId'),
+                                'symbol': symbol,
+                                'side': o.get('side'),
+                                'type': o_type,
+                                'label': label,
+                                'triggerPrice': float(o.get('stopPrice', 0)),
+                                'price': float(o.get('price', 0)),
+                                'qty': float(o.get('origQty', 0)),
+                                'time': 'PAPI-Fetch',
+                                'source': 'papi',
+                                'position_entry': float(db_pos.entry_price) if db_pos and db_pos.entry_price else None,
+                                'position_sl': float(db_pos.sl_price) if db_pos and db_pos.sl_price else None,
+                                'position_tp1': float(db_pos.tp1_price) if db_pos and db_pos.tp1_price else None,
+                                'position_status': db_pos.status if db_pos else 'unknown',
+                            }
+                            if label == 'TP1':
+                                tp1_orders.append(context)
+                            else:
+                                sl_orders.append(context)
+            except Exception as papi_fe:
+                print(f"[fallback] papi direct fetch failed: {papi_fe}")
+
         return {"success": True, "tp1_orders": tp1_orders, "tp2_orders": tp2_orders, "sl_orders": sl_orders}
     except Exception as e:
         import traceback

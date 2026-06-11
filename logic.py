@@ -38,6 +38,43 @@ def invalidate_conditional_cache(user_id):
         del _conditional_cache[user_id]
     print(f"[CACHE] Conditional cache invalidated for user {user_id}")
 
+def _fetch_papi(client, path, params=None):
+    """
+    Make a signed request to the Binance Portfolio Margin (papi) base URL.
+    Used as fallback when the account is a Portfolio Margin account.
+    path example: '/papi/v1/um/openOrders'
+    """
+    import hmac
+    import hashlib
+    import urllib.parse
+    import requests as _requests
+    
+    base_url = 'https://papi.binance.com'
+    params = params or {}
+    params['timestamp'] = int(time.time() * 1000)
+    if hasattr(client, 'timestamp_offset') and client.timestamp_offset:
+        params['timestamp'] += client.timestamp_offset
+    params['recvWindow'] = params.get('recvWindow', 10000)
+    
+    query_string = urllib.parse.urlencode(params)
+    signature = hmac.new(
+        client.API_SECRET.encode('utf-8'),
+        query_string.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+    query_string += '&signature=' + signature
+    
+    url = base_url + path + '?' + query_string
+    headers = {'X-MBX-APIKEY': client.API_KEY}
+    
+    proxies = {}
+    if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
+        proxies = {'https': config.PROXY_URL, 'http': config.PROXY_URL}
+    
+    resp = _requests.get(url, headers=headers, proxies=proxies, timeout=15)
+    resp.raise_for_status()
+    return resp.json()
+
 # Known leverage limits for common coins (updated based on Binance data)
 # These serve as fallback when API fails
 KNOWN_LEVERAGE_MAP = {
@@ -436,10 +473,21 @@ def get_open_positions(user_id=None, force_refresh=False):
         if client is None: 
             return []
         
-        positions = client.futures_position_information(recvWindow=10000)
+        positions_raw = client.futures_position_information(recvWindow=10000)
+        
+        # After fetching positions, if empty, try Portfolio Margin endpoint
+        if not positions_raw:
+            try:
+                pm_positions = _fetch_papi(client, '/papi/v1/um/positionRisk', {'recvWindow': 10000})
+                if pm_positions and isinstance(pm_positions, list):
+                    positions_raw = pm_positions
+                    print(f"[DEBUG] Portfolio Margin positions found: {len(positions_raw)}")
+            except Exception as pm_pos_err:
+                print(f"[DEBUG] Portfolio Margin positions endpoint failed (non-fatal): {pm_pos_err}")
+
         open_positions = []
         
-        for pos in positions:
+        for pos in positions_raw:
             position_amt = float(pos.get('positionAmt', 0))
             if abs(position_amt) > 0:
                 entry_price = float(pos.get('entryPrice', 0))
@@ -504,10 +552,21 @@ def get_open_positions_live(user_id=None):
         if client is None: 
             return []
         
-        positions = client.futures_position_information(recvWindow=10000)
+        positions_raw = client.futures_position_information(recvWindow=10000)
+        
+        # After fetching positions, if empty, try Portfolio Margin endpoint
+        if not positions_raw:
+            try:
+                pm_positions = _fetch_papi(client, '/papi/v1/um/positionRisk', {'recvWindow': 10000})
+                if pm_positions and isinstance(pm_positions, list):
+                    positions_raw = pm_positions
+                    print(f"[DEBUG] Portfolio Margin positions found: {len(positions_raw)}")
+            except Exception as pm_pos_err:
+                print(f"[DEBUG] Portfolio Margin positions endpoint failed (non-fatal): {pm_pos_err}")
+
         open_positions = []
         
-        for pos in positions:
+        for pos in positions_raw:
             position_amt = float(pos.get('positionAmt', 0))
             if abs(position_amt) > 0:
                 entry_price = float(pos.get('entryPrice', 0))
@@ -613,18 +672,28 @@ def get_all_open_conditional_orders(user_id=None):
             # FIX: Ensure we fetch all open orders including conditional ones
             all_orders = client.futures_get_open_orders(recvWindow=10000)
             
-            # Portfolio Margin Fallback (Fix 4)
             if not all_orders:
+                # Try Portfolio Margin (papi) endpoint for accounts using PM mode
                 try:
-                    pm_orders = client._request_futures_api('get', 'pmOpenOrders', True, data={'recvWindow': 10000})
+                    pm_orders = _fetch_papi(client, '/papi/v1/um/openOrders', {'recvWindow': 10000})
                     if pm_orders and isinstance(pm_orders, list):
                         all_orders = pm_orders
-                        print(f"[DEBUG] Portfolio Margin orders found: {len(all_orders)}")
+                        print(f"[DEBUG] Portfolio Margin papi orders found: {len(all_orders)}")
                     elif pm_orders and isinstance(pm_orders, dict):
                         all_orders = pm_orders.get('orders', [])
-                        print(f"[DEBUG] Portfolio Margin orders (dict): {len(all_orders)}")
+                        print(f"[DEBUG] Portfolio Margin papi orders (dict): {len(all_orders)}")
                 except Exception as pm_err:
-                    print(f"[DEBUG] Portfolio Margin endpoint failed (non-fatal): {pm_err}")
+                    print(f"[DEBUG] Portfolio Margin papi endpoint failed (non-fatal): {pm_err}")
+                    # Final fallback: try old pmOpenOrders path
+                    try:
+                        pm_orders2 = client._request_futures_api('get', 'pmOpenOrders', True, data={'recvWindow': 10000})
+                        if pm_orders2 and isinstance(pm_orders2, list):
+                            all_orders = pm_orders2
+                            print(f"[DEBUG] pmOpenOrders fallback orders found: {len(all_orders)}")
+                        elif pm_orders2 and isinstance(pm_orders2, dict):
+                            all_orders = pm_orders2.get('orders', [])
+                    except Exception as pm_err2:
+                        print(f"[DEBUG] pmOpenOrders fallback also failed: {pm_err2}")
 
             print(f"[DEBUG] ALL raw orders from Binance (unfiltered): {all_orders}")
             print(f"[DEBUG] Regular open orders count: {len(all_orders)}")
