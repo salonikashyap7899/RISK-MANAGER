@@ -1112,11 +1112,35 @@ def api_debug_conditional_orders():
             unfiltered = client.futures_get_open_orders(recvWindow=10000)
         except:
             pass
+    # Also try papi direct fetch for debugging
+    papi_raw = []
+    papi_error = None
+    try:
+        client = logic.get_client(current_user.id)
+        if client:
+            papi_raw = logic._fetch_papi(client, '/papi/v1/um/openOrders', {'recvWindow': 10000})
+    except Exception as papi_e:
+        papi_error = str(papi_e)
+    
+    # Also try papi positions
+    papi_positions = []
+    papi_pos_error = None
+    try:
+        client = logic.get_client(current_user.id)
+        if client:
+            papi_positions = logic._fetch_papi(client, '/papi/v1/um/positionRisk', {'recvWindow': 10000})
+    except Exception as papi_pe:
+        papi_pos_error = str(papi_pe)
+
     return jsonify({
         "count": len(raw), 
         "orders": raw,
         "raw_unfiltered_count": len(unfiltered),
-        "raw_unfiltered": unfiltered
+        "raw_unfiltered": unfiltered,
+        "papi_raw": papi_raw,
+        "papi_error": papi_error,
+        "papi_positions": papi_positions,
+        "papi_pos_error": papi_pos_error
     })
 
 @app.route('/api/debug_tp1_sl')
