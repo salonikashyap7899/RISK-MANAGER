@@ -24,7 +24,7 @@ load_dotenv()
 app = Flask(__name__)
 
 # Secure secret key - use environment variable or generate one
-app.secret_key = os.getenv('SECRET_KEY', os.urandom(32).hex())
+app.secret_key = os.getenv('SESSION_SECRET') or os.getenv('SECRET_KEY', 'dev-fallback-change-in-production')
 
 # Session configuration for persistent login
 app.config['SESSION_PERMANENT'] = True
@@ -1382,6 +1382,47 @@ def api_cancel_conditional_order():
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
+
+@app.route('/api/reconcile_orders', methods=['GET'])
+@login_required
+def api_reconcile_orders():
+    """
+    Reconciliation endpoint: compares DB open positions against live Binance orders.
+    Non-destructive — reports mismatches only. Returns JSON with full mismatch detail.
+    Call with ?fix=1 to auto-close stale DB positions that are no longer open on Binance.
+    """
+    try:
+        result = logic.reconcile_binance_orders(current_user.id)
+
+        # Optional: auto-close stale DB positions flagged by reconciliation
+        if request.args.get('fix') == '1' and result.get('stale_db_positions'):
+            from models import TradePosition
+            fixed = []
+            for item in result['stale_db_positions']:
+                pos = TradePosition.query.get(item['db_id'])
+                if pos and pos.status == 'open':
+                    pos.status = 'closed'
+                    pos.updated_at = datetime.utcnow()
+                    fixed.append(item['symbol'])
+            if fixed:
+                db.session.commit()
+                # Invalidate order caches so UI reflects changes immediately
+                logic._conditional_cache.pop(current_user.id, None)
+                try:
+                    from conditional_orders_enhancement import invalidate_cache
+                    invalidate_cache(current_user.id)
+                except Exception:
+                    pass
+                result['auto_fixed'] = fixed
+                result['summary'] += f" — Auto-closed {len(fixed)} stale DB position(s): {', '.join(fixed)}"
+                print(f"[reconcile/fix] Auto-closed stale positions: {fixed}")
+
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 if __name__ == '__main__':
     with app.app_context():

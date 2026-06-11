@@ -2182,6 +2182,24 @@
     // Refresh TP1 and SL orders every 5 seconds
     setInterval(updateTP1SLOrders, 5000);
 
+    // Scheduled reconciliation: every 60 seconds silently check for
+    // Binance ↔ dashboard mismatches and log any issues to the console.
+    setInterval(function runReconciliation() {
+        fetch('/api/reconcile_orders')
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) return;
+                const issues = (data.stale_db_positions || []).length
+                             + (data.missing_orders || []).length;
+                if (issues > 0) {
+                    console.warn('[Reconciliation]', data.summary, data);
+                    // Force a fresh order fetch so the UI reflects reality
+                    updateTP1SLOrders(true);
+                }
+            })
+            .catch(err => console.debug('[Reconciliation] skipped:', err.message));
+    }, 60000);
+
     window.onclick = function(event) {
         const modal = document.getElementById('coin-details-modal');
         if (event.target === modal && modal.style.display === 'flex') {

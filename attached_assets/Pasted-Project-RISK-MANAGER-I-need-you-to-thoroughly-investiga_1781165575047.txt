@@ -1,0 +1,59 @@
+Project: RISK-MANAGER
+
+I need you to thoroughly investigate and permanently fix the Binance order synchronization issues in this project.
+
+Current Issues:
+
+1. TP/SL Orders Not Fetching
+
+* The dashboard is not displaying any Take Profit (TP) or Stop Loss (SL) orders from my Binance account.
+* Verify Binance API connectivity, permissions, endpoints, symbol mapping, account type (Spot/Futures), and order-fetching logic.
+* Ensure all active, pending, TP, SL, OCO, and conditional orders are correctly retrieved and displayed in the dashboard.
+
+2. Order Cancellation Sync Failure
+
+* When I cancel an order from the dashboard, it disappears from the dashboard but remains active on Binance.
+* This creates a dangerous mismatch between the dashboard and Binance.
+
+Required Fix:
+
+* When an order is cancelled from the dashboard, it must first be cancelled successfully on Binance via API.
+* Only after Binance confirms successful cancellation should the dashboard update its local database/UI.
+* If Binance cancellation fails, show an error and keep the order visible in the dashboard.
+
+3. Permanent Synchronization System
+   Implement a robust two-way synchronization system:
+
+* Dashboard ↔ Binance real-time sync
+* Automatic refresh of orders after placement, modification, or cancellation
+* Scheduled reconciliation checks to detect mismatches
+* Error logging for all Binance API failures
+* Retry mechanism for failed API requests
+* Proper handling of rate limits and network failures
+* Consistent order status updates across frontend, backend, database, and Binance
+
+4. Debugging Requirements
+
+* Add detailed logs for fetching orders and cancelling orders.
+* Log Binance API responses and errors.
+* Identify the root cause of why TP/SL orders are not being fetched.
+* Identify the root cause of why cancellations are not reaching Binance.
+
+5. Validation
+   After implementing the fixes:
+
+* Test fetching all active Binance orders.
+* Test TP/SL order visibility.
+* Test order cancellation from the dashboard.
+* Confirm that cancelled orders are removed from both Binance and the dashboard.
+* Confirm synchronization remains accurate after page refresh and server restart.
+
+Provide a complete report of:
+
+* Root causes found
+* Files modified
+* Code changes made
+* Testing results
+* Any remaining risks or recommendations
+
+Do not apply temporary workarounds. Implement a production-ready, permanent solution.

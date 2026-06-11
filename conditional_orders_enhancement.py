@@ -151,22 +151,30 @@ def get_tp1_and_sl_orders(user_id):
             }
 
             # Classification Logic
-            # 1. TP1: Take profit market or Take profit
+            # 1. TP1: Take profit market (no limit)
             if 'TAKE_PROFIT' in o_type and 'LIMIT' not in o_type:
                 context['label'] = 'TP1'
                 tp1_orders.append(context)
-                print(f"[_add_order] Added TP1 order: {oid} from {source}")
-            # 2. TP2: Limit order (only closing positions)
-            elif o_type == 'LIMIT':
+                print(f"[_add_order] Added TP1 order: {oid} ({o_type}) from {source}")
+            # 2. TP2: Take profit limit OR reduce-only limit order
+            elif 'TAKE_PROFIT' in o_type and 'LIMIT' in o_type:
+                context['label'] = 'TP2'
+                tp2_orders.append(context)
+                print(f"[_add_order] Added TP2 (TP_LIMIT) order: {oid} ({o_type}) from {source}")
+            elif o_type == 'LIMIT' or o_type == 'LIMIT_MAKER':
                 if o.get('reduceOnly') or o.get('closePosition'):
                     context['label'] = 'TP2'
                     tp2_orders.append(context)
-                    print(f"[_add_order] Added TP2 order: {oid} from {source}")
-            # 3. SL: Stop market, Stop, or Stop Loss Market
+                    print(f"[_add_order] Added TP2 (reduce-only LIMIT) order: {oid} from {source}")
+                else:
+                    print(f"[_add_order] Skipping non-reduceOnly LIMIT order: {oid}")
+            # 3. SL: Stop market, Stop, Stop Loss, or Trailing stop
             elif 'STOP' in o_type or 'TRAILING' in o_type:
                 context['label'] = 'Trail SL' if 'TRAILING' in o_type else 'SL'
                 sl_orders.append(context)
-                print(f"[_add_order] Added SL order: {oid} ({context['label']}) from {source}")
+                print(f"[_add_order] Added SL order: {oid} ({o_type} → {context['label']}) from {source}")
+            else:
+                print(f"[_add_order] Unclassified order type: {o_type} for {oid} — skipped")
 
         # Map all real Binance orders
         print(f"[get_tp1_and_sl_orders] Processing {len(all_orders)} regular orders + {len(algo_orders)} algo orders")

@@ -7,7 +7,177 @@ import math
 import traceback
 import time
 import requests
+from functools import wraps
 from models import db, TradeDailyStats, TradeLog
+
+
+# ============================================================
+# RETRY DECORATOR — wraps Binance API calls with configurable
+# retries, exponential back-off, and rate-limit awareness.
+# ============================================================
+def binance_retry(max_retries=3, base_delay=1.0, retryable_codes=(-1003, -1021)):
+    """
+    Decorator: retries a Binance API call on transient errors.
+    - Skips retry on -2011 (unknown order) and similar hard failures.
+    - Adds exponential back-off: delay * 2^attempt.
+    - Honours the global IP-ban tracker so banned calls short-circuit.
+    """
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            last_exc = None
+            for attempt in range(max_retries):
+                now_ms = int(time.time() * 1000)
+                if now_ms < _api_ban_until_ms:
+                    raise BinanceAPIException(None, -1003, '{"code":-1003,"msg":"IP banned — retries suppressed"}')
+                try:
+                    return fn(*args, **kwargs)
+                except BinanceAPIException as e:
+                    last_exc = e
+                    if e.code == -1003 and "banned until" in str(e):
+                        try:
+                            ban_ts = int(str(e).split("banned until")[1].split(".")[0].strip())
+                            globals()['_api_ban_until_ms'] = ban_ts
+                        except Exception:
+                            globals()['_api_ban_until_ms'] = int(time.time() * 1000) + 120_000
+                        print(f"[retry] IP ban detected — aborting retries for {fn.__name__}")
+                        raise
+                    if e.code not in retryable_codes:
+                        raise
+                    delay = base_delay * (2 ** attempt)
+                    print(f"[retry] {fn.__name__} attempt {attempt+1}/{max_retries} failed (code={e.code}), retrying in {delay:.1f}s…")
+                    time.sleep(delay)
+                except Exception as e:
+                    last_exc = e
+                    delay = base_delay * (2 ** attempt)
+                    print(f"[retry] {fn.__name__} attempt {attempt+1}/{max_retries} exception: {e}, retrying in {delay:.1f}s…")
+                    time.sleep(delay)
+            raise last_exc
+        return wrapper
+    return decorator
+
+
+def reconcile_binance_orders(user_id):
+    """
+    Two-way reconciliation: compares DB open positions against live Binance orders.
+    Returns a dict with mismatches, stale DB records, and a summary.
+    This is non-destructive — it only reports findings.
+    Call /api/reconcile_orders to trigger it.
+    """
+    from models import TradePosition
+    result = {
+        "success": False,
+        "summary": "",
+        "live_order_count": 0,
+        "db_open_positions": 0,
+        "mismatches": [],
+        "stale_db_positions": [],
+        "missing_orders": [],
+        "errors": [],
+    }
+
+    try:
+        client = get_client(user_id)
+        if not client:
+            result["summary"] = "No Binance connection — cannot reconcile"
+            return result
+
+        # 1. Fetch all live orders from Binance
+        live_orders = []
+        try:
+            live_orders = client.futures_get_open_orders(recvWindow=10000)
+            print(f"[reconcile] Fetched {len(live_orders)} live orders from Binance")
+        except Exception as e:
+            result["errors"].append(f"Failed to fetch live orders: {e}")
+            print(f"[reconcile] ❌ Failed to fetch live orders: {e}")
+
+        live_order_ids = {str(o.get('orderId')) for o in live_orders}
+        result["live_order_count"] = len(live_orders)
+
+        # 2. Fetch open positions from DB
+        db_positions = TradePosition.query.filter_by(user_id=user_id, status='open').all()
+        result["db_open_positions"] = len(db_positions)
+        print(f"[reconcile] DB has {len(db_positions)} open positions")
+
+        # 3. Fetch live Binance positions (accounts for filled/closed positions)
+        live_positions = {}
+        try:
+            account = client.futures_account(recvWindow=10000)
+            for p in account.get('positions', []):
+                amt = float(p.get('positionAmt', 0))
+                if abs(amt) > 0:
+                    live_positions[p['symbol']] = amt
+        except Exception as e:
+            result["errors"].append(f"Failed to fetch live positions: {e}")
+            print(f"[reconcile] ❌ Failed to fetch live positions: {e}")
+
+        # 4. Check for DB positions that are no longer open on Binance
+        for pos in db_positions:
+            sym = pos.symbol
+            if sym not in live_positions:
+                mismatch = {
+                    "type": "stale_db_position",
+                    "symbol": sym,
+                    "db_id": pos.id,
+                    "db_side": pos.side,
+                    "entry_price": pos.entry_price,
+                    "message": f"Position {sym} is OPEN in DB but NOT found on Binance — may need to be closed"
+                }
+                result["stale_db_positions"].append(mismatch)
+                print(f"[reconcile] ⚠️ Stale DB position: {sym} (id={pos.id})")
+
+        # 5. Check for missing SL/TP orders
+        for pos in db_positions:
+            sym = pos.symbol
+            sym_live_orders = [o for o in live_orders if o.get('symbol') == sym]
+            sym_order_types = {o.get('type', '').upper() for o in sym_live_orders}
+
+            sl_types = {'STOP_MARKET', 'STOP', 'STOP_LOSS', 'STOP_LOSS_LIMIT', 'TRAILING_STOP_MARKET'}
+            tp_types = {'TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_LIMIT'}
+
+            has_live_sl = bool(sl_types & sym_order_types)
+            has_live_tp = bool(tp_types & sym_order_types)
+
+            if pos.sl_price and pos.sl_price > 0 and not has_live_sl:
+                result["missing_orders"].append({
+                    "type": "missing_sl",
+                    "symbol": sym,
+                    "db_id": pos.id,
+                    "expected_sl": pos.current_sl or pos.sl_price,
+                    "message": f"{sym} has SL in DB (${pos.current_sl or pos.sl_price}) but NO live SL order on Binance"
+                })
+                print(f"[reconcile] ⚠️ Missing SL for {sym}: DB has ${pos.current_sl or pos.sl_price}, no live order")
+
+            if pos.tp1_price and pos.tp1_price > 0 and not has_live_tp:
+                result["missing_orders"].append({
+                    "type": "missing_tp",
+                    "symbol": sym,
+                    "db_id": pos.id,
+                    "expected_tp1": pos.tp1_price,
+                    "message": f"{sym} has TP1 in DB (${pos.tp1_price}) but NO live TP order on Binance"
+                })
+                print(f"[reconcile] ⚠️ Missing TP1 for {sym}: DB has ${pos.tp1_price}, no live order")
+
+        total_issues = len(result["stale_db_positions"]) + len(result["missing_orders"]) + len(result["errors"])
+        if total_issues == 0:
+            result["summary"] = f"✅ All clear — {len(db_positions)} DB positions match Binance ({len(live_orders)} live orders)"
+        else:
+            result["summary"] = (
+                f"⚠️ {total_issues} issue(s) found: "
+                f"{len(result['stale_db_positions'])} stale DB positions, "
+                f"{len(result['missing_orders'])} missing orders, "
+                f"{len(result['errors'])} errors"
+            )
+
+        result["success"] = True
+        print(f"[reconcile] Done: {result['summary']}")
+        return result
+
+    except Exception as e:
+        traceback.print_exc()
+        result["errors"].append(str(e))
+        result["summary"] = f"Reconciliation failed: {e}"
+        return result
 
 # Global variables - Default client (for demo/fallback)
 _default_client = None
@@ -661,13 +831,14 @@ def get_all_open_conditional_orders(user_id=None):
             has_activate_price = float(o.get('activatePrice', 0)) > 0
 
             if o_type in conditional_types or has_stop_price or has_activate_price:
-                # Better labeling for TP1 vs SL
-                label = 'SL'
-                if 'TAKE_PROFIT' in o_type:
+                # Consistent labeling: TAKE_PROFIT_LIMIT → TP2, TAKE_PROFIT_MARKET → TP1, STOP* → SL
+                if 'TAKE_PROFIT' in o_type and 'LIMIT' in o_type:
+                    label = 'TP2'
+                elif 'TAKE_PROFIT' in o_type:
                     label = 'TP1'
                 elif 'TRAILING' in o_type:
                     label = 'Trail SL'
-                elif 'STOP' in o_type or 'STOP_LOSS' in o_type:
+                else:
                     label = 'SL'
                 
                 oid = str(o.get('orderId', ''))
@@ -792,7 +963,7 @@ def cancel_order(symbol, order_id, user_id=None, source=None):
         except Exception as e:
             print(f"Error clearing virtual order from DB: {e}")
             return False, f"Error clearing virtual order: {str(e)}"
-	
+        
     try:
         client = get_client(user_id)
         if client is None:
