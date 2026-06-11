@@ -821,38 +821,20 @@ def cancel_order(symbol, order_id, user_id=None, source=None):
                     return True, code, resp.get('msg', str(resp))
             return False, 0, ''
 
-        def _verify_order_gone(sym, oid):
-            """Return True if the order no longer exists on Binance (cancelled successfully)."""
-            try:
-                result = client.futures_get_order(symbol=sym, orderId=oid, recvWindow=10000)
-                status = (result.get('status') or '').upper()
-                # CANCELED / EXPIRED / FILLED = order is no longer active
-                return status in ('CANCELED', 'EXPIRED', 'FILLED')
-            except BinanceAPIException as e:
-                # -2013 = Order does not exist → definitely gone
-                if e.code in [-2013, -2011]:
-                    return True
-                return False
-            except Exception:
-                return False
-
         # ----------------------------------------------------------------
-        # STEP 1 — Always try regular futures cancel first.
-        # Binance Conditional orders (TAKE_PROFIT_MARKET, STOP_MARKET etc.)
-        # placed via the mobile app or web UI are regular futures orders and
-        # MUST be cancelled via DELETE /fapi/v1/order — NOT via algo/order.
+        # STEP 1 — Try regular futures cancel.
+        # Handles TAKE_PROFIT_MARKET, STOP_MARKET, LIMIT etc. (regular orderId).
         # ----------------------------------------------------------------
-        regular_cancel_succeeded = False
         regular_cancel_error = None
         try:
             resp = client.futures_cancel_order(symbol=symbol, orderId=cancel_id, recvWindow=10000)
             is_err, err_code, err_msg = _check_resp_for_error(resp)
-            if is_err:
-                regular_cancel_error = f"Binance error {err_code}: {err_msg}"
-                print(f"[cancel_order] Regular cancel returned error body: {regular_cancel_error}")
-            else:
-                regular_cancel_succeeded = True
+            if not is_err:
                 print(f"[cancel_order] Regular cancel OK for orderId={cancel_id} symbol={symbol}")
+                invalidate_all_caches()
+                return True, "Order cancelled successfully on Binance"
+            regular_cancel_error = f"Binance error {err_code}: {err_msg}"
+            print(f"[cancel_order] Regular cancel error body: {regular_cancel_error}")
         except BinanceAPIException as e:
             regular_cancel_error = str(e)
             print(f"[cancel_order] Regular cancel BinanceAPIException code={e.code}: {e}")
@@ -860,52 +842,38 @@ def cancel_order(symbol, order_id, user_id=None, source=None):
             regular_cancel_error = str(e)
             print(f"[cancel_order] Regular cancel Exception: {e}")
 
-        if regular_cancel_succeeded:
-            invalidate_all_caches()
-            return True, "Order cancelled successfully on Binance"
-
         # ----------------------------------------------------------------
         # STEP 2 — Regular cancel failed. Try algo/order DELETE endpoint.
-        # This covers genuine TWAP/VP algo orders (algoId-based).
+        # Handles genuine TWAP/VP conditional algo orders (algoId-based).
+        # Pass algoId as a direct kwarg so it ends up in the signed params.
         # ----------------------------------------------------------------
         print(f"[cancel_order] Regular cancel failed ({regular_cancel_error}), trying algo endpoint…")
-        algo_cancel_succeeded = False
         algo_cancel_error = None
         try:
             if hasattr(client, 'futures_cancel_algo_order'):
                 resp = client.futures_cancel_algo_order(algoId=cancel_id, recvWindow=10000)
             elif hasattr(client, '_request_futures_api'):
+                # Pass as kwargs so python-binance merges them into the signed payload
                 resp = client._request_futures_api('delete', 'algo/order', True,
-                                                    data={'algoId': cancel_id, 'recvWindow': 10000})
+                                                    algoId=cancel_id, recvWindow=10000)
             else:
                 resp = None
 
             if resp is not None:
                 is_err, err_code, err_msg = _check_resp_for_error(resp)
-                if is_err:
-                    algo_cancel_error = f"Binance algo error {err_code}: {err_msg}"
-                    print(f"[cancel_order] Algo cancel returned error body: {algo_cancel_error}")
-                else:
-                    algo_cancel_succeeded = True
+                if not is_err:
                     print(f"[cancel_order] Algo cancel OK for algoId={cancel_id}")
+                    invalidate_all_caches()
+                    return True, "Conditional order cancelled successfully on Binance"
+                algo_cancel_error = f"Binance algo error {err_code}: {err_msg}"
+                print(f"[cancel_order] Algo cancel error body: {algo_cancel_error}")
+            else:
+                algo_cancel_error = "No algo cancel method available"
         except Exception as e:
             algo_cancel_error = str(e)
             print(f"[cancel_order] Algo cancel Exception: {e}")
 
-        if algo_cancel_succeeded:
-            invalidate_all_caches()
-            return True, "Conditional order cancelled successfully on Binance"
-
-        # ----------------------------------------------------------------
-        # STEP 3 — Both endpoints failed. Verify the order is actually gone
-        # (e.g. it may have been filled between the cancel attempt and now).
-        # ----------------------------------------------------------------
-        if _verify_order_gone(symbol, cancel_id):
-            print(f"[cancel_order] Order {cancel_id} verified gone (filled/cancelled before our request)")
-            invalidate_all_caches()
-            return True, "Order is no longer active on Binance (already filled or cancelled)"
-
-        # Both methods failed and the order is still live — surface the real error
+        # Both methods failed — return the real error so the UI shows it
         combined_error = f"Regular: {regular_cancel_error} | Algo: {algo_cancel_error}"
         print(f"[cancel_order] All cancel methods failed: {combined_error}")
         return False, f"Could not cancel order on Binance. {combined_error}"
