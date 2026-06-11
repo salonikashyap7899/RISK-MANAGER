@@ -46,9 +46,10 @@ def get_tp1_and_sl_orders(user_id):
         all_orders = []
         try:
             all_orders = client.futures_get_open_orders(recvWindow=10000)
+            print(f"[DEBUG] ✅ Regular open orders fetched: {len(all_orders)} orders")
         except Exception as e:
             err_str = str(e)
-            print(f"Error fetching open orders: {e}")
+            print(f"❌ Error fetching open orders: {e}")
             # Detect -1003 IP ban and propagate to global tracker
             if "-1003" in err_str and "banned until" in err_str:
                 try:
@@ -72,23 +73,25 @@ def get_tp1_and_sl_orders(user_id):
                 try:
                     algo_resp = client._request_futures_api('get', 'algo/openOrders', True, recvWindow=10000)
                     if isinstance(algo_resp, dict) and algo_resp.get('code', 0) < 0:
-                        print(f"[algo_orders] Binance error response: {algo_resp}")
+                        print(f"[algo_orders] ❌ Binance error response: {algo_resp}")
                     else:
                         algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
-                        print(f"[algo_orders] Fetched {len(algo_orders)} algo orders via _request_futures_api")
+                        print(f"[algo_orders] ✅ Fetched {len(algo_orders)} algo orders via _request_futures_api")
                 except Exception as e1:
-                    print(f"[algo_orders] _request_futures_api failed: {e1}")
+                    print(f"[algo_orders] ❌ _request_futures_api failed: {e1}")
                     if hasattr(client, 'futures_get_algo_orders'):
                         try:
                             algo_resp = client.futures_get_algo_orders(recvWindow=10000)
                             algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
+                            print(f"[algo_orders] ✅ Fetched {len(algo_orders)} algo orders via futures_get_algo_orders")
                         except Exception as e2:
-                            print(f"[algo_orders] futures_get_algo_orders also failed: {e2}")
+                            print(f"[algo_orders] ❌ futures_get_algo_orders also failed: {e2}")
             elif hasattr(client, 'futures_get_algo_orders'):
                 algo_resp = client.futures_get_algo_orders(recvWindow=10000)
                 algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
+                print(f"[algo_orders] ✅ Fetched {len(algo_orders)} algo orders")
         except Exception as e:
-            print(f"Error fetching algo orders: {e}")
+            print(f"❌ Error fetching algo orders: {e}")
 
         # Get ONLY OPEN DB positions to provide context and virtual guard fallbacks
         # CRITICAL: Only consider positions that have a TP1 or TP2 price set in the DB
@@ -152,21 +155,27 @@ def get_tp1_and_sl_orders(user_id):
             if 'TAKE_PROFIT' in o_type and 'LIMIT' not in o_type:
                 context['label'] = 'TP1'
                 tp1_orders.append(context)
+                print(f"[_add_order] Added TP1 order: {oid} from {source}")
             # 2. TP2: Limit order (only closing positions)
             elif o_type == 'LIMIT':
                 if o.get('reduceOnly') or o.get('closePosition'):
                     context['label'] = 'TP2'
                     tp2_orders.append(context)
+                    print(f"[_add_order] Added TP2 order: {oid} from {source}")
             # 3. SL: Stop market, Stop, or Stop Loss Market
             elif 'STOP' in o_type or 'TRAILING' in o_type:
                 context['label'] = 'Trail SL' if 'TRAILING' in o_type else 'SL'
                 sl_orders.append(context)
+                print(f"[_add_order] Added SL order: {oid} ({context['label']}) from {source}")
 
         # Map all real Binance orders
+        print(f"[get_tp1_and_sl_orders] Processing {len(all_orders)} regular orders + {len(algo_orders)} algo orders")
         for o in all_orders:
             _add_order(o, 'regular')
         for o in algo_orders:
             _add_order(o, 'algo')
+
+        print(f"[get_tp1_and_sl_orders] After mapping: {len(tp1_orders)} TP1, {len(tp2_orders)} TP2, {len(sl_orders)} SL")
 
         # Enrich with mark price for distance-to-trigger display
         all_found_orders = tp1_orders + tp2_orders + sl_orders
@@ -184,13 +193,14 @@ def get_tp1_and_sl_orders(user_id):
             o['mark_price'] = mark_prices.get(o['symbol'], 0)
 
         # INJECT VIRTUAL ORDERS for positions that failed to place on Binance (e.g. < 5 USDT Min Notional)
+        print(f"[get_tp1_and_sl_orders] Checking {len(pos_map)} DB positions for virtual orders...")
         for sym, pos in pos_map.items():
             side_close = 'SELL' if pos.side == 'LONG' else 'BUY'
 
             # Virtual SL
             # Only inject virtual SL if there's no live SL AND the position is still open in DB
             if pos.sl_price and pos.sl_price > 0 and not any(o['symbol'] == sym and o['label'] == 'SL' for o in sl_orders):
-
+                print(f"[get_tp1_and_sl_orders] 📌 Injecting virtual SL for {sym}")
                 sl_orders.append({
                     'orderId': f"virtual_sl_{pos.id}",
                     'symbol': sym,
@@ -207,7 +217,7 @@ def get_tp1_and_sl_orders(user_id):
             # Virtual TP1
             # Only inject virtual TP1 if there's no live TP1 AND the position is still open in DB
             if pos.tp1_price and pos.tp1_price > 0 and not any(o['symbol'] == sym and o['label'] == 'TP1' for o in tp1_orders):
-
+                print(f"[get_tp1_and_sl_orders] 📌 Injecting virtual TP1 for {sym}")
                 tp1_qty = float(pos.initial_qty) * (float(pos.tp1_qty_pct) / 100.0) if pos.tp1_qty_pct else float(pos.initial_qty)
                 tp1_orders.append({
                     'orderId': f"virtual_tp1_{pos.id}",
@@ -225,7 +235,7 @@ def get_tp1_and_sl_orders(user_id):
             # Virtual TP2
             # Only inject virtual TP2 if there's no live TP2 AND the position is still open in DB
             if pos.tp2_price and pos.tp2_price > 0 and not any(o['symbol'] == sym and o['label'] == 'TP2' for o in tp2_orders):
-
+                print(f"[get_tp1_and_sl_orders] 📌 Injecting virtual TP2 for {sym}")
                 tp1_qty = float(pos.initial_qty) * (float(pos.tp1_qty_pct) / 100.0) if pos.tp1_qty_pct else 0
                 tp2_qty = float(pos.initial_qty) - tp1_qty
                 if tp2_qty > 0:
@@ -249,12 +259,16 @@ def get_tp1_and_sl_orders(user_id):
             "sl_orders": sl_orders,
         }
 
+        print(f"[get_tp1_and_sl_orders] Final result: {len(tp1_orders)} TP1, {len(tp2_orders)} TP2, {len(sl_orders)} SL")
+
         # Store in cache so repeated polls don't hammer Binance
         _tp1_sl_cache[user_id] = (now, result)
         return result
 
     except Exception as e:
-        print(f"[ERROR] get_tp1_and_sl_orders: {e}")
+        print(f"❌ [ERROR] get_tp1_and_sl_orders: {e}")
+        import traceback
+        traceback.print_exc()
         # Return cached result on error if available
         if cached:
             return cached[1]
