@@ -29,7 +29,7 @@ _virtual_guard_last_run = {}
 # Prevents the duplicate UI pollers from hammering Binance and triggering -1003 IP bans.
 _conditional_cache = {}          # {user_id: (ts_ms, [orders])}
 _conditional_ban_until = 0       # ms epoch; while now < this, skip the call
-CONDITIONAL_CACHE_MS = 10000
+CONDITIONAL_CACHE_MS = 3000
 
 # Known leverage limits for common coins (updated based on Binance data)
 # These serve as fallback when API fails
@@ -594,8 +594,9 @@ def get_all_open_conditional_orders(user_id=None):
         # --- Fetch regular open orders ---
         all_orders = []
         try:
+            # FIX: Ensure we fetch all open orders including conditional ones
             all_orders = client.futures_get_open_orders(recvWindow=10000)
-            print(f"[DEBUG] Raw regular open orders: {all_orders}")
+            print(f"[DEBUG] ALL raw orders from Binance (unfiltered): {all_orders}")
             print(f"[DEBUG] Regular open orders count: {len(all_orders)}")
         except Exception as e:
             msg = str(e)
@@ -712,6 +713,21 @@ def get_all_open_conditional_orders(user_id=None):
 
         # Sort by time descending
         conditional_orders.sort(key=lambda x: x['time'], reverse=True)
+        
+        # FIX: Reset virtual_guard_active flag if real orders exist for a symbol
+        try:
+            from models import TradePosition, db
+            if conditional_orders:
+                symbols_with_orders = set(o['symbol'] for o in conditional_orders)
+                for sym in symbols_with_orders:
+                    pos = TradePosition.query.filter_by(user_id=user_id, symbol=sym, status='open').first()
+                    if pos and pos.virtual_guard_active:
+                        print(f"[FIX] Resetting virtual_guard_active for {sym} as real orders found")
+                        pos.virtual_guard_active = False
+                        db.session.commit()
+        except Exception as e:
+            print(f"[DEBUG] Error resetting virtual guard flag: {e}")
+
         print(f"[DEBUG] Final conditional_orders to return: {conditional_orders}")
         _conditional_cache[user_id] = (now_ms, list(conditional_orders))
         return conditional_orders

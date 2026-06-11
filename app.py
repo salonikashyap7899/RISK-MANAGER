@@ -1098,7 +1098,20 @@ def api_debug_conditional_orders():
     Delete this route once confirmed working.
     """
     raw = logic.get_all_open_conditional_orders(current_user.id)
-    return jsonify({"count": len(raw), "orders": raw})
+    # Also get raw unfiltered orders for deeper debugging
+    unfiltered = []
+    client = logic.get_client(current_user.id)
+    if client:
+        try:
+            unfiltered = client.futures_get_open_orders(recvWindow=10000)
+        except:
+            pass
+    return jsonify({
+        "count": len(raw), 
+        "orders": raw,
+        "raw_unfiltered_count": len(unfiltered),
+        "raw_unfiltered": unfiltered
+    })
 
 @app.route('/api/debug_tp1_sl')
 @login_required

@@ -51,6 +51,40 @@ def get_tp1_and_sl_orders(user_id):
             elif is_sl:
                 sl_orders.append(context)
 
+        # FIX: Fallback to direct fetch if no orders found via logic.py
+        if not tp1_orders and not sl_orders:
+            client = logic.get_client(user_id)
+            if client:
+                try:
+                    raw = client.futures_get_open_orders(recvWindow=10000)
+                    for o in raw:
+                        o_type = o.get('type', '').upper()
+                        has_stop = float(o.get('stopPrice', 0)) > 0
+                        if o_type in ['STOP_MARKET', 'TAKE_PROFIT_MARKET', 'TRAILING_STOP_MARKET'] or has_stop:
+                            symbol = o.get('symbol', '')
+                            db_pos = pos_map.get(symbol)
+                            label = 'SL'
+                            if 'TAKE_PROFIT' in o_type: label = 'TP1'
+                            
+                            context = {
+                                'orderId': o.get('orderId'),
+                                'symbol': symbol,
+                                'side': o.get('side'),
+                                'type': o_type,
+                                'label': label,
+                                'triggerPrice': float(o.get('stopPrice', 0)),
+                                'price': float(o.get('price', 0)),
+                                'qty': float(o.get('origQty', 0)),
+                                'time': 'Direct-Fetch',
+                                'source': 'fallback',
+                                'position_entry': float(db_pos.entry_price) if db_pos else None,
+                                'position_status': db_pos.status if db_pos else 'unknown',
+                            }
+                            if label == 'TP1': tp1_orders.append(context)
+                            else: sl_orders.append(context)
+                except Exception as fe:
+                    print(f"[fallback] direct fetch failed: {fe}")
+
         return {"success": True, "tp1_orders": tp1_orders, "tp2_orders": tp2_orders, "sl_orders": sl_orders}
     except Exception as e:
         import traceback
