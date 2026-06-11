@@ -66,11 +66,23 @@ def get_tp1_and_sl_orders(user_id):
         # Fetch all conditional algo orders (Trailing stops, Take Profit Market, etc)
         algo_orders = []
         try:
-            if hasattr(client, 'futures_get_algo_orders'):
+            # Try direct REST call first (most reliable across python-binance versions)
+            if hasattr(client, '_request_futures_api'):
+                try:
+                    algo_resp = client._request_futures_api('get', 'algo/openOrders', True, data={'recvWindow': 10000})
+                    algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
+                    print(f"[algo_orders] Fetched {len(algo_orders)} algo orders via _request_futures_api")
+                except Exception as e1:
+                    print(f"[algo_orders] _request_futures_api failed: {e1}")
+                    # Fall back to method if it exists
+                    if hasattr(client, 'futures_get_algo_orders'):
+                        try:
+                            algo_resp = client.futures_get_algo_orders(recvWindow=10000)
+                            algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
+                        except Exception as e2:
+                            print(f"[algo_orders] futures_get_algo_orders also failed: {e2}")
+            elif hasattr(client, 'futures_get_algo_orders'):
                 algo_resp = client.futures_get_algo_orders(recvWindow=10000)
-                algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
-            elif hasattr(client, '_request_futures_api'):
-                algo_resp = client._request_futures_api('get', 'algo/openOrders', True, data={'recvWindow': 10000})
                 algo_orders = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
         except Exception as e:
             print(f"Error fetching algo orders: {e}")

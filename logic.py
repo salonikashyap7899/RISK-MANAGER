@@ -1425,9 +1425,8 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
                     # Check min notional before attempting TP2 order
                     min_notional = get_min_notional(symbol, user_id)
                     tp2_notional = tp2_qty * tp2_price if tp2_price > 0 else 0
-                        # Check min notional before attempting TP2 order
-                        if tp2_notional < min_notional and tp2_qty > 0:
-
+                    # Check min notional before attempting TP2 order
+                    if tp2_notional < min_notional and tp2_qty > 0:
                         tp2_error = f"TP2 qty {tp2_qty} × ${tp2_price:.4f} = ${tp2_notional:.4f} below min notional ${min_notional}"
                         print(f"⚠️ TP2 below min notional — stored as virtual: {tp2_error}")
                         log_trade_event("TRADE_WARN", f"⚠️ TP2 below min notional for {symbol}: {tp2_error}", user_id)

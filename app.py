@@ -1287,6 +1287,66 @@ def api_cache_status():
     })
 
 
+@app.route('/api/raw_open_orders')
+@login_required
+def api_raw_open_orders():
+    """
+    Fetch ALL open orders from Binance (regular + conditional/algo) in raw form.
+    Used by the Manual Cancel panel to show every live order.
+    """
+    try:
+        client = logic.get_client(current_user.id)
+        if not client:
+            return jsonify({"success": False, "error": "No exchange connection", "orders": []})
+
+        all_orders = []
+
+        # Regular open orders
+        try:
+            regular = client.futures_get_open_orders(recvWindow=10000)
+            for o in regular:
+                all_orders.append({
+                    "orderId": str(o.get('orderId', '')),
+                    "symbol": o.get('symbol', ''),
+                    "type": o.get('type', ''),
+                    "side": o.get('side', ''),
+                    "price": float(o.get('price') or 0),
+                    "stopPrice": float(o.get('stopPrice') or 0),
+                    "origQty": float(o.get('origQty') or 0),
+                    "reduceOnly": o.get('reduceOnly', False),
+                    "source": "regular",
+                    "timeStr": datetime.fromtimestamp(int(o['time']) / 1000).strftime('%Y-%m-%d %H:%M:%S') if o.get('time') else 'N/A',
+                })
+        except Exception as e:
+            print(f"[raw_open_orders] regular fetch error: {e}")
+
+        # Conditional / algo orders
+        try:
+            if hasattr(client, '_request_futures_api'):
+                algo_resp = client._request_futures_api('get', 'algo/openOrders', True, data={'recvWindow': 10000})
+                algo_list = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
+                for o in algo_list:
+                    all_orders.append({
+                        "orderId": str(o.get('algoId', o.get('orderId', ''))),
+                        "symbol": o.get('symbol', ''),
+                        "type": o.get('algoType', o.get('type', '')),
+                        "side": o.get('side', ''),
+                        "price": float(o.get('price') or 0),
+                        "stopPrice": float(o.get('triggerPrice') or o.get('stopPrice') or 0),
+                        "origQty": float(o.get('qty') or o.get('origQty') or 0),
+                        "amount": float(o.get('amount') or 0),
+                        "reduceOnly": o.get('reduceOnly', True),
+                        "source": "algo",
+                        "timeStr": datetime.fromtimestamp(int(o['bookTime']) / 1000).strftime('%Y-%m-%d %H:%M:%S') if o.get('bookTime') else 'N/A',
+                    })
+        except Exception as e:
+            print(f"[raw_open_orders] algo fetch error: {e}")
+
+        return jsonify({"success": True, "orders": all_orders, "count": len(all_orders)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e), "orders": []})
+
+
 @app.route('/api/cancel_conditional_order', methods=['POST'])
 @login_required
 def api_cancel_conditional_order():
