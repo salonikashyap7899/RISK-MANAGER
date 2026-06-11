@@ -792,7 +792,7 @@ def cancel_order(symbol, order_id, user_id=None, source=None):
         except Exception as e:
             print(f"Error clearing virtual order from DB: {e}")
             return False, f"Error clearing virtual order: {str(e)}"
-
+	
     try:
         client = get_client(user_id)
         if client is None:
@@ -821,18 +821,20 @@ def cancel_order(symbol, order_id, user_id=None, source=None):
                     return True, code, resp.get('msg', str(resp))
             return False, 0, ''
 
-        # ----------------------------------------------------------------
+        # ================================================================
         # STEP 1 — Try regular futures cancel.
         # Handles TAKE_PROFIT_MARKET, STOP_MARKET, LIMIT etc. (regular orderId).
-        # ----------------------------------------------------------------
+        # ================================================================
         regular_cancel_error = None
+        binance_cancel_succeeded = False
         try:
             resp = client.futures_cancel_order(symbol=symbol, orderId=cancel_id, recvWindow=10000)
             is_err, err_code, err_msg = _check_resp_for_error(resp)
             if not is_err:
-                print(f"[cancel_order] Regular cancel OK for orderId={cancel_id} symbol={symbol}")
+                print(f"[cancel_order] ✅ Regular cancel OK for orderId={cancel_id} symbol={symbol}")
+                binance_cancel_succeeded = True
                 invalidate_all_caches()
-                return True, "Order cancelled successfully on Binance"
+                return True, "✅ Order cancelled successfully on Binance"
             regular_cancel_error = f"Binance error {err_code}: {err_msg}"
             print(f"[cancel_order] Regular cancel error body: {regular_cancel_error}")
         except BinanceAPIException as e:
@@ -842,11 +844,11 @@ def cancel_order(symbol, order_id, user_id=None, source=None):
             regular_cancel_error = str(e)
             print(f"[cancel_order] Regular cancel Exception: {e}")
 
-        # ----------------------------------------------------------------
+        # ================================================================
         # STEP 2 — Regular cancel failed. Try algo/order DELETE endpoint.
         # Handles genuine TWAP/VP conditional algo orders (algoId-based).
         # Pass algoId as a direct kwarg so it ends up in the signed params.
-        # ----------------------------------------------------------------
+        # ================================================================
         print(f"[cancel_order] Regular cancel failed ({regular_cancel_error}), trying algo endpoint…")
         algo_cancel_error = None
         try:
@@ -862,9 +864,10 @@ def cancel_order(symbol, order_id, user_id=None, source=None):
             if resp is not None:
                 is_err, err_code, err_msg = _check_resp_for_error(resp)
                 if not is_err:
-                    print(f"[cancel_order] Algo cancel OK for algoId={cancel_id}")
+                    print(f"[cancel_order] ✅ Algo cancel OK for algoId={cancel_id}")
+                    binance_cancel_succeeded = True
                     invalidate_all_caches()
-                    return True, "Conditional order cancelled successfully on Binance"
+                    return True, "✅ Conditional order cancelled successfully on Binance"
                 algo_cancel_error = f"Binance algo error {err_code}: {err_msg}"
                 print(f"[cancel_order] Algo cancel error body: {algo_cancel_error}")
             else:
@@ -873,14 +876,33 @@ def cancel_order(symbol, order_id, user_id=None, source=None):
             algo_cancel_error = str(e)
             print(f"[cancel_order] Algo cancel Exception: {e}")
 
-        # Both methods failed — return the real error so the UI shows it
+        # ================================================================
+        # STEP 3 — If source is 'virtual', try one more thing:
+        # Attempt to cancel by orderId string as fallback for some edge cases
+        # ================================================================
+        if not binance_cancel_succeeded and (source == 'virtual' or source == 'algo'):
+            print(f"[cancel_order] Attempting string-based orderId cancel as final fallback…")
+            try:
+                resp = client.futures_cancel_order(symbol=symbol, orderId=str(cancel_id), recvWindow=10000)
+                is_err, err_code, err_msg = _check_resp_for_error(resp)
+                if not is_err:
+                    print(f"[cancel_order] ✅ String-based cancel OK for orderId={cancel_id}")
+                    binance_cancel_succeeded = True
+                    invalidate_all_caches()
+                    return True, "✅ Order cancelled successfully on Binance"
+            except Exception as e:
+                print(f"[cancel_order] String-based cancel also failed: {e}")
+
+        # ================================================================
+        # All methods failed — return detailed error for UI debugging
+        # ================================================================
         combined_error = f"Regular: {regular_cancel_error} | Algo: {algo_cancel_error}"
-        print(f"[cancel_order] All cancel methods failed: {combined_error}")
-        return False, f"Could not cancel order on Binance. {combined_error}"
+        print(f"[cancel_order] ❌ All cancel methods failed: {combined_error}")
+        return False, f"❌ Could not cancel order on Binance. Details: {combined_error}"
 
     except Exception as e:
-        print(f"Error cancelling order {order_id}: {e}")
-        return False, str(e)
+        print(f"❌ Error cancelling order {order_id}: {e}")
+        return False, f"❌ {str(e)}"
 
 def run_virtual_tp_sl_guard(user_id=None):
     """
