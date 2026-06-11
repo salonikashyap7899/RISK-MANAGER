@@ -1323,7 +1323,7 @@ def api_raw_open_orders():
         # Conditional / algo orders
         try:
             if hasattr(client, '_request_futures_api'):
-                algo_resp = client._request_futures_api('get', 'algo/openOrders', True, data={'recvWindow': 10000})
+                algo_resp = client._request_futures_api('get', 'algo/openOrders', True, recvWindow=10000)
                 algo_list = algo_resp if isinstance(algo_resp, list) else algo_resp.get('orders', [])
                 for o in algo_list:
                     all_orders.append({
