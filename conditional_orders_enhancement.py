@@ -42,27 +42,59 @@ def get_tp1_and_sl_orders(user_id):
         if not client:
             return {"success": False, "error": "No client", "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
 
-        # Fetch all regular open orders (Limit, Stop Market, etc)
+        # ── Step 1: Fetch ALL open orders across all USDT-M Futures symbols ──────
         all_orders = []
+        fetch_error = None
         try:
             all_orders = client.futures_get_open_orders(recvWindow=10000)
-            print(f"[DEBUG] ✅ Regular open orders fetched: {len(all_orders)} orders")
+            print(f"[DEBUG] ✅ Regular open orders fetched (all-symbol): {len(all_orders)} orders")
         except Exception as e:
-            err_str = str(e)
-            print(f"❌ Error fetching open orders: {e}")
-            # Detect -1003 IP ban and propagate to global tracker
-            if "-1003" in err_str and "banned until" in err_str:
+            fetch_error = str(e)
+            print(f"❌ Error fetching open orders (all-symbol): {e}")
+            if "-1003" in fetch_error and "banned until" in fetch_error:
                 try:
-                    ban_ts = int(err_str.split("banned until")[1].split(".")[0].strip())
+                    ban_ts = int(fetch_error.split("banned until")[1].split(".")[0].strip())
                     logic._api_ban_until_ms = ban_ts
                     logic._conditional_ban_until = ban_ts
                     print(f"⛔ IP ban detected in TP1/SL fetch — blocked until {ban_ts}ms")
                 except Exception:
                     logic._api_ban_until_ms = now_ms + 120_000
-            # Return cached result if available, else empty
             if cached:
                 return cached[1]
-            return {"success": False, "error": err_str, "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
+            return {"success": False, "error": fetch_error, "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
+
+        # ── Step 2: If all-symbol call returns 0, scan each open Binance position ─
+        # Binance sometimes requires a symbol param for accounts in Portfolio Margin
+        # mode or when API key permissions restrict the all-orders endpoint.
+        per_symbol_fallback_used = False
+        if len(all_orders) == 0:
+            try:
+                pos_info = client.futures_position_information(recvWindow=10000)
+                open_symbols = list({
+                    p['symbol'] for p in pos_info
+                    if float(p.get('positionAmt', 0)) != 0
+                })
+                print(f"[DEBUG] all-symbol returned 0 — trying per-symbol fallback for {len(open_symbols)} open positions: {open_symbols}")
+                seen_ids = set()
+                for sym in open_symbols:
+                    try:
+                        sym_orders = client.futures_get_open_orders(symbol=sym, recvWindow=10000)
+                        for o in sym_orders:
+                            oid = str(o.get('orderId', ''))
+                            if oid not in seen_ids:
+                                seen_ids.add(oid)
+                                all_orders.append(o)
+                        if sym_orders:
+                            print(f"[DEBUG] ✅ Per-symbol {sym}: {len(sym_orders)} orders found")
+                    except Exception as se:
+                        print(f"[DEBUG] ⚠ Per-symbol {sym} failed: {se}")
+                if all_orders:
+                    per_symbol_fallback_used = True
+                    print(f"[DEBUG] Per-symbol fallback found {len(all_orders)} total orders")
+                else:
+                    print(f"[DEBUG] Per-symbol fallback also returned 0 — Binance genuinely has no open orders for this account")
+            except Exception as pe:
+                print(f"[DEBUG] Per-symbol fallback error: {pe}")
 
         # Fetch conditional/algo orders using the library's built-in conditional=True flag.
         # This correctly calls /fapi/v1/openAlgoOrders and avoids the KeyError: 'data'
@@ -257,6 +289,7 @@ def get_tp1_and_sl_orders(user_id):
                 "algo_fetched": len(algo_orders),
                 "db_positions_checked": len(pos_map),
                 "total_displayed": total,
+                "per_symbol_fallback_used": per_symbol_fallback_used,
                 "raw_regular_types": list({o.get('type','?') for o in all_orders}),
                 "raw_algo_types": list({(o.get('algoType') or o.get('type','?')) for o in algo_orders}),
             }

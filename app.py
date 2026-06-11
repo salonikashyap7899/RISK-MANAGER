@@ -1462,6 +1462,28 @@ def api_full_binance_diagnostic():
     try:
         regular = client.futures_get_open_orders(recvWindow=10000)
         result["regular_open_orders"]["count"] = len(regular)
+
+        # Per-symbol fallback: if all-symbol returns 0, scan each open position
+        if len(regular) == 0:
+            try:
+                pos_info = client.futures_position_information(recvWindow=10000)
+                open_symbols = list({p['symbol'] for p in pos_info if float(p.get('positionAmt', 0)) != 0})
+                result["regular_open_orders"]["per_symbol_fallback_symbols"] = open_symbols
+                seen = set()
+                for sym in open_symbols:
+                    try:
+                        sym_orders = client.futures_get_open_orders(symbol=sym, recvWindow=10000)
+                        for o in sym_orders:
+                            if str(o.get('orderId')) not in seen:
+                                seen.add(str(o.get('orderId')))
+                                regular.append(o)
+                    except Exception as se:
+                        result["regular_open_orders"].setdefault("per_symbol_errors", {})[sym] = str(se)
+                result["regular_open_orders"]["count"] = len(regular)
+                result["regular_open_orders"]["per_symbol_fallback_used"] = len(regular) > 0
+            except Exception as pfe:
+                result["regular_open_orders"]["per_symbol_fallback_error"] = str(pfe)
+
         result["regular_open_orders"]["orders"] = [
             {
                 "orderId": o.get("orderId"),
