@@ -1463,14 +1463,31 @@ def api_full_binance_diagnostic():
         regular = client.futures_get_open_orders(recvWindow=10000)
         result["regular_open_orders"]["count"] = len(regular)
 
-        # Per-symbol fallback: if all-symbol returns 0, scan each open position
+        # Per-symbol fallback: if all-symbol returns 0, scan open positions + all DB symbols
+        # This catches TP/SL orders that outlive their position (positionAmt=0 but order still live)
         if len(regular) == 0:
             try:
-                pos_info = client.futures_position_information(recvWindow=10000)
-                open_symbols = list({p['symbol'] for p in pos_info if float(p.get('positionAmt', 0)) != 0})
-                result["regular_open_orders"]["per_symbol_fallback_symbols"] = open_symbols
+                fallback_syms = set()
+                # Source A — open Binance positions
+                try:
+                    pos_info = client.futures_position_information(recvWindow=10000)
+                    for p in pos_info:
+                        if float(p.get('positionAmt', 0)) != 0:
+                            fallback_syms.add(p['symbol'])
+                except Exception:
+                    pass
+                # Source B — every symbol ever traded in DB for this user
+                try:
+                    from models import TradePosition as TP, db as _db
+                    db_syms = _db.session.query(TP.symbol).filter_by(user_id=current_user.id).distinct().all()
+                    for row in db_syms:
+                        fallback_syms.add(row.symbol)
+                except Exception:
+                    pass
+                fallback_syms = list(fallback_syms)
+                result["regular_open_orders"]["per_symbol_fallback_symbols"] = fallback_syms
                 seen = set()
-                for sym in open_symbols:
+                for sym in fallback_syms:
                     try:
                         sym_orders = client.futures_get_open_orders(symbol=sym, recvWindow=10000)
                         for o in sym_orders:
@@ -1483,6 +1500,28 @@ def api_full_binance_diagnostic():
                 result["regular_open_orders"]["per_symbol_fallback_used"] = len(regular) > 0
             except Exception as pfe:
                 result["regular_open_orders"]["per_symbol_fallback_error"] = str(pfe)
+
+        # Portfolio Margin fallback — PM accounts use /papi/v1/um/openOrders, not /fapi/
+        if len(regular) == 0:
+            try:
+                papi_orders = client.papi_get_um_open_orders(recvWindow=10000)
+                if isinstance(papi_orders, list) and papi_orders:
+                    regular.extend(papi_orders)
+                    result["regular_open_orders"]["portfolio_margin_fallback_used"] = True
+                try:
+                    papi_cond = client.papi_get_um_conditional_open_orders(recvWindow=10000)
+                    if isinstance(papi_cond, list) and papi_cond:
+                        seen_pm = {str(o.get('orderId', o.get('strategyId',''))) for o in regular}
+                        for o in papi_cond:
+                            oid = str(o.get('strategyId', o.get('orderId', '')))
+                            if oid not in seen_pm:
+                                seen_pm.add(oid)
+                                regular.append(o)
+                except Exception:
+                    pass
+                result["regular_open_orders"]["count"] = len(regular)
+            except Exception as pme:
+                result["regular_open_orders"]["portfolio_margin_error"] = str(pme)
 
         result["regular_open_orders"]["orders"] = [
             {

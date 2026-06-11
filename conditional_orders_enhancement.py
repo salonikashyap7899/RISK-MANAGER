@@ -63,20 +63,43 @@ def get_tp1_and_sl_orders(user_id):
                 return cached[1]
             return {"success": False, "error": fetch_error, "tp1_orders": [], "tp2_orders": [], "sl_orders": []}
 
-        # ── Step 2: If all-symbol call returns 0, scan each open Binance position ─
-        # Binance sometimes requires a symbol param for accounts in Portfolio Margin
-        # mode or when API key permissions restrict the all-orders endpoint.
+        # ── Step 2: If all-symbol call returns 0, do a thorough per-symbol scan ────
+        # This covers two real cases:
+        #   a) Portfolio Margin / restricted API keys that need an explicit symbol
+        #   b) TP/SL orders that outlive their position (positionAmt=0 but order still live)
         per_symbol_fallback_used = False
         if len(all_orders) == 0:
             try:
-                pos_info = client.futures_position_information(recvWindow=10000)
-                open_symbols = list({
-                    p['symbol'] for p in pos_info
-                    if float(p.get('positionAmt', 0)) != 0
-                })
-                print(f"[DEBUG] all-symbol returned 0 — trying per-symbol fallback for {len(open_symbols)} open positions: {open_symbols}")
+                fallback_symbols = set()
+
+                # Source A: symbols with a non-zero Binance position right now
+                try:
+                    pos_info = client.futures_position_information(recvWindow=10000)
+                    for p in pos_info:
+                        if float(p.get('positionAmt', 0)) != 0:
+                            fallback_symbols.add(p['symbol'])
+                except Exception:
+                    pass
+
+                # Source B: every symbol ever traded by this user in the DB
+                # (catches TP orders that are still open after the position was closed)
+                try:
+                    db_syms = (
+                        db.session.query(TradePosition.symbol)
+                        .filter_by(user_id=user_id)
+                        .distinct()
+                        .all()
+                    )
+                    for row in db_syms:
+                        fallback_symbols.add(row.symbol)
+                except Exception:
+                    pass
+
+                fallback_symbols = list(fallback_symbols)
+                print(f"[DEBUG] all-symbol=0 → per-symbol fallback scanning {len(fallback_symbols)} symbol(s): {fallback_symbols}")
+
                 seen_ids = set()
-                for sym in open_symbols:
+                for sym in fallback_symbols:
                     try:
                         sym_orders = client.futures_get_open_orders(symbol=sym, recvWindow=10000)
                         for o in sym_orders:
@@ -85,16 +108,43 @@ def get_tp1_and_sl_orders(user_id):
                                 seen_ids.add(oid)
                                 all_orders.append(o)
                         if sym_orders:
-                            print(f"[DEBUG] ✅ Per-symbol {sym}: {len(sym_orders)} orders found")
+                            print(f"[DEBUG] ✅ Per-symbol {sym}: {len(sym_orders)} orders")
                     except Exception as se:
                         print(f"[DEBUG] ⚠ Per-symbol {sym} failed: {se}")
+
                 if all_orders:
                     per_symbol_fallback_used = True
-                    print(f"[DEBUG] Per-symbol fallback found {len(all_orders)} total orders")
+                    print(f"[DEBUG] Per-symbol fallback total: {len(all_orders)} orders found")
                 else:
-                    print(f"[DEBUG] Per-symbol fallback also returned 0 — Binance genuinely has no open orders for this account")
+                    print(f"[DEBUG] Per-symbol fallback also 0 — Binance has no open orders for this account/keys")
             except Exception as pe:
-                print(f"[DEBUG] Per-symbol fallback error: {pe}")
+                print(f"[DEBUG] Per-symbol fallback outer error: {pe}")
+
+        # ── Step 3: Portfolio Margin fallback (papi) ─────────────────────────────
+        # Portfolio Margin accounts use /papi/v1/um/openOrders, not /fapi/v1/openOrders.
+        # If both the all-symbol and per-symbol calls returned 0, try the PAPI endpoint.
+        if len(all_orders) == 0:
+            try:
+                papi_orders = client.papi_get_um_open_orders(recvWindow=10000)
+                if isinstance(papi_orders, list) and papi_orders:
+                    all_orders = papi_orders
+                    print(f"[DEBUG] ✅ Portfolio Margin fallback found {len(all_orders)} orders via papi_get_um_open_orders")
+                # Also try conditional PM orders
+                try:
+                    papi_cond = client.papi_get_um_conditional_open_orders(recvWindow=10000)
+                    if isinstance(papi_cond, list):
+                        seen_papi = {str(o.get('orderId', o.get('strategyId', ''))) for o in all_orders}
+                        for o in papi_cond:
+                            oid = str(o.get('strategyId', o.get('orderId', '')))
+                            if oid not in seen_papi:
+                                seen_papi.add(oid)
+                                all_orders.append(o)
+                        if papi_cond:
+                            print(f"[DEBUG] ✅ PM conditional fallback: {len(papi_cond)} orders")
+                except Exception as pce:
+                    print(f"[DEBUG] PM conditional orders: {pce}")
+            except Exception as pme:
+                print(f"[DEBUG] Portfolio Margin fallback not applicable: {pme}")
 
         # Fetch conditional/algo orders using the library's built-in conditional=True flag.
         # This correctly calls /fapi/v1/openAlgoOrders and avoids the KeyError: 'data'
