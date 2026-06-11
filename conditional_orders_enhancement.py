@@ -60,7 +60,7 @@ def get_tp1_and_sl_orders(user_id):
                     for o in raw:
                         o_type = o.get('type', '').upper()
                         has_stop = float(o.get('stopPrice', 0)) > 0
-                        if o_type in ['STOP_MARKET', 'TAKE_PROFIT_MARKET', 'TRAILING_STOP_MARKET'] or has_stop:
+                        if o_type in ['STOP', 'STOP_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_MARKET', 'TRAILING_STOP_MARKET'] or has_stop:
                             symbol = o.get('symbol', '')
                             db_pos = pos_map.get(symbol)
                             label = 'SL'
@@ -77,7 +77,9 @@ def get_tp1_and_sl_orders(user_id):
                                 'qty': float(o.get('origQty', 0)),
                                 'time': 'Direct-Fetch',
                                 'source': 'fallback',
-                                'position_entry': float(db_pos.entry_price) if db_pos else None,
+                                'position_entry': float(db_pos.entry_price) if db_pos and db_pos.entry_price else None,
+                                'position_sl': float(db_pos.sl_price) if db_pos and db_pos.sl_price else None,
+                                'position_tp1': float(db_pos.tp1_price) if db_pos and db_pos.tp1_price else None,
                                 'position_status': db_pos.status if db_pos else 'unknown',
                             }
                             if label == 'TP1': tp1_orders.append(context)

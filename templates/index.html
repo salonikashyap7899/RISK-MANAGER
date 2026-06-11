@@ -568,7 +568,7 @@
                 <div class="dashboard-card conditional-orders-card" style="padding: 8px; display: flex; flex-direction: column; min-height: 0; border: 1px solid #ffaa00; background: #0b0f12; border-radius: 6px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px 0; border-bottom: 1px solid #ffaa00; padding: 0 0 4px 0;">
                         <h3 style="color: #ffaa00; margin: 0; font-size: 11px; font-weight: bold;" id="conditional_header_left">🎨 TP1 & SL (0)</h3>
-                        <button type="button" onclick="updateTP1SLOrders()" style="background: rgba(255, 170, 0, 0.1); color: #ffaa00; border: 1px solid #ffaa00; padding: 1px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; font-weight: bold;">Refresh</button>
+                        <button type="button" onclick="fetch(\'/api/tp1_and_sl_orders?force=1&_t=\'+Date.now()).then(()=>updateTP1SLOrders())" style="background: rgba(255, 170, 0, 0.1); color: #ffaa00; border: 1px solid #ffaa00; padding: 1px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; font-weight: bold;">Refresh</button>
                     </div>
 
                     <div id="conditional_orders_left" class="orders-scroll" style="overflow-y: auto; flex: 1; min-height: 0; font-size: 9px; margin: 0; padding: 0 4px;">
@@ -1041,9 +1041,11 @@ function updateTP1SLOrders() {
                     });
                 }
                 if (hasProtection) {
+                    console.log('[TP1SL DEBUG] API returned 0 orders. Full response:', JSON.stringify(data));
                     container.innerHTML = '<div style="text-align:center;color:#f0b90b;padding:40px 0;font-size:10px;background:rgba(240,185,11,0.05);border-radius:5px;border:1px dashed #f0b90b;margin:10px 0;">' +
                         '<div style="font-weight:bold;margin-bottom:5px;">\uD83D\uDEE1\uFE0F Virtual TP/SL Guard Active</div>' +
                         '<div style="color:#888;font-size:9px;">Server-managed protection is running.<br>No exchange orders exist.</div>' +
+                        '<div style="color:#666;font-size:7px;margin-top:4px;">Debug: API returned 0 orders. Check /api/debug_conditional_orders</div>' +
                         '</div>';
                 } else {
                     container.innerHTML = '<div style="text-align:center;color:#444;padding:40px 0;font-size:10px;">No TP1, TP2 or SL orders</div>';

@@ -727,6 +727,10 @@ def index():
         logic._positions_cache_time.pop(f"positions_{current_user.id}", None)
         logic._trade_history_cache.pop(f"trade_history_{current_user.id}", None)
         logic._trade_history_cache_time.pop(f"trade_history_{current_user.id}", None)
+        
+        # Fix 10: Invalidate conditional cache after trade execution
+        logic.invalidate_conditional_cache(current_user.id)
+        
         return redirect(url_for("index", symbol=selected_symbol))
 
     return render_template(
@@ -1080,6 +1084,8 @@ def api_tp1_and_sl_orders():
     Fetch ONLY TP1 and SL conditional orders with position context.
     """
     from conditional_orders_enhancement import get_tp1_and_sl_orders
+    if request.args.get('force') == '1':
+        logic.invalidate_conditional_cache(current_user.id)
     try:
         result = get_tp1_and_sl_orders(current_user.id)
     except Exception as e:
