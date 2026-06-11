@@ -1424,6 +1424,117 @@ def api_reconcile_orders():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route('/api/full_binance_diagnostic')
+@login_required
+def api_full_binance_diagnostic():
+    """
+    Complete Binance diagnostic — bypasses every cache and calls every relevant
+    endpoint directly. Use this to find out exactly what Binance is returning.
+    Visit /api/full_binance_diagnostic while logged in.
+    """
+    import traceback as tb
+    result = {
+        "user_id": current_user.id,
+        "exchange_connected": False,
+        "regular_open_orders": {"count": 0, "orders": [], "error": None},
+        "algo_open_orders":    {"count": 0, "orders": [], "error": None},
+        "open_positions":      {"count": 0, "positions": [], "error": None},
+        "summary": "",
+    }
+
+    # Force-clear caches for this user so we get totally fresh data
+    logic._conditional_cache.pop(current_user.id, None)
+    logic._positions_cache.pop(f"positions_{current_user.id}", None)
+    try:
+        from conditional_orders_enhancement import invalidate_cache
+        invalidate_cache(current_user.id)
+    except Exception:
+        pass
+
+    client = logic.get_client(current_user.id)
+    if not client:
+        result["summary"] = "❌ No Binance client — exchange not connected or API keys invalid"
+        return jsonify(result)
+
+    result["exchange_connected"] = True
+
+    # 1. Regular open orders (STOP_MARKET, TAKE_PROFIT_MARKET, LIMIT, etc.)
+    try:
+        regular = client.futures_get_open_orders(recvWindow=10000)
+        result["regular_open_orders"]["count"] = len(regular)
+        result["regular_open_orders"]["orders"] = [
+            {
+                "orderId": o.get("orderId"),
+                "symbol": o.get("symbol"),
+                "type": o.get("type"),
+                "side": o.get("side"),
+                "price": float(o.get("price") or 0),
+                "stopPrice": float(o.get("stopPrice") or 0),
+                "origQty": float(o.get("origQty") or 0),
+                "reduceOnly": o.get("reduceOnly"),
+                "status": o.get("status"),
+            }
+            for o in regular
+        ]
+    except Exception as e:
+        result["regular_open_orders"]["error"] = str(e)
+        tb.print_exc()
+
+    # 2. Algo / conditional open orders
+    try:
+        algo_resp = client.futures_get_open_orders(conditional=True, recvWindow=10000)
+        algo_list = algo_resp if isinstance(algo_resp, list) else (algo_resp.get("orders") or [])
+        result["algo_open_orders"]["count"] = len(algo_list)
+        result["algo_open_orders"]["orders"] = [
+            {
+                "algoId":  o.get("algoId") or o.get("orderId"),
+                "symbol":  o.get("symbol"),
+                "type":    o.get("algoType") or o.get("type"),
+                "side":    o.get("side"),
+                "triggerPrice": float(o.get("triggerPrice") or o.get("stopPrice") or 0),
+                "qty":     float(o.get("qty") or o.get("origQty") or 0),
+            }
+            for o in algo_list
+        ]
+    except Exception as e:
+        result["algo_open_orders"]["error"] = str(e)
+
+    # 3. Open futures positions
+    try:
+        pos_info = client.futures_position_information(recvWindow=10000)
+        open_pos = [p for p in pos_info if float(p.get("positionAmt", 0)) != 0]
+        result["open_positions"]["count"] = len(open_pos)
+        result["open_positions"]["positions"] = [
+            {
+                "symbol":       p.get("symbol"),
+                "positionAmt":  float(p.get("positionAmt", 0)),
+                "entryPrice":   float(p.get("entryPrice", 0)),
+                "markPrice":    float(p.get("markPrice", 0)),
+                "unrealizedPnl": float(p.get("unrealizedProfit", 0)),
+                "leverage":     p.get("leverage"),
+                "marginType":   p.get("marginType"),
+            }
+            for p in open_pos
+        ]
+    except Exception as e:
+        result["open_positions"]["error"] = str(e)
+
+    total_orders = result["regular_open_orders"]["count"] + result["algo_open_orders"]["count"]
+    result["summary"] = (
+        f"✅ Connected | "
+        f"{result['regular_open_orders']['count']} regular orders | "
+        f"{result['algo_open_orders']['count']} algo orders | "
+        f"{result['open_positions']['count']} open positions"
+        if total_orders > 0 else
+        f"⚠️ Connected but 0 open orders found on Binance Futures USDT-M. "
+        f"If you have TP/SL orders they may have already been triggered, "
+        f"or they were placed on Coin-M/Spot (different account type). "
+        f"Open positions: {result['open_positions']['count']}"
+    )
+
+    return jsonify(result)
+
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()

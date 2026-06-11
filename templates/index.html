@@ -1094,7 +1094,27 @@
             if (header) header.textContent = '\uD83C\uDFA8 TP1 & SL (' + totalOrders + ')';
 
             if (totalOrders === 0) {
-                container.innerHTML = '<div style="text-align:center;color:#444;padding:40px 0;font-size:10px;">No conditional orders</div>';
+                const dbg = data._debug || {};
+                const rawFetched = (dbg.regular_fetched || 0) + (dbg.algo_fetched || 0);
+                const dbPos = dbg.db_positions_checked || 0;
+                let diagMsg = '';
+                if (rawFetched === 0 && dbPos === 0) {
+                    diagMsg = '<div style="color:#f6465d;font-size:8px;margin-top:6px;">⚠ 0 orders from Binance &amp; no open positions in DB.<br>Check your exchange connection or open a trade first.</div>'
+                             +'<div style="margin-top:8px;"><a href="/api/full_binance_diagnostic" target="_blank" style="color:#3a3aff;font-size:8px;text-decoration:underline;">Run full diagnostic →</a></div>';
+                } else if (rawFetched === 0) {
+                    diagMsg = '<div style="color:#f6465d;font-size:8px;margin-top:6px;">⚠ 0 open orders on Binance (USDT-M Futures).<br>'
+                             +(dbPos > 0 ? dbPos+' DB position(s) have no matching live TP/SL.' : '')
+                             +'<br>TP/SL may have already been triggered.</div>'
+                             +'<div style="margin-top:8px;"><a href="/api/full_binance_diagnostic" target="_blank" style="color:#3a3aff;font-size:8px;text-decoration:underline;">Run full diagnostic →</a></div>';
+                } else {
+                    diagMsg = '<div style="color:#888;font-size:8px;margin-top:6px;">'+rawFetched+' order(s) from Binance — none classified as TP/SL.<br>'
+                             +'<a href="/api/full_binance_diagnostic" target="_blank" style="color:#3a3aff;text-decoration:underline;">See raw types →</a></div>';
+                }
+                container.innerHTML = '<div style="text-align:center;padding:18px 6px;">'
+                    + '<div style="color:#888;font-size:10px;">No conditional orders</div>'
+                    + diagMsg
+                    + '<button onclick="updateTP1SLOrders(true)" style="margin-top:10px;background:rgba(59,130,246,0.1);color:#58a6ff;border:1px solid #58a6ff;padding:3px 12px;border-radius:3px;cursor:pointer;font-size:8px;">↻ Refresh</button>'
+                    + '</div>';
                 return;
             }
 

@@ -246,14 +246,23 @@ def get_tp1_and_sl_orders(user_id):
                         'is_live': False
                     })
 
+        total = len(tp1_orders) + len(tp2_orders) + len(sl_orders)
         result = {
             "success": True,
             "tp1_orders": tp1_orders,
             "tp2_orders": tp2_orders,
             "sl_orders": sl_orders,
+            "_debug": {
+                "regular_fetched": len(all_orders),
+                "algo_fetched": len(algo_orders),
+                "db_positions_checked": len(pos_map),
+                "total_displayed": total,
+                "raw_regular_types": list({o.get('type','?') for o in all_orders}),
+                "raw_algo_types": list({(o.get('algoType') or o.get('type','?')) for o in algo_orders}),
+            }
         }
 
-        print(f"[get_tp1_and_sl_orders] Final result: {len(tp1_orders)} TP1, {len(tp2_orders)} TP2, {len(sl_orders)} SL")
+        print(f"[get_tp1_and_sl_orders] Final result: {len(tp1_orders)} TP1, {len(tp2_orders)} TP2, {len(sl_orders)} SL | raw: {len(all_orders)} regular + {len(algo_orders)} algo")
 
         # Store in cache so repeated polls don't hammer Binance
         _tp1_sl_cache[user_id] = (now, result)
