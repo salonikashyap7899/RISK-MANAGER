@@ -31,6 +31,13 @@ _conditional_cache = {}          # {user_id: (ts_ms, [orders])}
 _conditional_ban_until = 0       # ms epoch; while now < this, skip the call
 CONDITIONAL_CACHE_MS = 3000
 
+def invalidate_conditional_cache(user_id):
+    """Call this after placing any TP/SL order to force fresh fetch on next poll."""
+    global _conditional_cache
+    if user_id in _conditional_cache:
+        del _conditional_cache[user_id]
+    print(f"[CACHE] Conditional cache invalidated for user {user_id}")
+
 # Known leverage limits for common coins (updated based on Binance data)
 # These serve as fallback when API fails
 KNOWN_LEVERAGE_MAP = {
@@ -118,7 +125,12 @@ def get_user_exchange_client(user_id):
     import config  
     # Check if we already have a cached client for this user
     if user_id in _user_clients:
-        return _user_clients[user_id]
+        try:
+            _user_clients[user_id].futures_account(recvWindow=5000)
+            return _user_clients[user_id]
+        except Exception as e:
+            print(f"[CLIENT] Cached client invalid for user {user_id}: {e}, recreating...")
+            del _user_clients[user_id]
     
     # Get user's exchange connection from database
     connection = ExchangeConnection.query.filter_by(
@@ -569,6 +581,7 @@ def cancel_open_order(symbol, order_id, user_id=None):
         if not client:
             return {"success": False, "message": "No exchange connection"}
         client.futures_cancel_order(symbol=symbol, orderId=order_id, recvWindow=10000)
+        invalidate_conditional_cache(user_id)
         return {"success": True, "message": f"Order {order_id} cancelled"}
     except Exception as e:
         return {"success": False, "message": str(e)}
@@ -576,6 +589,7 @@ def cancel_open_order(symbol, order_id, user_id=None):
 def get_all_open_conditional_orders(user_id=None):
     global _conditional_ban_until
     now_ms = int(time.time() * 1000)
+    print(f"[DEBUG] get_all_open_conditional_orders called. now_ms={now_ms}, ban_until={_conditional_ban_until}, cached={_conditional_cache.get(user_id)}")
 
     # Serve from short TTL cache when available — kills duplicate-poll storms.
     cached = _conditional_cache.get(user_id)
@@ -584,7 +598,9 @@ def get_all_open_conditional_orders(user_id=None):
 
     # If Binance has banned us, don't issue more requests until the window passes.
     if now_ms < _conditional_ban_until:
-        return list(cached[1]) if cached else []
+        if cached and len(cached[1]) > 0:
+            return list(cached[1])
+        return []
 
     try:
         client = get_client(user_id)
@@ -596,6 +612,20 @@ def get_all_open_conditional_orders(user_id=None):
         try:
             # FIX: Ensure we fetch all open orders including conditional ones
             all_orders = client.futures_get_open_orders(recvWindow=10000)
+            
+            # Portfolio Margin Fallback (Fix 4)
+            if not all_orders:
+                try:
+                    pm_orders = client._request_futures_api('get', 'pmOpenOrders', True, data={'recvWindow': 10000})
+                    if pm_orders and isinstance(pm_orders, list):
+                        all_orders = pm_orders
+                        print(f"[DEBUG] Portfolio Margin orders found: {len(all_orders)}")
+                    elif pm_orders and isinstance(pm_orders, dict):
+                        all_orders = pm_orders.get('orders', [])
+                        print(f"[DEBUG] Portfolio Margin orders (dict): {len(all_orders)}")
+                except Exception as pm_err:
+                    print(f"[DEBUG] Portfolio Margin endpoint failed (non-fatal): {pm_err}")
+
             print(f"[DEBUG] ALL raw orders from Binance (unfiltered): {all_orders}")
             print(f"[DEBUG] Regular open orders count: {len(all_orders)}")
         except Exception as e:
@@ -625,8 +655,9 @@ def get_all_open_conditional_orders(user_id=None):
             o_type = o.get('type', '').upper()
             has_stop_price = float(o.get('stopPrice', 0)) > 0
             has_activate_price = float(o.get('activatePrice', 0)) > 0
+            has_close_position = o.get('closePosition', False) == True
 
-            if o_type in conditional_types or has_stop_price or has_activate_price:
+            if o_type in conditional_types or has_stop_price or has_activate_price or has_close_position:
                 # Better labeling for TP1 vs SL
                 label = 'SL'
                 if 'TAKE_PROFIT' in o_type:
@@ -745,6 +776,7 @@ def cancel_order(symbol, order_id, user_id=None):
         # Try regular cancel first
         try:
             client.futures_cancel_order(symbol=symbol, orderId=order_id)
+            invalidate_conditional_cache(user_id)
             return True, "Order cancelled successfully"
         except BinanceAPIException as e:
             # If regular cancel fails, try algo cancel
@@ -754,6 +786,7 @@ def cancel_order(symbol, order_id, user_id=None):
                         client.futures_cancel_algo_order(algoId=order_id)
                     elif hasattr(client, '_request_futures_api'):
                         client._request_futures_api('delete', 'algoOrder', True, data={'algoId': order_id})
+                    invalidate_conditional_cache(user_id)
                     return True, "Algo order cancelled successfully"
                 except Exception as algo_cancel_err:
                     return False, f"Algo cancel failed: {str(algo_cancel_err)}"
@@ -1431,6 +1464,9 @@ def execute_trade_action(balance, symbol, side, entry, order_type, sl_type, sl_v
         cache_key_hist = f"trade_history_{user_id or 'public'}"
         _trade_history_cache.pop(cache_key_hist, None)
         _trade_history_cache_time.pop(cache_key_hist, None)
+        # Fix 10: Invalidate conditional cache after trade execution
+        invalidate_conditional_cache(user_id)
+        
         # Final response with order status
         main_message = f"✅ {side} {symbol} executed (1% risk) @ {lev}x leverage{lev_note}"
         
@@ -1493,6 +1529,10 @@ def partial_close_position(symbol, close_percent=None, close_qty=None, user_id=N
                 pos_db.status = 'closed'
             db.session.commit()
         log_trade_event("PARTIAL_CLOSE", f"Closed {q} units of {symbol}, PnL: ${order.get('realizedPnl', 0):.2f}", user_id)
+        
+        # Fix 10: Invalidate conditional cache after partial close
+        invalidate_conditional_cache(user_id)
+        
         # Invalidate caches after partial close
         cache_key_positions = f"positions_{user_id or 'public'}"
         cache_key_trades = f"trade_history_{user_id or 'public'}"
@@ -1548,6 +1588,10 @@ def close_position(symbol, user_id=None):
             pos_db.remain_qty_pct = 0.0
             db.session.commit()
         log_trade_event("TRADE_CLOSE", f"Closed full position {symbol}", user_id)
+        
+        # Fix 10: Invalidate conditional cache after position close
+        invalidate_conditional_cache(user_id)
+        
         # Invalidate caches after position close
         cache_key_positions = f"positions_{user_id or 'public'}"
         cache_key_trades = f"trade_history_{user_id or 'public'}"
