@@ -1132,12 +1132,18 @@ def api_debug_conditional_orders():
     except Exception as papi_pe:
         papi_pos_error = str(papi_pe)
 
+    # Safety check for papi_raw
+    if isinstance(papi_raw, dict):
+        papi_raw_safe = [papi_raw]
+    else:
+        papi_raw_safe = papi_raw if isinstance(papi_raw, list) else []
+
     return jsonify({
         "count": len(raw), 
         "orders": raw,
         "raw_unfiltered_count": len(unfiltered),
         "raw_unfiltered": unfiltered,
-        "papi_raw": papi_raw,
+        "papi_raw": papi_raw_safe,
         "papi_error": papi_error,
         "papi_positions": papi_positions,
         "papi_pos_error": papi_pos_error

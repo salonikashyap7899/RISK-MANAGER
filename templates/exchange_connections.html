@@ -142,7 +142,15 @@
                     </div>
                     <div>
                         <h6 class="mb-0 fw-bold">{{ conn.connection_name or conn.exchange_type|title }}</h6>
-                        <small class="text-muted">Last verified: {{ conn.last_verified.strftime('%Y-%m-%d %H:%M') if conn.last_verified else 'Never' }}</small>
+                        <small class="text-muted">Last verified: 
+                            {% if conn.last_verified is string %}
+                                {{ conn.last_verified }}
+                            {% elif conn.last_verified %}
+                                {{ conn.last_verified.strftime('%Y-%m-%d %H:%M') }}
+                            {% else %}
+                                Never
+                            {% endif %}
+                        </small>
                     </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
@@ -160,14 +168,14 @@
 
         <h4 class="fw-bold mb-3">Available Exchanges</h4>
         <div class="row g-4">
-            {% for exchange_key, exchange_info in supported_exchanges.items() %}
+            {% for exchange in supported_exchanges %}
             <div class="col-md-6 col-lg-4">
-                <div class="exchange-card" onclick="selectExchange('{{ exchange_key }}')">
-                    <div class="exchange-icon {{ exchange_key }}">
-                        {% if exchange_key == 'binance' %}B{% elif exchange_key == 'bybit' %}B{% elif exchange_key == 'okx' %}O{% elif exchange_key == 'metatrader' %}M{% elif exchange_key == 'upstox' %}U{% endif %}
+                <div class="exchange-card" onclick="selectExchange('{{ exchange.id }}')">
+                    <div class="exchange-icon {{ exchange.id }}">
+                        {% if exchange.id == 'binance' %}B{% elif exchange.id == 'bybit' %}B{% elif exchange.id == 'okx' %}O{% elif exchange.id == 'metatrader' %}M{% elif exchange.id == 'upstox' %}U{% endif %}
                     </div>
-                    <h5 class="fw-bold">{{ exchange_info.name }}</h5>
-                    <p class="text-muted small mb-0">{{ exchange_info.description }}</p>
+                    <h5 class="fw-bold">{{ exchange.name }}</h5>
+                    <p class="text-muted small mb-0">Trade on {{ exchange.name }} with advanced risk management.</p>
                 </div>
             </div>
             {% endfor %}

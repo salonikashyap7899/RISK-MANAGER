@@ -94,7 +94,13 @@
             {% if current_user.is_subscribed and current_user.subscription_end %}
             <div class="text-center">
               <div class="text-sm text-gray-400">Valid Until</div>
-              <div class="text-lg font-semibold text-white">{{ current_user.subscription_end.strftime('%d %b %Y') }}</div>
+              <div class="text-lg font-semibold text-white">
+                {% if current_user.subscription_end is string %}
+                  {{ current_user.subscription_end }}
+                {% else %}
+                  {{ current_user.subscription_end.strftime('%d %b %Y') }}
+                {% endif %}
+              </div>
             </div>
             {% if current_user.is_authenticated %}
             {% if current_user.is_subscribed 
