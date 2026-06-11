@@ -183,7 +183,7 @@ def get_tp1_and_sl_orders(user_id):
         seen_ids = set()
 
         def _add_order(o, source):
-            oid = str(o.get('orderId') or o.get('algoId') or '')
+            oid = str(o.get('orderId') or o.get('algoId') or o.get('strategyId') or '')
             if not oid or oid in seen_ids:
                 return
             seen_ids.add(oid)
