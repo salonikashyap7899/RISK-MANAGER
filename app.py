@@ -789,11 +789,11 @@ def exchange_connections():
         })
     
     # Supported exchanges list
-    supported_exchanges = [
-        {'id': 'binance', 'name': 'Binance Futures', 'icon': 'https://bin.bnbstatic.com/static/images/common/favicon.ico'},
-        {'id': 'bybit', 'name': 'Bybit (Coming Soon)', 'icon': 'https://www.bybit.com/favicon.ico'},
-        {'id': 'okx', 'name': 'OKX (Coming Soon)', 'icon': 'https://www.okx.com/favicon.ico'}
-    ]
+    supported_exchanges = {
+        'binance': {'name': 'Binance Futures', 'icon': 'https://bin.bnbstatic.com/static/images/common/favicon.ico', 'description': 'Trade Binance Futures with advanced risk management.'},
+        'bybit': {'name': 'Bybit (Coming Soon)', 'icon': 'https://www.bybit.com/favicon.ico', 'description': 'Bybit integration is coming soon.'},
+        'okx': {'name': 'OKX (Coming Soon)', 'icon': 'https://www.okx.com/favicon.ico', 'description': 'OKX integration is coming soon.'}
+    }
     
     return render_template('exchange_connections.html', 
                           connections=formatted_connections, 
@@ -834,18 +834,25 @@ def add_exchange():
         db.session.commit()
         
         # Verify connection immediately
-        # In logic.py, get_user_exchange_client will try to create a client
-        # and set is_connected to True if successful
         logic.clear_user_client(current_user.id)
-        client = logic.get_user_exchange_client(current_user.id)
         
-        if client:
-            conn.is_connected = True
-            conn.last_verified = datetime.utcnow()
-            db.session.commit()
-            return jsonify({'success': True, 'message': f'Successfully connected to {exchange_type.capitalize()}!'})
-        else:
-            return jsonify({'success': False, 'message': 'Failed to verify API keys. Please check permissions.'})
+        # We need to capture the error if get_user_exchange_client fails
+        # Let's modify logic.py or just try to get it here
+        try:
+            client = logic.get_user_exchange_client(current_user.id)
+            if client:
+                conn.is_connected = True
+                conn.last_verified = datetime.utcnow()
+                db.session.commit()
+                return jsonify({'success': True, 'message': f'Successfully connected to {exchange_type.capitalize()}!'})
+            else:
+                # If it returned None, it might have been caught by logic.py's try-except
+                # We'll check if it was marked as disconnected
+                if not conn.is_connected:
+                    return jsonify({'success': False, 'message': 'Failed to verify API keys. Ensure "Enable Futures" is checked and IP is whitelisted.'})
+                return jsonify({'success': False, 'message': 'Connection failed. Please check your API keys.'})
+        except Exception as client_err:
+            return jsonify({'success': False, 'message': f'Connection Error: {str(client_err)}'})
             
     except Exception as e:
         db.session.rollback()
