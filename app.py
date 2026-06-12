@@ -837,9 +837,9 @@ def add_exchange():
         logic.clear_user_client(current_user.id)
         
         # We need to capture the error if get_user_exchange_client fails
-        # Let's modify logic.py or just try to get it here
         try:
-            client = logic.get_user_exchange_client(current_user.id)
+            # Pass include_disconnected=True because we just saved/updated it
+            client = logic.get_user_exchange_client(current_user.id, include_disconnected=True)
             if client:
                 conn.is_connected = True
                 conn.last_verified = datetime.utcnow()

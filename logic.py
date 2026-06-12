@@ -153,7 +153,7 @@ def select_symbol(user_id, symbol):
 # User-specific client storage
 _user_clients = {}
 
-def get_user_exchange_client(user_id):
+def get_user_exchange_client(user_id, include_disconnected=False):
     """
     Get Binance client for a specific user based on their connected exchange.
     Returns the user's own API keys if connected, otherwise None.
@@ -161,7 +161,7 @@ def get_user_exchange_client(user_id):
     from models import ExchangeConnection
     import config  
     # Check if we already have a cached client for this user
-    if user_id in _user_clients:
+    if not include_disconnected and user_id in _user_clients:
         try:
             _user_clients[user_id].futures_account(recvWindow=5000)
             return _user_clients[user_id]
@@ -170,11 +170,14 @@ def get_user_exchange_client(user_id):
             del _user_clients[user_id]
     
     # Get user's exchange connection from database
-    connection = ExchangeConnection.query.filter_by(
+    query = ExchangeConnection.query.filter_by(
         user_id=user_id, 
-        exchange_type='binance',
-        is_connected=True
-    ).first()
+        exchange_type='binance'
+    )
+    if not include_disconnected:
+        query = query.filter_by(is_connected=True)
+    
+    connection = query.first()
     
     if not connection or not connection.api_key or not connection.api_secret:
         return None
@@ -207,6 +210,7 @@ def get_user_exchange_client(user_id):
             print(f"✅ Applied user client offset: {time_offset}ms")
         
         # Verify the connection works with synced time
+        # This is the critical step that verifies the keys
         client.futures_account(recvWindow=10000)
         
         print(f"✅ User {user_id} Binance client created successfully")
@@ -216,17 +220,20 @@ def get_user_exchange_client(user_id):
         
     except BinanceAPIException as e:
         error_info = config.BINANCE_ERROR_CODES.get(e.code)
-        print(f"❌ BinanceAPIException for user {user_id}: code={e.code}, {error_info['title'] if error_info else str(e)}")
-        connection.is_connected = False
-        from models import db
-        db.session.commit()
+        error_title = error_info['title'] if error_info else f"Binance Error {e.code}"
+        print(f"❌ BinanceAPIException for user {user_id}: code={e.code}, {error_title}: {str(e)}")
+        
+        # Only mark as disconnected if it's a permanent error (like -2015)
+        if e.code in [-2015, -2014, -1002, -1022]:
+            connection.is_connected = False
+            from models import db
+            db.session.commit()
         return None
         
     except Exception as e:
         print(f"❌ Unexpected error creating client for user {user_id}: {e}")
-        connection.is_connected = False
-        from models import db
-        db.session.commit()
+        # For non-Binance errors (network, timeout), don't necessarily mark as disconnected
+        # but return None so the UI knows the current attempt failed
         return None
 
 def set_user_client(user_id, client):
