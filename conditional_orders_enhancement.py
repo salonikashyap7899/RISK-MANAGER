@@ -60,7 +60,7 @@ def get_tp1_and_sl_orders(user_id):
                     for o in raw:
                         o_type = o.get('type', '').upper()
                         has_stop = float(o.get('stopPrice', 0)) > 0
-                        if o_type in ['STOP', 'STOP_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_MARKET', 'TRAILING_STOP_MARKET'] or has_stop:
+                        if o_type in ['STOP', 'STOP_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_MARKET', 'TRAILING_STOP_MARKET', 'LIMIT', 'LIMIT_MAKER'] or has_stop:
                             symbol = o.get('symbol', '')
                             db_pos = pos_map.get(symbol)
                             label = 'SL'
@@ -95,7 +95,7 @@ def get_tp1_and_sl_orders(user_id):
                     for o in papi_raw:
                         o_type = o.get('type', '').upper()
                         has_stop = float(o.get('stopPrice', 0)) > 0
-                        if o_type in ['STOP', 'STOP_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_MARKET', 'TRAILING_STOP_MARKET'] or has_stop:
+                        if o_type in ['STOP', 'STOP_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_MARKET', 'TRAILING_STOP_MARKET', 'LIMIT', 'LIMIT_MAKER'] or has_stop:
                             symbol = o.get('symbol', '')
                             db_pos = pos_map.get(symbol)
                             label = 'SL'
