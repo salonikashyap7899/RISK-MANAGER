@@ -365,7 +365,10 @@
     {% endif %}
     
     <div class="panel left">
-        <div class="header">TRADING CONTROLS</div>
+        <div class="header" style="display: flex; align-items: center; justify-content: space-between; padding: 0 8px;">
+       <span>TRADING CONTROLS</span>
+       <a href="/home" title="Go to Home" style="color: #06b6d4; font-size: 11px; text-decoration: none; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.35); border-radius: 6px; padding: 2px 8px; font-weight: 600; letter-spacing: 0.03em; line-height: 1.4;">🏠 Home</a>
+   </div>
         {% if trade_status %}
         <div class="message {{ 'success' if trade_status.success else 'error' }}">
             {{ trade_status.message }}
