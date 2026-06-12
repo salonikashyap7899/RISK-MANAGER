@@ -659,8 +659,10 @@ def get_all_open_conditional_orders(user_id=None):
 
     # Serve from short TTL cache when available — kills duplicate-poll storms.
     cached = _conditional_cache.get(user_id)
-    if cached and (now_ms - cached[0]) < CONDITIONAL_CACHE_MS and len(cached[1]) > 0:
-        return list(cached[1])
+    if cached and (now_ms - cached[0]) < CONDITIONAL_CACHE_MS:
+        # If cache is very fresh (under 1s), return even if empty
+        if (now_ms - cached[0]) < 1000 or len(cached[1]) > 0:
+            return list(cached[1])
 
     # If Binance has banned us, don't issue more requests until the window passes.
     if now_ms < _conditional_ban_until:
@@ -721,7 +723,8 @@ def get_all_open_conditional_orders(user_id=None):
             'TAKE_PROFIT', 'TAKE_PROFIT_MARKET',
             'TRAILING_STOP_MARKET',
             'STOP_LOSS', 'STOP_LOSS_LIMIT',
-            'TAKE_PROFIT_LIMIT'
+            'TAKE_PROFIT_LIMIT',
+            'LIMIT', 'LIMIT_MAKER'
         ]
 
         conditional_orders = []
