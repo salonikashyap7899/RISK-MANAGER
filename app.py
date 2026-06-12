@@ -835,6 +835,7 @@ def add_exchange():
         
         # Verify connection immediately
         logic.clear_user_client(current_user.id)
+        logic.invalidate_conditional_cache(current_user.id)
         
         # We need to capture the error if get_user_exchange_client fails
         try:
@@ -1078,7 +1079,8 @@ def api_conditional_orders():
     # Basic       = LIMIT, LIMIT_MAKER (TP2)
     CONDITIONAL_TYPES = {
         'TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'STOP_MARKET',
-        'STOP', 'TRAILING_STOP_MARKET', 'STOP_LOSS', 'STOP_LOSS_LIMIT'
+        'STOP', 'TRAILING_STOP_MARKET', 'STOP_LOSS', 'STOP_LOSS_LIMIT',
+        'LIMIT', 'LIMIT_MAKER'
     }
     conditional = [o for o in orders if o.get('type', '').upper() in CONDITIONAL_TYPES or o.get('source') == 'algo']
     basic = [o for o in orders if o.get('type', '').upper() not in CONDITIONAL_TYPES and o.get('source') != 'algo']
