@@ -724,7 +724,8 @@ def get_all_open_conditional_orders(user_id=None):
             'TRAILING_STOP_MARKET',
             'STOP_LOSS', 'STOP_LOSS_LIMIT',
             'TAKE_PROFIT_LIMIT',
-            'LIMIT', 'LIMIT_MAKER'
+            'LIMIT', 'LIMIT_MAKER',
+            'TRAILING_STOP_MARKET_ALGO'
         ]
 
         conditional_orders = []
@@ -745,6 +746,8 @@ def get_all_open_conditional_orders(user_id=None):
                     label = 'Trail SL'
                 elif 'STOP' in o_type or 'STOP_LOSS' in o_type:
                     label = 'SL'
+                elif o_type in ['LIMIT', 'LIMIT_MAKER'] and o.get('reduceOnly'):
+                    label = 'TP2'
                 
                 oid = str(o.get('orderId') or '')
                 if oid and oid not in seen_ids:
