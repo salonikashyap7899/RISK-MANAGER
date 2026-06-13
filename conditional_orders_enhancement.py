@@ -60,11 +60,14 @@ def get_tp1_and_sl_orders(user_id):
                     for o in raw:
                         o_type = o.get('type', '').upper()
                         has_stop = float(o.get('stopPrice', 0)) > 0
-                        if o_type in ['STOP', 'STOP_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_MARKET', 'TRAILING_STOP_MARKET', 'LIMIT', 'LIMIT_MAKER'] or has_stop:
+                        if o_type in ['STOP', 'STOP_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_MARKET', 'TRAILING_STOP_MARKET', 'LIMIT', 'LIMIT_MAKER', 'TRAILING_STOP_MARKET_ALGO'] or has_stop:
                             symbol = o.get('symbol', '')
                             db_pos = pos_map.get(symbol)
                             label = 'SL'
-                            if 'TAKE_PROFIT' in o_type: label = 'TP1'
+                            if 'TAKE_PROFIT' in o_type: 
+                                label = 'TP1'
+                            elif o_type in ['LIMIT', 'LIMIT_MAKER'] and o.get('reduceOnly'):
+                                label = 'TP2'
                             
                             context = {
                                 'orderId': o.get('orderId'),
@@ -83,6 +86,7 @@ def get_tp1_and_sl_orders(user_id):
                                 'position_status': db_pos.status if db_pos else 'unknown',
                             }
                             if label == 'TP1': tp1_orders.append(context)
+                            elif label == 'TP2': tp2_orders.append(context)
                             else: sl_orders.append(context)
                 except Exception as fe:
                     print(f"[fallback] direct fetch failed: {fe}")
@@ -95,12 +99,14 @@ def get_tp1_and_sl_orders(user_id):
                     for o in papi_raw:
                         o_type = o.get('type', '').upper()
                         has_stop = float(o.get('stopPrice', 0)) > 0
-                        if o_type in ['STOP', 'STOP_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_MARKET', 'TRAILING_STOP_MARKET', 'LIMIT', 'LIMIT_MAKER'] or has_stop:
+                        if o_type in ['STOP', 'STOP_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_MARKET', 'TRAILING_STOP_MARKET', 'LIMIT', 'LIMIT_MAKER', 'TRAILING_STOP_MARKET_ALGO'] or has_stop:
                             symbol = o.get('symbol', '')
                             db_pos = pos_map.get(symbol)
                             label = 'SL'
                             if 'TAKE_PROFIT' in o_type:
                                 label = 'TP1'
+                            elif o_type in ['LIMIT', 'LIMIT_MAKER'] and o.get('reduceOnly'):
+                                label = 'TP2'
                             context = {
                                 'orderId': o.get('orderId'),
                                 'symbol': symbol,
@@ -119,6 +125,8 @@ def get_tp1_and_sl_orders(user_id):
                             }
                             if label == 'TP1':
                                 tp1_orders.append(context)
+                            elif label == 'TP2':
+                                tp2_orders.append(context)
                             else:
                                 sl_orders.append(context)
             except Exception as papi_fe:
