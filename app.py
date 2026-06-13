@@ -1080,7 +1080,7 @@ def api_conditional_orders():
     CONDITIONAL_TYPES = {
         'TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'STOP_MARKET',
         'STOP', 'TRAILING_STOP_MARKET', 'STOP_LOSS', 'STOP_LOSS_LIMIT',
-        'LIMIT', 'LIMIT_MAKER'
+        'LIMIT', 'LIMIT_MAKER', 'TRAILING_STOP_MARKET_ALGO'
     }
     conditional = [o for o in orders if o.get('type', '').upper() in CONDITIONAL_TYPES or o.get('source') == 'algo']
     basic = [o for o in orders if o.get('type', '').upper() not in CONDITIONAL_TYPES and o.get('source') != 'algo']
