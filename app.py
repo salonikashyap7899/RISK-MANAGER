@@ -32,9 +32,9 @@ app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', 'False'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-instance_path = os.path.join(app.root_path, 'instance')
-os.makedirs(instance_path, exist_ok=True)
-db_file_path = os.path.join(instance_path, 'users.db')
+import tempfile
+
+db_file_path = os.path.join(tempfile.gettempdir(), 'users.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.abspath(db_file_path).replace('\\', '/')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
