@@ -20,6 +20,11 @@ RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET',  'y5QeUePyOVDeqN0fGOeH6FS
 RAZORPAY_MONTHLY_PLAN_ID = os.getenv('RAZORPAY_MONTHLY_PLAN_ID', "plan_SK10d2Fpo8noaR")
 RAZORPAY_YEARLY_PLAN_ID = os.getenv('RAZORPAY_YEARLY_PLAN_ID', "plan_SK12UnaDI5gGcd")
 
+GOOGLE_CLIENT_ID = 839932973310-n309g8i0p66c6akaila1fvbshgcrqqko.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRECT = 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
+
+
+
 # Trading Configuration
 RISK_PER_TRADE = 1.0  # Hard 1% risk per trade
 MAX_DAILY_TRADES = 4
