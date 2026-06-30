@@ -1214,8 +1214,8 @@ def api_cancel_conditional_order():
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     with app.app_context():
         db.create_all()
         ensure_sqlite_trade_positions_columns()
-   app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
