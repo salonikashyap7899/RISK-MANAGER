@@ -2,626 +2,570 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>MindRiskControl&trade;</title>
-    <meta name="description" content="Professional-grade automated trading platform with institutional precision">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MindRiskControl&trade; — Automated Risk Management for Traders</title>
+    <meta name="description" content="Institutional-grade risk management for retail traders. Hard 1% risk caps, automated TP/SL, trailing stops and overtrade protection for Binance Futures.">
     <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}?v=2">
     <link rel="icon" type="image/png" sizes="96x96" href="{{ url_for('static', filename='favicon-96x96.png') }}?v=2">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}?v=2">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v=2">
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Tailwind Config -->
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'dark-bg': '#0b0f19',
-                        'card-bg': '#111827',
-                        'border-dark': '#1f2937',
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                }
-            }
-        }
-    </script>
+    <!-- Compiled Tailwind CSS (see static/home.css) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='home.css') }}?v=1">
     <style>
         * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
         *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
         html { scroll-behavior: smooth; }
-        body { background-color: #0b0f19; overflow-x: hidden; }
+        body { background-color: #05070d; overflow-x: hidden; }
+
+        /* Subtle engineering-grid backdrop */
+        .grid-bg {
+            background-image:
+                linear-gradient(rgba(148,163,184,0.045) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(148,163,184,0.045) 1px, transparent 1px);
+            background-size: 44px 44px;
+            mask-image: radial-gradient(ellipse 90% 65% at 50% 0%, black 55%, transparent 100%);
+            -webkit-mask-image: radial-gradient(ellipse 90% 65% at 50% 0%, black 55%, transparent 100%);
+        }
+
         .gradient-text {
-            background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #8b5cf6 100%);
+            background: linear-gradient(120deg, #67e8f9 0%, #38bdf8 55%, #818cf8 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-        .glass-card { background: rgba(17, 24, 39, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(31, 41, 55, 0.8); }
-        .hover-glow { transition: all 0.3s ease; }
-        .hover-glow:hover { box-shadow: 0 0 30px rgba(6, 182, 212, 0.3); transform: translateY(-5px); }
-        @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-20px); } }
-        .animate-float { animation: float 6s ease-in-out infinite; }
-        .gradient-border { position: relative; background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(139, 92, 246, 0.1)); border: 2px solid transparent; }
-        .gradient-border::before { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 2px; background: linear-gradient(135deg, #06b6d4, #8b5cf6); -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+
+        .card {
+            background: linear-gradient(180deg, rgba(17,24,39,0.55), rgba(11,16,28,0.85));
+            border: 1px solid rgba(148,163,184,0.12);
+            backdrop-filter: blur(10px);
+            transition: border-color .25s ease, transform .25s ease, box-shadow .25s ease;
+        }
+        .card:hover {
+            border-color: rgba(34,211,238,0.35);
+            transform: translateY(-3px);
+            box-shadow: 0 18px 45px -18px rgba(2,132,199,0.35);
+        }
+
+        .btn-primary {
+            background: linear-gradient(120deg, #06b6d4, #2563eb);
+            box-shadow: 0 8px 24px -8px rgba(6,182,212,0.55);
+            transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+        }
+        .btn-primary:hover { transform: translateY(-2px); filter: brightness(1.08); box-shadow: 0 14px 34px -10px rgba(6,182,212,0.65); }
+
+        .btn-ghost {
+            border: 1px solid rgba(148,163,184,0.25);
+            transition: border-color .2s ease, background .2s ease, transform .2s ease;
+        }
+        .btn-ghost:hover { border-color: rgba(34,211,238,0.6); background: rgba(34,211,238,0.06); transform: translateY(-2px); }
+
+        .chip {
+            border: 1px solid rgba(34,211,238,0.25);
+            background: rgba(34,211,238,0.06);
+        }
+
+        .icon-tile {
+            width: 44px; height: 44px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(34,211,238,0.08);
+            border: 1px solid rgba(34,211,238,0.2);
+            color: #67e8f9;
+        }
+
+        .nav-blur { background: rgba(5,7,13,0.72); backdrop-filter: blur(14px); border-bottom: 1px solid rgba(148,163,184,0.1); }
+        .nav-logo img { height: 44px; width: auto; object-fit: contain; }
+
         .mobile-menu { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
         .mobile-menu.active { max-height: 500px; }
-        .btn-primary { background: linear-gradient(135deg, #06b6d4, #3b82f6); transition: all 0.3s ease; }
-        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(6, 182, 212, 0.4); }
-        .flex-shrink-0 { display: flex; align-items: center; }
-        .flex-shrink-0 a { display: flex; align-items: center; gap: 8px; }
-        .flex-shrink-0 img { height: 150px; width: auto; object-fit: contain; transition: transform 0.3s ease, filter 0.3s ease, opacity 0.3s ease; }
-        .gradient-text img { filter: drop-shadow(0 0 10px rgba(0, 180, 255, 0.35)) drop-shadow(0 0 25px rgba(120, 80, 255, 0.25)); }
-        .flex-shrink-0 a:hover img { transform: scale(1.07); filter: drop-shadow(0 0 14px rgba(0, 180, 255, 0.6)) drop-shadow(0 0 35px rgba(120, 80, 255, 0.45)); }
-        .flex-shrink-0 a:active img { transform: scale(1.02); }
-        @media (max-width: 768px) { .flex-shrink-0 img { height: 44px; } }
-        .dashboard-preview-card { background: linear-gradient(145deg, rgba(17, 24, 39, 0.9), rgba(6, 182, 212, 0.05)); border: 1px solid rgba(6, 182, 212, 0.2); transition: all 0.3s ease; }
-        .dashboard-preview-card:hover { border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 25px rgba(6, 182, 212, 0.2); transform: translateY(-3px); }
-        .trader-welcome-banner { background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.15)); border: 1px solid rgba(6, 182, 212, 0.3); }
-        .stat-card { background: rgba(6, 182, 212, 0.08); border-left: 3px solid #06b6d4; }
-        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); display: none; align-items: center; justify-content: center; z-index: 1000; }
+
+        /* Mock terminal card */
+        .terminal {
+            background: linear-gradient(165deg, rgba(15,23,42,0.92), rgba(8,13,24,0.96));
+            border: 1px solid rgba(148,163,184,0.16);
+            box-shadow: 0 40px 90px -40px rgba(2,132,199,0.45), inset 0 1px 0 rgba(255,255,255,0.04);
+        }
+        .terminal-row { border-bottom: 1px dashed rgba(148,163,184,0.1); }
+        .tick { color: #34d399; }
+        .tick-bad { color: #f87171; }
+
+        .divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(148,163,184,0.25), transparent); }
+
+        .modal { position: fixed; inset: 0; background: rgba(2,4,10,0.78); backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; z-index: 1000; }
         .modal.active { display: flex; }
-        .modal-content { background: rgba(17, 24, 39, 0.95); border: 1px solid rgba(6, 182, 212, 0.3); border-radius: 2rem; padding: 2rem; max-width: 450px; width: 90%; max-height: 90vh; overflow-y: auto; position: relative; animation: slideUp 0.3s ease-out; }
-        @keyframes slideUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .modal-close { position: absolute; top: 1rem; right: 1rem; width: 2rem; height: 2rem; background: rgba(6, 182, 212, 0.2); border: none; border-radius: 0.5rem; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #06b6d4; font-size: 1.5rem; transition: all 0.3s ease; }
-        .modal-close:hover { background: rgba(6, 182, 212, 0.4); }
+        .modal-content {
+            background: #0b101c;
+            border: 1px solid rgba(148,163,184,0.18);
+            border-radius: 1.25rem; padding: 2rem; max-width: 430px; width: 90%;
+            max-height: 90vh; overflow-y: auto; position: relative;
+            animation: slideUp 0.28s ease-out;
+            box-shadow: 0 40px 90px -30px rgba(0,0,0,0.8);
+        }
+        @keyframes slideUp { from { transform: translateY(26px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .modal-close {
+            position: absolute; top: 1rem; right: 1rem; width: 2rem; height: 2rem;
+            background: rgba(148,163,184,0.1); border: none; border-radius: 0.5rem; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 1.25rem;
+            transition: all 0.2s ease;
+        }
+        .modal-close:hover { background: rgba(34,211,238,0.15); color: #67e8f9; }
+
+        .field {
+            width: 100%; padding: 0.75rem 1rem; border-radius: 0.65rem;
+            background: rgba(5,7,13,0.7); border: 1px solid rgba(148,163,184,0.18); color: #f1f5f9;
+            outline: none; transition: border-color .2s ease, box-shadow .2s ease;
+        }
+        .field:focus { border-color: rgba(34,211,238,0.55); box-shadow: 0 0 0 3px rgba(34,211,238,0.12); }
+
+        .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
+        .reveal.in { opacity: 1; transform: translateY(0); }
+
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+        .live-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
     </style>
 </head>
-<body class="font-sans text-gray-100">
-  {% if current_user.is_authenticated %}
-  <div class="pt-24 pb-4 px-4">
-    <div class="max-w-7xl mx-auto">
-      <div class="trader-welcome-banner rounded-2xl p-6 md:p-8">
-        <div class="flex flex-col md:flex-row items-center justify-between gap-6">
-          <div class="flex items-center gap-4">
-            <div class="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-500 to-purple-500 flex items-center justify-center text-2xl font-bold">
-              {{ current_user.username[:1]|upper }}
-            </div>
-            <div>
-              <h2 class="text-2xl font-bold text-white">Welcome, {{ current_user.username }}!</h2>
-              <p class="text-cyan-400">Ready to trade with institutional precision?</p>
-            </div>
-          </div>
-          <div class="flex flex-col sm:flex-row gap-4 items-center">
-            <div class="text-center">
-              <div class="text-sm text-gray-400">Current Plan</div>
-              <div class="text-xl font-bold gradient-text">{{ current_user.subscription_type|capitalize if current_user.subscription_type else 'Free' }}</div>
-            </div>
-            {% if current_user.is_subscribed and current_user.subscription_end %}
-            <div class="text-center">
-              <div class="text-sm text-gray-400">Valid Until</div>
-              <div class="text-lg font-semibold text-white">{{ current_user.subscription_end.strftime('%d %b %Y') }}</div>
-            </div>
-            {% if current_user.is_authenticated %}
-            {% if current_user.is_subscribed 
-            or current_user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com'] 
-            or current_user.is_admin %}
-            <a href="/index" 
-           class="btn-primary text-white px-8 py-3 rounded-xl font-semibold text-lg">
-           🚀 Go to Dashboard
-           </a>
-           {% else %}
-           <a href="/subscribe" 
-           class="bg-gradient-to-r from-cyan-500 to-purple-500 text-white px-8 py-3 rounded-xl font-semibold text-lg hover:opacity-90 transition-opacity">
-           ⚡ Upgrade to Pro
-           </a>
-           {% endif %}
-           {% endif %}
-          {% endif %}
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-  {% endif %}
-  
-  <!-- Quick Actions Shortcuts -->
-  {% if current_user.is_authenticated %}
-  <div class="pb-4 px-4">
-    <div class="max-w-7xl mx-auto">
-      <div class="glass-card rounded-2xl p-6">
-        <h3 class="text-lg font-bold text-white mb-4"> 💫 Quick Actions</h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <a href="/index" class="flex flex-col items-center justify-center p-4 bg-dark-bg/50 rounded-xl hover:bg-cyan-500/10 transition-all group">
-            <div class="text-3xl mb-2">🕹️</div>
-            <span class="text-gray-300 group-hover:text-cyan-400 font-medium">Dashboard</span>
-          </a>
-          <a href="/exchange-connections" class="flex flex-col items-center justify-center p-4 bg-dark-bg/50 rounded-xl hover:bg-cyan-500/10 transition-all group">
-            <div class="text-3xl mb-2">🔗</div>
-            <span class="text-gray-300 group-hover:text-cyan-400 font-medium">Exchanges</span>
-          </a>
-          <a href="/subscribe" class="flex flex-col items-center justify-center p-4 bg-dark-bg/50 rounded-xl hover:bg-cyan-500/10 transition-all group">
-            <div class="text-3xl mb-2">⚡</div>
-            <span class="text-gray-300 group-hover:text-cyan-400 font-medium">Subscription</span>
-          </a>
-          <a href="#contact" class="flex flex-col items-center justify-center p-4 bg-dark-bg/50 rounded-xl hover:bg-cyan-500/10 transition-all group">
-            <div class="text-3xl mb-2">📞</div>
-            <span class="text-gray-300 group-hover:text-cyan-400 font-medium">Support</span>
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
-  {% endif %}
+<body class="font-sans text-slate-200 antialiased">
 
     <!-- Navbar -->
- <nav id="navbar" class="fixed w-full top-0 z-50 transition-all duration-300">
-    <div class="glass-card">
+    <nav id="navbar" class="fixed w-full top-0 z-50 nav-blur">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between items-center h-20">
-                <div class="flex-shrink-0">
-                    <a href="#hero" class="text-2xl font-bold">
-                        <span class="gradient-text text-bold"><img src="../static/Logo_-_MRC-removebg-preview (1).png" alt=""></span>
-                    </a>
-                </div>
-                <div class="hidden md:flex items-center space-x-8">
-                    <a href="#hero" class="nav-link text-gray-300 hover:text-cyan-400 transition-colors font-medium">Home</a>
-                    <a href="#services" class="nav-link text-gray-300 hover:text-cyan-400 transition-colors font-medium">Services</a>
-                    <a href="#about" class="nav-link text-gray-300 hover:text-cyan-400 transition-colors font-medium">About</a>
-                    <a href="#pricing" class="nav-link text-gray-300 hover:text-cyan-400 transition-colors font-medium">Pricing</a>
-                    <a href="#contact" class="nav-link text-gray-300 hover:text-cyan-400 transition-colors font-medium">Contact</a>
+            <div class="flex justify-between items-center h-16">
+                <a href="#hero" class="nav-logo flex items-center gap-2">
+                    <img src="{{ url_for('static', filename='Logo_-_MRC-removebg-preview (1).png') }}" alt="MindRiskControl">
+                    <span class="font-bold text-lg tracking-tight text-white hidden sm:inline">MindRiskControl</span>
+                </a>
+                <div class="hidden md:flex items-center gap-8">
+                    <a href="#features" class="nav-link text-sm font-medium text-slate-400 hover:text-cyan-300 transition-colors">Features</a>
+                    <a href="#how-it-works" class="nav-link text-sm font-medium text-slate-400 hover:text-cyan-300 transition-colors">How it works</a>
+                    <a href="#pricing" class="nav-link text-sm font-medium text-slate-400 hover:text-cyan-300 transition-colors">Pricing</a>
+                    <a href="#contact" class="nav-link text-sm font-medium text-slate-400 hover:text-cyan-300 transition-colors">Contact</a>
                     {% if current_user.is_authenticated %}
-                    <button onclick="handleLogout()" class="bg-slate-800 hover:bg-slate-700 text-white px-6 py-2 rounded-lg font-semibold transition-all border-none cursor-pointer">Logout</button>
+                    <a href="/index" class="text-sm font-semibold text-cyan-300 hover:text-cyan-200 transition-colors">Dashboard</a>
+                    <button onclick="handleLogout()" class="btn-ghost text-white text-sm px-5 py-2 rounded-lg font-semibold cursor-pointer">Log out</button>
                     {% else %}
-                    <button onclick="openLoginModal()" class="btn-primary text-white px-6 py-2 rounded-lg font-semibold">Login</button>
+                    <button onclick="openLoginModal()" class="btn-ghost text-white text-sm px-5 py-2 rounded-lg font-semibold cursor-pointer">Log in</button>
+                    <button onclick="openRegisterModal()" class="btn-primary text-white text-sm px-5 py-2 rounded-lg font-semibold cursor-pointer">Get started</button>
                     {% endif %}
                 </div>
-                <button id="mobile-menu-btn" class="md:hidden text-white focus:outline-none">
+                <button id="mobile-menu-btn" class="md:hidden text-white focus:outline-none" aria-label="Menu">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
                     </svg>
                 </button>
             </div>
             <div id="mobile-menu" class="mobile-menu md:hidden">
-                <div class="px-2 pt-2 pb-3 space-y-1">
-                    <a href="#hero" class="block px-3 py-2 text-gray-300 hover:text-cyan-400 transition-colors">Home</a>
-                    <a href="#services" class="block px-3 py-2 text-gray-300 hover:text-cyan-400 transition-colors">Services</a>
-                    <a href="#testimonials" class="block px-3 py-2 text-gray-300 hover:text-cyan-400 transition-colors">Testimonials</a>
-                    <a href="#how-it-works" class="block px-3 py-2 text-gray-300 hover:text-cyan-400 transition-colors">How It Works</a>
-                    <a href="#about" class="block px-3 py-2 text-gray-300 hover:text-cyan-400 transition-colors">About</a>
-                    <a href="#pricing" class="block px-3 py-2 text-gray-300 hover:text-cyan-400 transition-colors">Pricing</a>
+                <div class="px-2 pt-2 pb-4 space-y-1">
+                    <a href="#features" class="block px-3 py-2 text-slate-300 hover:text-cyan-300 transition-colors">Features</a>
+                    <a href="#how-it-works" class="block px-3 py-2 text-slate-300 hover:text-cyan-300 transition-colors">How it works</a>
+                    <a href="#pricing" class="block px-3 py-2 text-slate-300 hover:text-cyan-300 transition-colors">Pricing</a>
+                    <a href="#contact" class="block px-3 py-2 text-slate-300 hover:text-cyan-300 transition-colors">Contact</a>
                     {% if current_user.is_authenticated %}
-    
-    {% if current_user.is_subscribed 
-        or current_user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com'] 
-        or current_user.is_admin %}
+                    <a href="/index" class="block px-3 py-2 font-semibold text-cyan-300">Dashboard</a>
+                    <button onclick="handleLogout()" class="block w-full text-left px-3 py-2 text-slate-300 hover:text-cyan-300 bg-transparent border-none cursor-pointer">Log out</button>
+                    {% else %}
+                    <button onclick="openLoginModal()" class="block w-full text-left px-3 py-2 text-slate-300 hover:text-cyan-300 bg-transparent border-none cursor-pointer">Log in</button>
+                    <button onclick="openRegisterModal()" class="block w-full text-left px-3 py-2 font-semibold text-cyan-300 bg-transparent border-none cursor-pointer">Get started</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
 
-        <a href="/index" 
-           class="btn-primary text-white px-8 py-3 rounded-xl font-semibold text-lg">
-           🚀 Go to Dashboard
-        </a>
-
-    {% else %}
-
-        <a href="/subscribe" 
-           class="bg-gradient-to-r from-cyan-500 to-purple-500 text-white px-8 py-3 rounded-xl font-semibold text-lg hover:opacity-90 transition-opacity">
-           ⚡ Upgrade to Pro
-        </a>
-
-    {% endif %}
-
-{% endif %}
+    {% if current_user.is_authenticated %}
+    <!-- Signed-in banner -->
+    <div class="pt-24 px-4">
+        <div class="max-w-7xl mx-auto">
+            <div class="card rounded-2xl p-6 md:p-7">
+                <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div class="flex items-center gap-4">
+                        <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-indigo-500 flex items-center justify-center text-xl font-bold text-white">
+                            {{ current_user.username[:1]|upper }}
+                        </div>
+                        <div>
+                            <h2 class="text-xl md:text-2xl font-bold text-white">Welcome back, {{ current_user.username }}</h2>
+                            <p class="text-sm text-slate-400">Your risk controls are standing by.</p>
+                        </div>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-6 items-center">
+                        <div class="text-center">
+                            <div class="text-xs uppercase tracking-wider text-slate-500">Plan</div>
+                            <div class="text-lg font-bold gradient-text">{{ current_user.subscription_type|capitalize if current_user.subscription_type else 'Free' }}</div>
+                        </div>
+                        {% if current_user.is_subscribed and current_user.subscription_end %}
+                        <div class="text-center">
+                            <div class="text-xs uppercase tracking-wider text-slate-500">Valid until</div>
+                            <div class="text-lg font-semibold text-white">{{ current_user.subscription_end.strftime('%d %b %Y') }}</div>
+                        </div>
+                        {% endif %}
+                        {% if current_user.is_subscribed
+                            or current_user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
+                            or current_user.is_admin %}
+                        <a href="/index" class="btn-primary text-white px-7 py-3 rounded-xl font-semibold">Open Dashboard</a>
+                        {% else %}
+                        <a href="/subscribe" class="btn-primary text-white px-7 py-3 rounded-xl font-semibold">Upgrade to Pro</a>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+                    <a href="/index" class="btn-ghost rounded-xl px-4 py-3 text-center text-sm font-medium text-slate-300 hover:text-white">Trading Dashboard</a>
+                    <a href="/exchange-connections" class="btn-ghost rounded-xl px-4 py-3 text-center text-sm font-medium text-slate-300 hover:text-white">Exchange Connections</a>
+                    <a href="/subscribe" class="btn-ghost rounded-xl px-4 py-3 text-center text-sm font-medium text-slate-300 hover:text-white">Subscription</a>
+                    <a href="#contact" class="btn-ghost rounded-xl px-4 py-3 text-center text-sm font-medium text-slate-300 hover:text-white">Support</a>
                 </div>
             </div>
         </div>
     </div>
-</nav>
-    <!-- Hero Section -->
-    <section id="hero" class="relative min-h-screen flex items-center justify-center overflow-hidden pt-20">
-        <div class="absolute inset-0 bg-gradient-to-br from-cyan-900/20 via-dark-bg to-purple-900/20"></div>
-        <div class="absolute top-20 left-10 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl animate-float"></div>
-        <div class="absolute bottom-20 right-10 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-float" style="animation-delay: 2s;"></div>
-        <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h1 class="text-5xl md:text-7xl font-extrabold mb-6 leading-tight pt-10">
-                AI Risk &amp; Governance <span class="gradient-text">Solutions</span><br>for Modern Organizations
-            </h1>
-            <p class="text-xl md:text-2xl text-gray-400 mb-10 max-w-3xl mx-auto">
-                We help businesses identify, manage, and mitigate AI risks with structured governance and compliance frameworks.
-            </p>
-            <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                <a href="#contact" class="btn-primary text-white px-8 py-4 rounded-lg font-semibold text-lg">Book a Consultation</a>
-                <a href="#services" class="bg-transparent border-2 border-gray-600 hover:border-cyan-400 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-all">Our Services</a>
-            </div>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-20 max-w-4xl mx-auto">
-                <div class="glass-card rounded-2xl p-6">
-                    <div class="text-4xl font-bold gradient-text mb-2">100%</div>
-                    <div class="text-gray-400">Compliance Guarantee</div>
+    {% endif %}
+
+    <!-- Hero -->
+    <section id="hero" class="relative {% if current_user.is_authenticated %}pt-14{% else %}pt-36{% endif %} pb-24 overflow-hidden">
+        <div class="absolute inset-0 grid-bg"></div>
+        <div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-cyan-500/10 rounded-full blur-[140px] pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid lg:grid-cols-2 gap-16 items-center">
+                <div>
+                    <div class="chip inline-flex items-center gap-2 rounded-full px-4 py-1.5 mb-7">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 live-dot"></span>
+                        <span class="text-xs font-semibold tracking-wide text-cyan-200">LIVE RISK ENGINE FOR BINANCE FUTURES</span>
+                    </div>
+                    <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-[1.08] tracking-tight text-white mb-6">
+                        Trade with discipline.<br>
+                        <span class="gradient-text">Every single time.</span>
+                    </h1>
+                    <p class="text-lg text-slate-400 leading-relaxed max-w-xl mb-9">
+                        MindRiskControl enforces the rules professional desks live by — a hard 1% risk cap per trade,
+                        automated take-profit and stop-loss orders, trailing protection and daily overtrade limits —
+                        so one bad day never becomes a blown account.
+                    </p>
+                    <div class="flex flex-col sm:flex-row gap-4 mb-12">
+                        {% if current_user.is_authenticated %}
+                        <a href="/index" class="btn-primary text-white px-8 py-4 rounded-xl font-semibold text-base text-center">Open Dashboard</a>
+                        {% else %}
+                        <button onclick="openRegisterModal()" class="btn-primary text-white px-8 py-4 rounded-xl font-semibold text-base cursor-pointer">Start trading safer</button>
+                        {% endif %}
+                        <a href="#how-it-works" class="btn-ghost text-white px-8 py-4 rounded-xl font-semibold text-base text-center">See how it works</a>
+                    </div>
+                    <div class="grid grid-cols-3 gap-6 max-w-lg">
+                        <div>
+                            <div class="text-2xl font-bold text-white font-mono">1%</div>
+                            <div class="text-xs text-slate-500 mt-1">Hard risk cap<br>per trade</div>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-white font-mono">4<span class="text-slate-500 text-lg">/day</span></div>
+                            <div class="text-xs text-slate-500 mt-1">Overtrade<br>protection</div>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-white font-mono">24/7</div>
+                            <div class="text-xs text-slate-500 mt-1">Automated<br>SL guard</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="glass-card rounded-2xl p-6">
-                    <div class="text-4xl font-bold gradient-text mb-2">50+</div>
-                    <div class="text-gray-400">Frameworks Deployed</div>
-                </div>
-                <div class="glass-card rounded-2xl p-6">
-                    <div class="text-4xl font-bold gradient-text mb-2">12 months</div>
-                    <div class="text-gray-400">Avg Deployment Time</div>
+
+                <!-- Mock risk terminal -->
+                <div class="relative">
+                    <div class="terminal rounded-2xl p-6">
+                        <div class="flex items-center justify-between mb-5">
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded-full bg-rose-500/70"></span>
+                                <span class="w-3 h-3 rounded-full bg-amber-400/70"></span>
+                                <span class="w-3 h-3 rounded-full bg-emerald-400/70"></span>
+                            </div>
+                            <div class="flex items-center gap-2 text-xs font-mono text-slate-500">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 live-dot"></span> RISK ENGINE ACTIVE
+                            </div>
+                        </div>
+                        <div class="font-mono text-sm">
+                            <div class="terminal-row flex justify-between py-3">
+                                <span class="text-slate-400">BTCUSDT · LONG</span>
+                                <span class="tick">+2.41%</span>
+                            </div>
+                            <div class="terminal-row flex justify-between py-3">
+                                <span class="text-slate-500 text-xs self-center">ENTRY 67,420.00</span>
+                                <span class="text-slate-500 text-xs self-center">QTY 0.042</span>
+                            </div>
+                            <div class="terminal-row flex justify-between py-3">
+                                <span class="text-slate-400">STOP LOSS</span>
+                                <span class="text-cyan-300">66,745.80 <span class="text-slate-500">· risk 1.00%</span></span>
+                            </div>
+                            <div class="terminal-row flex justify-between py-3">
+                                <span class="text-slate-400">TP1 · 50%</span>
+                                <span class="tick">68,768.40 ✓ FILLED</span>
+                            </div>
+                            <div class="terminal-row flex justify-between py-3">
+                                <span class="text-slate-400">TP2 · TRAILING</span>
+                                <span class="text-amber-300">SL → 67,420.00 (breakeven)</span>
+                            </div>
+                            <div class="flex justify-between py-3">
+                                <span class="text-slate-400">DAILY TRADES</span>
+                                <span class="text-slate-200">2 <span class="text-slate-500">of 4</span></span>
+                            </div>
+                        </div>
+                        <div class="divider my-4"></div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs text-slate-500 font-mono">MAX ACCOUNT RISK TODAY</span>
+                            <span class="text-xs font-mono text-emerald-300">CONTAINED · ≤ 4.0%</span>
+                        </div>
+                    </div>
+                    <div class="absolute -bottom-5 -left-5 card rounded-xl px-5 py-4 hidden md:block">
+                        <div class="text-xs text-slate-500 mb-1">If this trade fails</div>
+                        <div class="font-mono font-bold text-white">You lose 1% <span class="text-slate-500 font-normal">— never more</span></div>
+                    </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Services Section -->
-    <section id="services" class="py-24 px-4 sm:px-6 lg:px-8">
+    <!-- Exchange strip -->
+    <section class="py-10 border-y border-line bg-panel/40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex flex-wrap items-center justify-center gap-x-12 gap-y-4 text-sm font-semibold tracking-wide">
+                <span class="text-slate-500 uppercase text-xs">Built for</span>
+                <span class="text-slate-200">Binance Futures</span>
+                <span class="text-slate-600">Bybit <span class="text-xs text-slate-600 font-normal">— coming soon</span></span>
+                <span class="text-slate-600">OKX <span class="text-xs text-slate-600 font-normal">— coming soon</span></span>
+                <span class="text-slate-600">MetaTrader <span class="text-xs text-slate-600 font-normal">— coming soon</span></span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="py-24 px-4 sm:px-6 lg:px-8">
         <div class="max-w-7xl mx-auto">
-            <div class="text-center mb-16">
-                <h2 class="text-4xl md:text-5xl font-bold mb-4">Our Core <span class="gradient-text">Services</span></h2>
-                <p class="text-gray-400 text-xl max-w-2xl mx-auto">Comprehensive AI risk management for your organization</p>
+            <div class="text-center mb-16 reveal">
+                <p class="text-sm font-semibold tracking-widest text-cyan-300 uppercase mb-3">Why traders lose — solved</p>
+                <h2 class="text-3xl md:text-5xl font-extrabold tracking-tight text-white mb-4">Guardrails that execute<br class="hidden md:block"> faster than emotion</h2>
+                <p class="text-slate-400 text-lg max-w-2xl mx-auto">Every order you place passes through a rules engine before it reaches the exchange.</p>
             </div>
-            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-                <div class="glass-card rounded-3xl p-8 hover-glow">
-                    <div class="text-5xl mb-6">🔍</div>
-                    <h3 class="text-2xl font-bold text-white mb-4">AI Risk Assessment</h3>
-                    <p class="text-gray-400 mb-6">Comprehensive audit of your AI systems to identify technical, ethical, and regulatory risks.</p>
-                    <ul class="text-left space-y-2 text-sm text-gray-400">
-                        <li>• Model bias detection</li>
-                        <li>• Data privacy evaluation</li>
-                        <li>• Security vulnerability scan</li>
-                    </ul>
-                    <a href="#contact" class="mt-6 inline-block font-semibold text-cyan-400 hover:text-cyan-300">Learn More →</a>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="card rounded-2xl p-8 reveal">
+                    <div class="icon-tile mb-6">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-white mb-3">Hard 1% Risk Cap</h3>
+                    <p class="text-slate-400 leading-relaxed">Position size is computed from your stop distance automatically. No trade can ever risk more than 1% of your account — the platform won't allow it.</p>
                 </div>
-                <div class="glass-card rounded-3xl p-8 hover-glow">
-                    <div class="text-5xl mb-6">🏛️</div>
-                    <h3 class="text-2xl font-bold text-white mb-4">AI Governance Framework</h3>
-                    <p class="text-gray-400 mb-6">Custom governance structures, policies, and control systems for responsible AI deployment.</p>
-                    <ul class="text-left space-y-2 text-sm text-gray-400">
-                        <li>• Policy development</li>
-                        <li>• Risk control systems</li>
-                        <li>• Monitoring dashboards</li>
-                    </ul>
-                    <a href="#contact" class="mt-6 inline-block font-semibold text-cyan-400 hover:text-cyan-300">Learn More →</a>
+                <div class="card rounded-2xl p-8 reveal">
+                    <div class="icon-tile mb-6">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-white mb-3">Automated TP & SL</h3>
+                    <p class="text-slate-400 leading-relaxed">TP1, TP2 and stop-loss orders are placed on the exchange the instant your entry fills. Partial profit-taking runs on autopilot, even while you sleep.</p>
                 </div>
-                <div class="glass-card rounded-3xl p-8 hover-glow">
-                    <div class="text-5xl mb-6">⚖️</div>
-                    <h3 class="text-2xl font-bold text-white mb-4">Compliance & Advisory</h3>
-                    <p class="text-gray-400 mb-6">Navigate complex regulations and ensure ethical AI usage across global jurisdictions.</p>
-                    <ul class="text-left space-y-2 text-sm text-gray-400">
-                        <li>• EU AI Act compliance</li>
-                        <li>• SOC 2 preparation</li>
-                        <li>• Executive advisory</li>
-                    </ul>
-                    <a href="#contact" class="mt-6 inline-block font-semibold text-cyan-400 hover:text-cyan-300">Learn More →</a>
+                <div class="card rounded-2xl p-8 reveal">
+                    <div class="icon-tile mb-6">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-white mb-3">Trailing Stop Engine</h3>
+                    <p class="text-slate-400 leading-relaxed">As price moves your way, the stop follows — locking in profit and moving to breakeven after TP1. Winners run; losers get cut mechanically.</p>
+                </div>
+                <div class="card rounded-2xl p-8 reveal">
+                    <div class="icon-tile mb-6">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-white mb-3">Overtrade Protection</h3>
+                    <p class="text-slate-400 leading-relaxed">A maximum of 4 trades per day and 2 per symbol. When you hit the limit, the platform locks new entries — revenge trading ends here.</p>
+                </div>
+                <div class="card rounded-2xl p-8 reveal">
+                    <div class="icon-tile mb-6">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-white mb-3">Live P&L Dashboard</h3>
+                    <p class="text-slate-400 leading-relaxed">Real-time positions, wallet balance, realized P&L and a full trade journal with CSV export. Know exactly where you stand, always.</p>
+                </div>
+                <div class="card rounded-2xl p-8 reveal">
+                    <div class="icon-tile mb-6">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-white mb-3">Secure API Connection</h3>
+                    <p class="text-slate-400 leading-relaxed">Connect with exchange API keys that can trade but never withdraw. Your funds stay on your exchange account — we never hold your money.</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Testimonials Section -->
-    <section id="testimonials" class="py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-transparent to-dark-bg/50">
-        <div class="max-w-4xl mx-auto">
-            <div class="text-center mb-16">
-                <h2 class="text-4xl md:text-5xl font-bold mb-4">Trusted by <span class="gradient-text">Leading Organizations</span></h2>
-                <p class="text-gray-400 text-xl max-w-2xl mx-auto">Don't just take our word for it</p>
-            </div>
-            <div class="grid md:grid-cols-2 gap-8">
-                <div class="glass-card rounded-3xl p-10 hover-glow">
-                    <div class="flex items-center mb-6">
-                        <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-2xl font-bold text-white mr-4">AB</div>
-                        <div>
-                            <h4 class="font-bold text-white text-xl">Amit B.</h4>
-                            <p class="text-gray-400 text-sm">CTO, FinTech Startup</p>
-                        </div>
-                    </div>
-                    <p class="text-gray-300 text-lg italic leading-relaxed">"Mind Risk Control helped us identify critical AI risks and implement a governance framework that passed our SOC 2 audit on the first try."</p>
-                </div>
-                <div class="glass-card rounded-3xl p-10 hover-glow">
-                    <div class="flex items-center mb-6">
-                        <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-400 to-pink-500 flex items-center justify-center text-2xl font-bold text-white mr-4">SC</div>
-                        <div>
-                            <h4 class="font-bold text-white text-xl">Sara C.</h4>
-                            <p class="text-gray-400 text-sm">Head of AI, Enterprise Corp</p>
-                        </div>
-                    </div>
-                    <p class="text-gray-300 text-lg italic leading-relaxed">"Their compliance advisory was instrumental in navigating EU AI Act requirements. Highly recommended for any serious AI deployment."</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- How It Works Section -->
-    <section id="how-it-works" class="py-24 px-4 sm:px-6 lg:px-8">
+    <!-- How it works -->
+    <section id="how-it-works" class="py-24 px-4 sm:px-6 lg:px-8 bg-panel/40 border-y border-line">
         <div class="max-w-6xl mx-auto">
-            <div class="text-center mb-16">
-                <h2 class="text-4xl md:text-5xl font-bold mb-4">How We <span class="gradient-text">Work</span></h2>
-                <p class="text-gray-400 text-xl max-w-2xl mx-auto">Simple, transparent process for AI risk mastery</p>
+            <div class="text-center mb-16 reveal">
+                <p class="text-sm font-semibold tracking-widest text-cyan-300 uppercase mb-3">How it works</p>
+                <h2 class="text-3xl md:text-5xl font-extrabold tracking-tight text-white mb-4">Protected in three steps</h2>
             </div>
-            <div class="grid md:grid-cols-4 gap-8 items-center">
-                <div class="text-center">
-                    <div class="w-20 h-20 mx-auto mb-6 rounded-3xl bg-cyan-500/20 flex items-center justify-center">
-                        <span class="text-2xl font-bold text-cyan-400">1</span>
-                    </div>
-                    <h3 class="text-2xl font-bold text-white mb-4">Discovery</h3>
-                    <p class="text-gray-400">Understand your AI systems, use cases, and current risk posture</p>
+            <div class="grid md:grid-cols-3 gap-6">
+                <div class="card rounded-2xl p-8 reveal">
+                    <div class="font-mono text-sm text-cyan-300 mb-4">01</div>
+                    <h3 class="text-xl font-bold text-white mb-3">Connect your exchange</h3>
+                    <p class="text-slate-400 leading-relaxed">Link your Binance Futures account with trade-only API keys in under two minutes. Funds never leave your exchange.</p>
                 </div>
-                <div class="text-center">
-                    <div class="w-20 h-20 mx-auto mb-6 rounded-3xl bg-cyan-500/20 flex items-center justify-center">
-                        <span class="text-2xl font-bold text-cyan-400">2</span>
-                    </div>
-                    <h3 class="text-2xl font-bold text-white mb-4">Assessment</h3>
-                    <p class="text-gray-400">Comprehensive risk identification across technical, ethical, regulatory dimensions</p>
+                <div class="card rounded-2xl p-8 reveal">
+                    <div class="font-mono text-sm text-cyan-300 mb-4">02</div>
+                    <h3 class="text-xl font-bold text-white mb-3">Set your trade plan</h3>
+                    <p class="text-slate-400 leading-relaxed">Pick a symbol, direction and stop level. The engine sizes the position to exactly 1% risk and stages your TP1 / TP2 exits.</p>
                 </div>
-                <div class="text-center">
-                    <div class="w-20 h-20 mx-auto mb-6 rounded-3xl bg-cyan-500/20 flex items-center justify-center">
-                        <span class="text-2xl font-bold text-cyan-400">3</span>
-                    </div>
-                    <h3 class="text-2xl font-bold text-white mb-4">Framework</h3>
-                    <p class="text-gray-400">Build governance policies, controls, and monitoring systems</p>
-                </div>
-                <div class="text-center">
-                    <div class="w-20 h-20 mx-auto mb-6 rounded-3xl bg-cyan-500/20 flex items-center justify-center">
-                        <span class="text-2xl font-bold text-cyan-400">4</span>
-                    </div>
-                    <h3 class="text-2xl font-bold text-white mb-4">Monitor</h3>
-                    <p class="text-gray-400">Continuous monitoring, reporting, and framework evolution</p>
+                <div class="card rounded-2xl p-8 reveal">
+                    <div class="font-mono text-sm text-cyan-300 mb-4">03</div>
+                    <h3 class="text-xl font-bold text-white mb-3">Trade inside guardrails</h3>
+                    <p class="text-slate-400 leading-relaxed">Orders execute with protection attached. Trailing stops, breakeven moves and daily limits run automatically, 24/7.</p>
                 </div>
             </div>
-            <div class="text-center mt-16">
-                <a href="#contact" class="btn-primary text-white px-12 py-6 rounded-2xl font-semibold text-xl">Start Your Journey</a>
+            <div class="text-center mt-14 reveal">
+                {% if current_user.is_authenticated %}
+                <a href="/exchange-connections" class="btn-primary text-white px-10 py-4 rounded-xl font-semibold text-lg inline-block">Connect your exchange</a>
+                {% else %}
+                <button onclick="openRegisterModal()" class="btn-primary text-white px-10 py-4 rounded-xl font-semibold text-lg cursor-pointer">Create your free account</button>
+                {% endif %}
             </div>
         </div>
     </section>
-    <!-- About Section -->
-    <section id="about" class="py-24 px-4 sm:px-6 lg:px-8">
-        <div class="max-w-7xl mx-auto">
-            <div class="grid md:grid-cols-2 gap-12 items-center">
-                <div>
-                <h2 class="text-4xl md:text-5xl font-bold mb-6">AI Risk Management <span class="gradient-text">for Enterprises</span></h2>
-                    <p class="text-gray-400 text-lg mb-6">We bridge the gap between cutting-edge AI innovation and regulatory compliance, providing enterprise-grade risk management frameworks that scale with your business.</p>
-                    <p class="text-gray-400 text-lg mb-8">Our battle-tested methodologies ensure your AI deployments are secure, ethical, and future-proof against evolving global regulations.</p>
-                    <div class="space-y-4">
-                        <div class="flex items-start gap-4">
-                            <div class="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center flex-shrink-0 mt-1">
-                                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                            </div>
-                            <div><h4 class="font-semibold text-white mb-1">Comprehensive Audits</h4><p class="text-gray-400">Full AI system audits covering technical, ethical, and regulatory risks</p></div>
-                        </div>
-                        <div class="flex items-start gap-4">
-                            <div class="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center flex-shrink-0 mt-1">
-                                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                            </div>
-                            <div><h4 class="font-semibold text-white mb-1">Real-Time Monitoring</h4><p class="text-gray-400">Continuous AI governance dashboard with compliance metrics</p></div>
-                        </div>
-                        <div class="flex items-start gap-4">
-                            <div class="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center flex-shrink-0 mt-1">
-                                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                            </div>
-                            <div><h4 class="font-semibold text-white mb-1">Framework Implementation</h4><p class="text-gray-400">Custom governance frameworks tailored to your organization's needs</p></div>
-                        </div>
-                    </div>
-                </div>
-                <div class="space-y-6">
-                    <div class="glass-card rounded-3xl p-8 hover-glow">
-                        <h3 class="text-2xl font-bold text-white mb-4">Our Mission</h3>
-                        <p class="text-gray-400 leading-relaxed">To make AI safe for enterprise adoption through comprehensive risk management and governance frameworks.</p>
-                    </div>
-                    <div class="glass-card rounded-3xl p-8 hover-glow">
-                        <h3 class="text-2xl font-bold text-white mb-4">Why Choose Us?</h3>
-                        <p class="text-gray-400 leading-relaxed">Built by AI governance experts with experience from Google, Microsoft, and regulatory bodies.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-    <!-- Features Section -->
-    <section id="features" class="py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-transparent to-dark-bg/50">
-        <div class="max-w-7xl mx-auto">
-    <div class="text-center mb-16">
-                <h2 class="text-4xl md:text-5xl font-bold mb-4">AI Risk <span class="gradient-text">Capabilities</span></h2>
-                <p class="text-gray-400 text-xl max-w-2xl mx-auto">Complete toolkit for enterprise AI governance</p>
-            </div>
-            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-                <div class="glass-card rounded-3xl p-8 hover-glow"><h3 class="text-2xl font-bold text-white mb-3">Risk Scoring</h3><p class="text-gray-400">Automated AI model risk scoring across 50+ risk categories with prioritized remediation.</p></div>
-                <div class="glass-card rounded-3xl p-8 hover-glow"><h3 class="text-2xl font-bold text-white mb-3">Policy Engine</h3><p class="text-gray-400">Dynamic policy management with version control and automated compliance checks.</p></div>
-                <div class="glass-card rounded-3xl p-8 hover-glow"><h3 class="text-2xl font-bold text-white mb-3">Control Library</h3><p class="text-gray-400">300+ pre-built technical, administrative, and physical controls mapped to frameworks.</p></div>
-                <div class="glass-card rounded-3xl p-8 hover-glow"><h3 class="text-2xl font-bold text-white mb-3">Risk Dashboard</h3><p class="text-gray-400">Real-time visualization of risk posture, control effectiveness, and compliance status.</p></div>
-                <div class="glass-card rounded-3xl p-8 hover-glow"><h3 class="text-2xl font-bold text-white mb-3">Alert System</h3><p class="text-gray-400">Intelligent risk alerts with automated mitigation workflows and escalation paths.</p></div>
-                <div class="glass-card rounded-3xl p-8 hover-glow"><h3 class="text-2xl font-bold text-white mb-3">API Integration</h3><p class="text-gray-400">Seamless integration with your CI/CD pipelines, MLOps platforms, and compliance tools.</p></div>
-            </div>
-        </div>
-    </section>
-    <!-- Dashboard Preview Section -->
-    <section id="dashboard" class="py-24 px-4 sm:px-6 lg:px-8 bg-dark-bg">
-        <div class="max-w-7xl mx-auto">
-            <div class="text-center mb-16">
-                <h2 class="text-4xl md:text-5xl font-bold mb-4">Your <span class="gradient-text">Risk Dashboard</span></h2>
-                <p class="text-gray-400 text-xl max-w-2xl mx-auto">Executive overview of your AI governance posture</p>
-            </div>
-            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-                <div class="dashboard-preview-card rounded-2xl p-6"><h3 class="text-xl font-bold text-white mb-3">Risk Scoring</h3><ul class="space-y-2 text-gray-400"><li>✓ Model risk scores</li><li>✓ Framework coverage</li><li>✓ Residual risk levels</li></ul></div>
-                <div class="dashboard-preview-card rounded-2xl p-6"><h3 class="text-xl font-bold text-white mb-3">Compliance Metrics</h3><ul class="space-y-2 text-gray-400"><li>✓ Control effectiveness</li><li>✓ Regulatory alignment</li><li>✓ Audit readiness score</li></ul></div>
-                <div class="dashboard-preview-card rounded-2xl p-6"><h3 class="text-xl font-bold text-white mb-3">Policy Library</h3><ul class="space-y-2 text-gray-400"><li>✓ 500+ policies</li><li>✓ Auto-applicability</li><li>✓ Version control</li></ul></div>
-                <div class="dashboard-preview-card rounded-2xl p-6"><h3 class="text-xl font-bold text-white mb-3">Regulation Tracker</h3><ul class="space-y-2 text-gray-400"><li>✓ Global coverage</li><li>✓ Auto-updates</li><li>✓ Impact analysis</li></ul></div>
-                <div class="dashboard-preview-card rounded-2xl p-6"><h3 class="text-xl font-bold text-white mb-3">Risk Heatmap</h3><ul class="space-y-2 text-gray-400"><li>✓ Visual risk overview</li><li>✓ Trend analysis</li><li>✓ Export reports</li></ul></div>
-                <div class="dashboard-preview-card rounded-2xl p-6"><h3 class="text-xl font-bold text-white mb-3">Control Testing</h3><ul class="space-y-2 text-gray-400"><li>✓ Automated testing</li><li>✓ Gap analysis</li><li>✓ Remediation tracking</li></ul></div>
-            </div>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
-                <div class="stat-card rounded-xl p-4 text-center"><div class="text-2xl font-bold gradient-text">50+</div><div class="text-sm text-gray-400">Clients Served</div></div>
-                <div class="stat-card rounded-xl p-4 text-center"><div class="text-2xl font-bold gradient-text">99.9%</div><div class="text-sm text-gray-400">Compliance Rate</div></div>
-                <div class="stat-card rounded-xl p-4 text-center"><div class="text-2xl font-bold gradient-text">12 weeks</div><div class="text-sm text-gray-400">Avg Deployment</div></div>
-                <div class="stat-card rounded-xl p-4 text-center"><div class="text-2xl font-bold gradient-text">24/7</div><div class="text-sm text-gray-400">Support</div></div>
-            </div>
-        </div>
-    </section>
-    <!-- Pricing Section -->
+
+    <!-- Pricing -->
     <section id="pricing" class="py-24 px-4 sm:px-6 lg:px-8">
-        <div class="max-w-7xl mx-auto">
-            <div class="text-center mb-16">
-                <h2 class="text-4xl md:text-5xl font-bold mb-4">Flexible <span class="gradient-text">Pricing Plans</span></h2>
-                <p class="text-gray-400 text-xl max-w-2xl mx-auto">Choose the plan that fits your trading style</p>
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-16 reveal">
+                <p class="text-sm font-semibold tracking-widest text-cyan-300 uppercase mb-3">Pricing</p>
+                <h2 class="text-3xl md:text-5xl font-extrabold tracking-tight text-white mb-4">Less than one bad trade</h2>
+                <p class="text-slate-400 text-lg max-w-2xl mx-auto">One prevented mistake pays for a year of protection.</p>
             </div>
-            <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-                <div class="glass-card rounded-3xl p-8 hover-glow">
-                    <div class="text-center">
-    <h3 class="text-lg font-semibold text-gray-400 uppercase tracking-wider mb-4">Discovery</h3>
-                        <div class="mb-6"><span class="text-5xl font-bold text-white">Free</span></div>
-                        <ul class="text-left space-y-4 mb-8">
-                            <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-gray-300">30-min consultation</span></li>
-                            <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-gray-300">Risk landscape overview</span></li>
-                            <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-gray-300">Roadmap discussion</span></li>
-                        </ul>
-                        <a href="{{ url_for('index') }}" class="w-full block bg-transparent border-2 border-gray-600 hover:border-cyan-400 text-white px-6 py-3 rounded-lg font-semibold transition-all text-center">Join Free</a>
-                    </div>
+            <div class="grid md:grid-cols-3 gap-6 items-stretch">
+                <!-- Free -->
+                <div class="card rounded-2xl p-8 flex flex-col reveal">
+                    <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest mb-5">Starter</h3>
+                    <div class="mb-2"><span class="text-4xl font-extrabold text-white">Free</span></div>
+                    <p class="text-sm text-slate-500 mb-7">Explore the platform</p>
+                    <ul class="space-y-3.5 mb-8 flex-1">
+                        <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span class="text-slate-300 text-sm">Create an account</span></li>
+                        <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span class="text-slate-300 text-sm">Preview the risk dashboard</span></li>
+                        <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span class="text-slate-300 text-sm">Email support</span></li>
+                    </ul>
+                    {% if current_user.is_authenticated %}
+                    <a href="/index" class="btn-ghost text-white px-6 py-3 rounded-xl font-semibold text-center">Open Dashboard</a>
+                    {% else %}
+                    <button onclick="openRegisterModal()" class="btn-ghost text-white px-6 py-3 rounded-xl font-semibold cursor-pointer">Sign up free</button>
+                    {% endif %}
                 </div>
-                <div class="glass-card rounded-3xl p-8 gradient-border hover-glow transform scale-105">
-                    <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2"><span class="bg-gradient-to-r from-cyan-500 to-purple-500 text-white px-4 py-1 rounded-full text-sm font-semibold">POPULAR</span></div>
-                    <div class="text-center">
-<h3 class="text-lg font-semibold text-gray-400 uppercase tracking-wider mb-4">Assessment</h3>
-                        <div class="mb-6"><span class="text-5xl font-bold gradient-text">₹25,000</span></div>
-                        <ul class="text-left space-y-4 mb-8">
-                            <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-gray-300">Full AI portfolio audit</span></li>
-                            <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-gray-300">Risk register creation</span></li>
-                            <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-gray-300">Prioritized roadmap</span></li>
-                            <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-gray-300">Executive presentation</span></li>
-                            <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-gray-300">Detailed report</span></li>
-                        </ul>
-                        <a href="/subscribe" class="w-full block btn-primary text-white px-6 py-3 rounded-lg font-semibold text-center">Activate Pro</a>
-                    </div>
+                <!-- Monthly -->
+                <div class="card rounded-2xl p-8 flex flex-col relative reveal" style="border-color: rgba(34,211,238,0.45);">
+                    <div class="absolute -top-3.5 left-1/2 -translate-x-1/2"><span class="bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-4 py-1 rounded-full text-xs font-bold tracking-wide">MOST POPULAR</span></div>
+                    <h3 class="text-sm font-semibold text-cyan-300 uppercase tracking-widest mb-5">Pro Monthly</h3>
+                    <div class="mb-2"><span class="text-4xl font-extrabold text-white">₹499</span><span class="text-slate-500 font-medium">/month</span></div>
+                    <p class="text-sm text-slate-500 mb-7">Flexible, cancel anytime</p>
+                    <ul class="space-y-3.5 mb-8 flex-1">
+                        <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span class="text-slate-300 text-sm">Live trading with 1% risk engine</span></li>
+                        <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span class="text-slate-300 text-sm">Automated TP1 / TP2 / SL orders</span></li>
+                        <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span class="text-slate-300 text-sm">Trailing stops & breakeven moves</span></li>
+                        <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span class="text-slate-300 text-sm">Overtrade limits & live P&L journal</span></li>
+                    </ul>
+                    <a href="/subscribe" class="btn-primary text-white px-6 py-3 rounded-xl font-semibold text-center">Activate Pro</a>
                 </div>
-                <div class="glass-card rounded-3xl p-8 hover-glow">
-                    <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2"><span class="bg-green-500 text-white px-4 py-1 rounded-full text-sm font-semibold">SAVE 17%</span></div>
-                    <div class="text-center">
-    <h3 class="text-lg font-semibold text-gray-400 uppercase tracking-wider mb-4">Enterprise</h3>
-                        <div class="mb-6"><span class="text-5xl font-bold text-white">Custom</span></div>
-                        <ul class="text-left space-y-4 mb-8">
-                            <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-gray-300">Everything in Assessment</span></li>
-                            <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-gray-300">Full framework implementation</span></li>
-                            <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-gray-300">Dedicated consultant</span></li>
-                            <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-gray-300">Ongoing support</span></li>
-                        </ul>
-                        <a href="/subscribe" class="w-full block btn-primary text-white px-6 py-3 rounded-lg font-semibold text-center">Activate Pro</a>
-                    </div>
+                <!-- Yearly -->
+                <div class="card rounded-2xl p-8 flex flex-col relative reveal">
+                    <div class="absolute -top-3.5 left-1/2 -translate-x-1/2"><span class="bg-emerald-500 text-white px-4 py-1 rounded-full text-xs font-bold tracking-wide">SAVE ₹1,000</span></div>
+                    <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest mb-5">Pro Yearly</h3>
+                    <div class="mb-2"><span class="text-4xl font-extrabold text-white">₹5,000</span><span class="text-slate-500 font-medium">/year</span></div>
+                    <p class="text-sm text-slate-500 mb-7">Two months free vs monthly</p>
+                    <ul class="space-y-3.5 mb-8 flex-1">
+                        <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span class="text-slate-300 text-sm">Everything in Pro Monthly</span></li>
+                        <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span class="text-slate-300 text-sm">Locked-in annual price</span></li>
+                        <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span class="text-slate-300 text-sm">Priority support</span></li>
+                        <li class="flex items-start gap-3"><svg class="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span class="text-slate-300 text-sm">Early access to new exchanges</span></li>
+                    </ul>
+                    <a href="/subscribe" class="btn-primary text-white px-6 py-3 rounded-xl font-semibold text-center">Activate Yearly</a>
                 </div>
             </div>
-            <div class="text-center mt-12">
-                <p class="text-gray-400"><svg class="w-5 h-5 inline-block text-green-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>30-day money-back guarantee on all paid plans</p>
-            </div>
+            <p class="text-center text-sm text-slate-500 mt-10">Secure payments via Razorpay · UPI, cards & netbanking accepted</p>
         </div>
     </section>
-    <!-- Contact Section -->
-    <section id="contact" class="py-24 px-4 sm:px-6 lg:px-8">
+
+    <!-- Contact -->
+    <section id="contact" class="py-24 px-4 sm:px-6 lg:px-8 bg-panel/40 border-t border-line">
         <div class="max-w-7xl mx-auto">
-            <div class="grid md:grid-cols-2 gap-12">
-                <div>
-                    <h2 class="text-4xl md:text-5xl font-bold mb-6">Get in <span class="gradient-text">Touch</span></h2>
-                    <p class="text-gray-400 text-lg mb-8">Questions about the API or Enterprise plans? Drop us a message.</p>
+            <div class="grid md:grid-cols-2 gap-14">
+                <div class="reveal">
+                    <p class="text-sm font-semibold tracking-widest text-cyan-300 uppercase mb-3">Contact</p>
+                    <h2 class="text-3xl md:text-5xl font-extrabold tracking-tight text-white mb-6">Talk to us</h2>
+                    <p class="text-slate-400 text-lg mb-10">Questions about setup, exchanges or Pro plans? We usually reply within a business day.</p>
                     <div class="space-y-6">
-                                         <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center flex-shrink-0"><svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg></div>
-                            <div><h4 class="font-semibold text-white mb-1">Email</h4><p class="text-gray-400">support@mindriskcontrol.com</p></div>
+                        <div class="flex items-start gap-4">
+                            <div class="icon-tile flex-shrink-0"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg></div>
+                            <div><h4 class="font-semibold text-white mb-0.5">Email</h4><p class="text-slate-400">support@mindriskcontrol.com</p></div>
                         </div>
                         <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center flex-shrink-0"><svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path></svg></div>
-                            <div><h4 class="font-semibold text-white mb-1">Location</h4><p class="text-gray-400">Financial District, Mumbai, India</p></div>
+                            <div class="icon-tile flex-shrink-0"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg></div>
+                            <div><h4 class="font-semibold text-white mb-0.5">Location</h4><p class="text-slate-400">Financial District, Mumbai, India</p></div>
                         </div>
                         <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center flex-shrink-0"><svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
-                            <div><h4 class="font-semibold text-white mb-1">Business Hours</h4><p class="text-gray-400">Monday - Friday: 9:00 AM - 6:00 PM IST</p></div>
+                            <div class="icon-tile flex-shrink-0"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+                            <div><h4 class="font-semibold text-white mb-0.5">Business hours</h4><p class="text-slate-400">Monday – Friday, 9:00 AM – 6:00 PM IST</p></div>
                         </div>
                     </div>
                 </div>
-                <div class="glass-card rounded-3xl p-8">
-                    <form id="contact-form" class="space-y-6">
-                        <div class="grid md:grid-cols-2 gap-6">
-                            <div><label class="block text-sm font-medium text-gray-300 mb-2">Name</label><input type="text" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="Your name"></div>
-                            <div><label class="block text-sm font-medium text-gray-300 mb-2">Email</label><input type="email" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="your@email.com"></div>
+                <div class="card rounded-2xl p-8 reveal">
+                    <form id="contact-form" class="space-y-5">
+                        <div class="grid md:grid-cols-2 gap-5">
+                            <div><label class="block text-sm font-medium text-slate-300 mb-2">Name</label><input type="text" required class="field" placeholder="Your name"></div>
+                            <div><label class="block text-sm font-medium text-slate-300 mb-2">Email</label><input type="email" required class="field" placeholder="you@email.com"></div>
                         </div>
-                        <div><label class="block text-sm font-medium text-gray-300 mb-2">Subject</label><input type="text" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="How can we help?"></div>
-                        <div><label class="block text-sm font-medium text-gray-300 mb-2">Message</label><textarea required rows="5" class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400 resize-none" placeholder="Tell us more about your inquiry..."></textarea></div>
-                        <button type="submit" class="w-full btn-primary text-white px-6 py-3 rounded-lg font-semibold">Send Message</button>
+                        <div><label class="block text-sm font-medium text-slate-300 mb-2">Subject</label><input type="text" required class="field" placeholder="How can we help?"></div>
+                        <div><label class="block text-sm font-medium text-slate-300 mb-2">Message</label><textarea required rows="5" class="field resize-none" placeholder="Tell us more..."></textarea></div>
+                        <button type="submit" class="w-full btn-primary text-white px-6 py-3.5 rounded-xl font-semibold cursor-pointer">Send message</button>
                     </form>
                 </div>
             </div>
         </div>
     </section>
+
     <!-- Footer -->
-    <footer class="bg-gradient-to-b from-dark-bg to-black border-t border-gray-800 py-16 px-4 sm:px-6 lg:px-8">
+    <footer class="border-t border-line py-16 px-4 sm:px-6 lg:px-8 bg-ink">
         <div class="max-w-7xl mx-auto">
-            <div class="grid md:grid-cols-4 gap-12 mb-12">
+            <div class="grid md:grid-cols-4 gap-12 mb-14">
                 <div class="md:col-span-1">
-                    <h3 class="text-2xl font-bold gradient-text mb-4">Mind Risk Control</h3>
-    <p class="text-gray-400 mb-6">AI Risk & Governance platform for modern enterprises.</p>
-                    <div class="flex gap-4">
-                        <a href="#" class="w-10 h-10 rounded-full bg-gray-800 hover:bg-cyan-500/20 flex items-center justify-center"><svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z"/></svg></a>
-                        <a href="#" class="w-10 h-10 rounded-full bg-gray-800 hover:bg-cyan-500/20 flex items-center justify-center"><svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg></a>
-                        <a href="#" class="w-10 h-10 rounded-full bg-gray-800 hover:bg-cyan-500/20 flex items-center justify-center"><svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg></a>
+                    <h3 class="text-xl font-bold text-white mb-3">MindRiskControl&trade;</h3>
+                    <p class="text-slate-500 text-sm leading-relaxed mb-6">Institutional-grade risk management for retail traders. Discipline, automated.</p>
+                    <div class="flex gap-3">
+                        <a href="#" aria-label="Twitter" class="w-9 h-9 rounded-lg bg-slate-800/60 hover:bg-cyan-500/15 border border-line flex items-center justify-center transition-colors"><svg class="w-4 h-4 text-slate-400" fill="currentColor" viewBox="0 0 24 24"><path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z"/></svg></a>
+                        <a href="#" aria-label="GitHub" class="w-9 h-9 rounded-lg bg-slate-800/60 hover:bg-cyan-500/15 border border-line flex items-center justify-center transition-colors"><svg class="w-4 h-4 text-slate-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg></a>
+                        <a href="#" aria-label="LinkedIn" class="w-9 h-9 rounded-lg bg-slate-800/60 hover:bg-cyan-500/15 border border-line flex items-center justify-center transition-colors"><svg class="w-4 h-4 text-slate-400" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg></a>
                     </div>
                 </div>
-                <div><h4 class="font-semibold text-white mb-4">Platform</h4><ul class="space-y-3"><li><a href="#features" class="text-gray-400 hover:text-cyan-400">Features</a></li><li><a href="#pricing" class="text-gray-400 hover:text-cyan-400">Pricing</a></li><li><a href="#" class="text-gray-400 hover:text-cyan-400">API Documentation</a></li><li><a href="#" class="text-gray-400 hover:text-cyan-400">System Status</a></li></ul></div>
-                <div><h4 class="font-semibold text-white mb-4">Company</h4><ul class="space-y-3"><li><a href="#about" class="text-gray-400 hover:text-cyan-400">About Us</a></li><li><a href="#" class="text-gray-400 hover:text-cyan-400">Blog</a></li><li><a href="#" class="text-gray-400 hover:text-cyan-400">Careers</a></li><li><a href="#contact" class="text-gray-400 hover:text-cyan-400">Contact</a></li></ul></div>
-                <div><h4 class="font-semibold text-white mb-4">Legal</h4><ul class="space-y-3"><li><a href="#" class="text-gray-400 hover:text-cyan-400">Privacy Policy</a></li><li><a href="#" class="text-gray-400 hover:text-cyan-400">Terms of Service</a></li><li><a href="#" class="text-gray-400 hover:text-cyan-400">Risk Disclosure</a></li><li><a href="#" class="text-gray-400 hover:text-cyan-400">Cookie Policy</a></li></ul></div>
+                <div><h4 class="font-semibold text-white mb-4 text-sm uppercase tracking-wider">Platform</h4><ul class="space-y-3 text-sm"><li><a href="#features" class="text-slate-400 hover:text-cyan-300 transition-colors">Features</a></li><li><a href="#how-it-works" class="text-slate-400 hover:text-cyan-300 transition-colors">How it works</a></li><li><a href="#pricing" class="text-slate-400 hover:text-cyan-300 transition-colors">Pricing</a></li><li><a href="/exchange-connections" class="text-slate-400 hover:text-cyan-300 transition-colors">Exchange connections</a></li></ul></div>
+                <div><h4 class="font-semibold text-white mb-4 text-sm uppercase tracking-wider">Company</h4><ul class="space-y-3 text-sm"><li><a href="/about" class="text-slate-400 hover:text-cyan-300 transition-colors">About us</a></li><li><a href="#contact" class="text-slate-400 hover:text-cyan-300 transition-colors">Contact</a></li><li><a href="/contact" class="text-slate-400 hover:text-cyan-300 transition-colors">Support</a></li></ul></div>
+                <div><h4 class="font-semibold text-white mb-4 text-sm uppercase tracking-wider">Legal</h4><ul class="space-y-3 text-sm"><li><a href="/privacy" class="text-slate-400 hover:text-cyan-300 transition-colors">Privacy policy</a></li><li><a href="/terms" class="text-slate-400 hover:text-cyan-300 transition-colors">Terms of service</a></li><li><a href="/terms" class="text-slate-400 hover:text-cyan-300 transition-colors">Risk disclosure</a></li></ul></div>
             </div>
-            <div class="glass-card rounded-2xl p-8 mb-12">
-                <div class="md:flex md:items-center md:justify-between">
-                <p class="text-gray-400">Get weekly AI governance insights and updates</p>
-                    <form class="flex gap-3"><input type="email" placeholder="Enter your email" class="px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400"><button type="submit" class="btn-primary text-white px-6 py-3 rounded-lg font-semibold whitespace-nowrap">Subscribe</button></form>
-                </div>
+            <div class="card rounded-2xl p-6 mb-12">
+                <p class="text-xs text-slate-500 leading-relaxed"><span class="font-semibold text-slate-400">Risk disclosure:</span> Trading cryptocurrency derivatives involves substantial risk of loss and is not suitable for every investor. MindRiskControl provides risk-management tooling only; it does not provide investment advice, and past performance does not guarantee future results. Never trade with money you cannot afford to lose.</p>
             </div>
-            <div class="pt-8 border-t border-gray-800 text-center">
-                <p class="text-gray-500">© 2024 Mind Risk Control. All rights reserved.</p>
-                <p class="text-gray-600 text-sm mt-2">Leading AI Risk & Governance Solutions.</p>
+            <div class="pt-8 border-t border-line flex flex-col md:flex-row items-center justify-between gap-3">
+                <p class="text-slate-600 text-sm">© 2026 MindRiskControl. All rights reserved.</p>
+                <p class="text-slate-600 text-sm">Built for traders who take risk seriously.</p>
             </div>
         </div>
     </footer>
-    <script>
-        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
-        const mobileMenu = document.getElementById('mobile-menu');
-        mobileMenuBtn.addEventListener('click', () => { mobileMenu.classList.toggle('active'); });
-        mobileMenu.querySelectorAll('a').forEach(link => { link.addEventListener('click', () => { mobileMenu.classList.remove('active'); }); });
-        const navbar = document.getElementById('navbar');
-        window.addEventListener('scroll', () => {
-            if (window.pageYOffset > 100) { navbar.style.background = 'rgba(11, 15, 25, 0.95)'; navbar.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.3)'; }
-            else { navbar.style.background = 'rgba(11, 15, 25, 0.8)'; navbar.style.boxShadow = 'none'; }
-        });
-        const sections = document.querySelectorAll('section[id]');
-        const navLinks = document.querySelectorAll('.nav-link');
-        window.addEventListener('scroll', () => {
-            let current = '';
-            sections.forEach(section => { if (pageYOffset >= section.offsetTop - 200) current = section.getAttribute('id'); });
-            navLinks.forEach(link => { link.classList.remove('text-cyan-400'); link.classList.add('text-gray-300'); if (link.getAttribute('href') === `#${current}`) { link.classList.remove('text-gray-300'); link.classList.add('text-cyan-400'); } });
-        });
-        document.getElementById('contact-form').addEventListener('submit', (e) => { e.preventDefault(); alert('Thank you for your message!'); document.getElementById('contact-form').reset(); });
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => { anchor.addEventListener('click', (e) => { e.preventDefault(); const target = document.querySelector(this.getAttribute('href')); if (target) target.scrollIntoView({ behavior: 'smooth' }); }); });
-        const observerOptions = { threshold: 0.1, rootMargin: '0px 0px -50px 0px' };
-        const observer = new IntersectionObserver((entries) => { entries.forEach(entry => { if (entry.isIntersecting) { entry.target.style.opacity = '1'; entry.target.style.transform = 'translateY(0)'; } }); }, observerOptions);
-        document.querySelectorAll('.glass-card').forEach(card => { card.style.opacity = '0'; card.style.transform = 'translateY(20px)'; card.style.transition = 'opacity 0.6s ease, transform 0.6s ease'; observer.observe(card); });
-        const createParticle = () => {
-            const particle = document.createElement('div');
-            particle.style.position = 'absolute'; particle.style.width = '2px'; particle.style.height = '2px';
-            particle.style.background = 'rgba(6, 182, 212, 0.5)'; particle.style.borderRadius = '50%';
-            particle.style.left = Math.random() * 100 + '%'; particle.style.top = Math.random() * 100 + '%';
-            particle.style.pointerEvents = 'none'; particle.style.animation = `float ${3 + Math.random() * 3}s ease-in-out infinite`;
-            document.querySelector('#hero').appendChild(particle);
-            setTimeout(() => particle.remove(), 6000);
-        };
-        setInterval(createParticle, 300);
-    </script>
-    <script>
-(function(){if(!window.chatbase||window.chatbase("getState")!=="initialized"){window.chatbase=(...arguments)=>{if(!window.chatbase.q){window.chatbase.q=[]}window.chatbase.q.push(arguments)};window.chatbase=new Proxy(window.chatbase,{get(target,prop){if(prop==="q"){return target.q}return(...args)=>target(prop,...args)}})}const onLoad=function(){const script=document.createElement("script");script.src="https://www.chatbase.co/embed.min.js";script.id="pLc3jMAGYgcU-_iIwhJlJ";script.domain="www.chatbase.co";document.body.appendChild(script)};if(document.readyState==="complete"){onLoad()}else{window.addEventListener("load",onLoad)}})();
-</script>
+
     <!-- Login Modal -->
     <div id="loginModal" class="modal">
         <div class="modal-content">
             <button class="modal-close" onclick="closeLoginModal()">&times;</button>
-            <h2 class="text-3xl font-bold text-white mb-6 gradient-text">Login</h2>
+            <h2 class="text-2xl font-bold text-white mb-1">Welcome back</h2>
+            <p class="text-sm text-slate-500 mb-6">Log in to your trading dashboard</p>
             <form id="loginForm" class="space-y-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-2">Email</label>
-                    <input type="email" name="email" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="your@email.com">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Email</label>
+                    <input type="email" name="email" required class="field" placeholder="you@email.com">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-2">Password</label>
-                    <input type="password" name="password" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="Your password">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Password</label>
+                    <input type="password" name="password" required class="field" placeholder="Your password">
                 </div>
                 <div class="flex items-center gap-2">
-                    <input type="checkbox" id="remember" name="remember" class="w-4 h-4">
-                    <label for="remember" class="text-sm text-gray-400">Remember me</label>
+                    <input type="checkbox" id="remember" name="remember" class="w-4 h-4 accent-cyan-500">
+                    <label for="remember" class="text-sm text-slate-400">Remember me</label>
                 </div>
-                <button type="submit" class="w-full btn-primary text-white px-4 py-3 rounded-lg font-semibold">Login</button>
+                <button type="submit" class="w-full btn-primary text-white px-4 py-3 rounded-xl font-semibold cursor-pointer">Log in</button>
             </form>
             <div class="mt-6 text-center">
-                <p class="text-gray-400">Don't have an account? <button onclick="switchToRegister()" class="text-cyan-400 hover:text-cyan-300 font-semibold">Register here</button></p>
+                <p class="text-sm text-slate-400">Don't have an account? <button onclick="switchToRegister()" class="text-cyan-300 hover:text-cyan-200 font-semibold bg-transparent border-none cursor-pointer">Create one</button></p>
             </div>
         </div>
     </div>
@@ -630,112 +574,126 @@
     <div id="registerModal" class="modal">
         <div class="modal-content">
             <button class="modal-close" onclick="closeRegisterModal()">&times;</button>
-            <h2 class="text-3xl font-bold text-white mb-6 gradient-text">Create Account</h2>
+            <h2 class="text-2xl font-bold text-white mb-1">Create your account</h2>
+            <p class="text-sm text-slate-500 mb-6">Start trading with guardrails in minutes</p>
             <form id="registerForm" class="space-y-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-2">Username</label>
-                    <input type="text" name="username" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="Choose a username">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Username</label>
+                    <input type="text" name="username" required class="field" placeholder="Choose a username">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-2">Email</label>
-                    <input type="email" name="email" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="your@email.com">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Email</label>
+                    <input type="email" name="email" required class="field" placeholder="you@email.com">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-2">Password</label>
-                    <input type="password" name="password" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="Create a password">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Password</label>
+                    <input type="password" name="password" required class="field" placeholder="Create a password">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-2">Confirm Password</label>
-                    <input type="password" name="confirm_password" required class="w-full px-4 py-3 bg-dark-bg border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-400" placeholder="Confirm password">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Confirm password</label>
+                    <input type="password" name="confirm_password" required class="field" placeholder="Confirm password">
                 </div>
-                <button type="submit" class="w-full btn-primary text-white px-4 py-3 rounded-lg font-semibold">Register</button>
+                <button type="submit" class="w-full btn-primary text-white px-4 py-3 rounded-xl font-semibold cursor-pointer">Create account</button>
             </form>
             <div class="mt-6 text-center">
-                <p class="text-gray-400">Already have an account? <button onclick="switchToLogin()" class="text-cyan-400 hover:text-cyan-300 font-semibold">Login here</button></p>
+                <p class="text-sm text-slate-400">Already have an account? <button onclick="switchToLogin()" class="text-cyan-300 hover:text-cyan-200 font-semibold bg-transparent border-none cursor-pointer">Log in</button></p>
             </div>
         </div>
     </div>
 
     <script>
-        // Modal Management
+        // Mobile menu
+        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+        const mobileMenu = document.getElementById('mobile-menu');
+        mobileMenuBtn.addEventListener('click', () => { mobileMenu.classList.toggle('active'); });
+        mobileMenu.querySelectorAll('a, button').forEach(link => { link.addEventListener('click', () => { mobileMenu.classList.remove('active'); }); });
+
+        // Active nav link on scroll
+        const sections = document.querySelectorAll('section[id]');
+        const navLinks = document.querySelectorAll('.nav-link');
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => { if (pageYOffset >= section.offsetTop - 200) current = section.getAttribute('id'); });
+            navLinks.forEach(link => {
+                link.classList.remove('text-cyan-300'); link.classList.add('text-slate-400');
+                if (link.getAttribute('href') === `#${current}`) { link.classList.remove('text-slate-400'); link.classList.add('text-cyan-300'); }
+            });
+        });
+
+        // Contact form
+        document.getElementById('contact-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            alert('Thank you for your message! We will get back to you soon.');
+            document.getElementById('contact-form').reset();
+        });
+
+        // Scroll reveal
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('in'); });
+        }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+        // Modal management
         function openLoginModal() { document.getElementById('loginModal').classList.add('active'); document.body.style.overflow = 'hidden'; }
         function closeLoginModal() { document.getElementById('loginModal').classList.remove('active'); document.body.style.overflow = 'auto'; }
         function openRegisterModal() { document.getElementById('registerModal').classList.add('active'); document.body.style.overflow = 'hidden'; }
         function closeRegisterModal() { document.getElementById('registerModal').classList.remove('active'); document.body.style.overflow = 'auto'; }
         function switchToLogin() { closeRegisterModal(); openLoginModal(); }
         function switchToRegister() { closeLoginModal(); openRegisterModal(); }
-        
-        // Logout Handler
-        function handleLogout() {
-            window.location.href = '/logout';
-        }
-        
-        // Close modal when clicking outside
+        function handleLogout() { window.location.href = '/logout'; }
+
         document.getElementById('loginModal').addEventListener('click', (e) => { if (e.target.id === 'loginModal') closeLoginModal(); });
         document.getElementById('registerModal').addEventListener('click', (e) => { if (e.target.id === 'registerModal') closeRegisterModal(); });
-        
-        // Login Form Submission
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeLoginModal(); closeRegisterModal(); } });
+
+        // Login form submission
         document.getElementById('loginForm').addEventListener('submit', (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
             const submitBtn = e.target.querySelector('button[type="submit"]');
             submitBtn.disabled = true;
             submitBtn.textContent = 'Logging in...';
-            
-            fetch('/login', { 
-                method: 'POST', 
+
+            fetch('/login', {
+                method: 'POST',
                 body: new URLSearchParams(formData),
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
                 credentials: 'same-origin'
             })
             .then(res => res.json().then(data => ({status: res.status, data: data})))
             .then(({status, data}) => {
                 if (data.success) {
                     closeLoginModal();
-                    setTimeout(() => {
-                        window.location.href = data.redirect || '/index';
-                    }, 300);
+                    setTimeout(() => { window.location.href = data.redirect || '/index'; }, 300);
                 } else {
                     throw new Error(data.message || 'Login failed');
                 }
             })
-            .catch(err => { 
+            .catch(err => {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Login';
+                submitBtn.textContent = 'Log in';
                 alert('Login failed: ' + err.message);
             });
         });
-        
-        // Register Form Submission
+
+        // Register form submission
         document.getElementById('registerForm').addEventListener('submit', (e) => {
             e.preventDefault();
             const password = e.target.querySelector('input[name="password"]').value;
             const confirmPassword = e.target.querySelector('input[name="confirm_password"]').value;
-            
-            // Validate passwords match
-            if (password !== confirmPassword) {
-                alert('Passwords do not match!');
-                return;
-            }
-            
-            if (password.length < 6) {
-                alert('Password must be at least 6 characters!');
-                return;
-            }
-            
+
+            if (password !== confirmPassword) { alert('Passwords do not match!'); return; }
+            if (password.length < 6) { alert('Password must be at least 6 characters!'); return; }
+
             const formData = new FormData(e.target);
             const submitBtn = e.target.querySelector('button[type="submit"]');
             submitBtn.disabled = true;
-            submitBtn.textContent = 'Registering...';
-            
-            fetch('/register', { 
-                method: 'POST', 
+            submitBtn.textContent = 'Creating account...';
+
+            fetch('/register', {
+                method: 'POST',
                 body: new URLSearchParams(formData),
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
                 credentials: 'same-origin'
             })
             .then(res => res.json().then(data => ({status: res.status, data: data})))
@@ -746,20 +704,20 @@
                     switchToLogin();
                     document.getElementById('loginForm').reset();
                     submitBtn.disabled = false;
-                    submitBtn.textContent = 'Register';
+                    submitBtn.textContent = 'Create account';
                 } else {
                     throw new Error(data.message || 'Registration failed');
                 }
             })
-            .catch(err => { 
+            .catch(err => {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Register';
+                submitBtn.textContent = 'Create account';
                 alert('Error: ' + err.message);
             });
         });
-        
-        // Close modals with Escape key
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeLoginModal(); closeRegisterModal(); } });
+    </script>
+    <script>
+(function(){if(!window.chatbase||window.chatbase("getState")!=="initialized"){window.chatbase=(...arguments)=>{if(!window.chatbase.q){window.chatbase.q=[]}window.chatbase.q.push(arguments)};window.chatbase=new Proxy(window.chatbase,{get(target,prop){if(prop==="q"){return target.q}return(...args)=>target(prop,...args)}})}const onLoad=function(){const script=document.createElement("script");script.src="https://www.chatbase.co/embed.min.js";script.id="pLc3jMAGYgcU-_iIwhJlJ";script.domain="www.chatbase.co";document.body.appendChild(script)};if(document.readyState==="complete"){onLoad()}else{window.addEventListener("load",onLoad)}})();
     </script>
 </body>
 </html>
