@@ -16,6 +16,7 @@ import io
 import uuid
 import razorpay
 import time
+import traceback
 
 # Load environment variables
 load_dotenv()
@@ -819,19 +820,73 @@ def index():
         wallet_debug=wallet_debug
     )
 
-def ensure_sqlite_trade_positions_columns():
-    """SQLite: add columns introduced after first deploy (create_all does not alter)."""
+def sync_sqlite_schema():
+    """Create missing tables and add missing columns for ALL models.
+
+    db.create_all() never alters existing tables, so a database created by an
+    older version of the code is missing newer columns and every query on
+    those models 500s. This runs at import time (so it also runs under
+    gunicorn, not just `python app.py`) and adds whatever is missing.
+    """
     try:
+        db.create_all()
         from sqlalchemy import text
         with db.engine.begin() as conn:
-            r = conn.execute(text("PRAGMA table_info(trade_positions)"))
-            cols = [row[1] for row in r.fetchall()]
-            if "opening_order_id" not in cols:
-                conn.execute(text("ALTER TABLE trade_positions ADD COLUMN opening_order_id VARCHAR(64)"))
-            if "virtual_guard_active" not in cols:
-                conn.execute(text("ALTER TABLE trade_positions ADD COLUMN virtual_guard_active BOOLEAN DEFAULT 0"))
+            for table in db.metadata.sorted_tables:
+                rows = conn.execute(text(f'PRAGMA table_info("{table.name}")')).fetchall()
+                existing = {row[1] for row in rows}
+                if not existing:
+                    continue  # create_all just made it, nothing to patch
+                for col in table.columns:
+                    if col.name in existing:
+                        continue
+                    coltype = col.type.compile(db.engine.dialect)
+                    ddl = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {coltype}'
+                    default = getattr(col.default, 'arg', None)
+                    if default is not None and not callable(default):
+                        if isinstance(default, bool):
+                            ddl += f" DEFAULT {1 if default else 0}"
+                        elif isinstance(default, (int, float)):
+                            ddl += f" DEFAULT {default}"
+                        elif isinstance(default, str):
+                            escaped = default.replace("'", "''")
+                            ddl += f" DEFAULT '{escaped}'"
+                    conn.execute(text(ddl))
+                    print(f"🛠️ Schema sync: added column {table.name}.{col.name}")
     except Exception as e:
-        print(f"SQLite schema patch (trade_positions): {e}")
+        print(f"⚠️ Schema sync failed: {e}")
+
+with app.app_context():
+    sync_sqlite_schema()
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(e):
+    """Log full tracebacks of 500s to instance/last_error.log so they can be
+    inspected via /last-error instead of digging through gunicorn logs."""
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
+    tb = traceback.format_exc()
+    print(tb)
+    try:
+        with open(os.path.join(instance_path, 'last_error.log'), 'w') as f:
+            f.write(f"{datetime.utcnow().isoformat()}  {request.method} {request.path}\n\n{tb}")
+    except Exception:
+        pass
+    return "Something went wrong on our side. The error has been logged for review.", 500
+
+@app.route('/last-error')
+@login_required
+def last_error():
+    """Admin only: show the most recent unhandled traceback."""
+    is_admin = getattr(current_user, 'is_admin', False) or current_user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
+    if not is_admin:
+        return "Not authorized", 403
+    path = os.path.join(instance_path, 'last_error.log')
+    if not os.path.exists(path):
+        return "No errors logged since the last restart."
+    with open(path) as f:
+        return Response(f.read(), mimetype='text/plain')
 
 @app.route('/exchange-connections')
 @login_required
@@ -1339,7 +1394,4 @@ def api_cancel_conditional_order():
         return jsonify({"success": False, "message": str(e)}), 500
 
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-        ensure_sqlite_trade_positions_columns()
     app.run(host="0.0.0.0", port=5000, debug=True)
