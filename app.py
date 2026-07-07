@@ -22,8 +22,26 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Secure secret key - use environment variable or generate one
-app.secret_key = os.getenv('SECRET_KEY', os.urandom(32).hex())
+# Secure secret key - use environment variable, or persist a generated one so
+# sessions survive restarts/redeploys (a new random key on every boot logs
+# everyone out and makes session cookies fail across gunicorn restarts)
+def _load_secret_key():
+    key = os.getenv('SECRET_KEY')
+    if key:
+        return key
+    key_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'secret_key')
+    os.makedirs(os.path.dirname(key_file), exist_ok=True)
+    if os.path.exists(key_file):
+        with open(key_file) as f:
+            saved = f.read().strip()
+            if saved:
+                return saved
+    key = os.urandom(32).hex()
+    with open(key_file, 'w') as f:
+        f.write(key)
+    return key
+
+app.secret_key = _load_secret_key()
 
 # Session configuration for persistent login
 app.config['SESSION_PERMANENT'] = True
@@ -56,8 +74,8 @@ def load_user(user_id):
 oauth = OAuth(app)
 google = oauth.register(
     name='google',
-    client_id=os.getenv('GOOGLE_CLIENT_ID'),
-    client_secret=os.getenv('GOOGLE_CLIENT_SECRET'),
+    client_id=config.GOOGLE_CLIENT_ID,
+    client_secret=config.GOOGLE_CLIENT_SECRET,
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
     client_kwargs={'scope': 'openid email profile'}
 )
@@ -201,7 +219,7 @@ def login():
 
         user = User.query.filter_by(email=email).first()
 
-        if not user or not check_password_hash(user.password, password):
+        if not user or not user.password or not password or not check_password_hash(user.password, password):
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
             flash("Invalid email or password", "error")
@@ -246,6 +264,50 @@ def login():
 @app.route('/login/google')
 def google_login():
     return google.authorize_redirect(url_for('google_authorize', _external=True))
+
+
+@app.route('/login/google/callback')
+def google_authorize():
+    try:
+        token = google.authorize_access_token()
+        user_info = token.get('userinfo') or google.userinfo(token=token)
+    except Exception as e:
+        print(f"❌ Google OAuth failed: {e}")
+        flash("Google sign-in failed. Please try again or log in with email.", "error")
+        return redirect(url_for('login'))
+
+    email = (user_info.get('email') or '').strip().lower()
+    if not email:
+        flash("Your Google account did not provide an email address.", "error")
+        return redirect(url_for('login'))
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        username = (user_info.get('name') or email.split('@')[0]).strip()
+        if User.query.filter_by(username=username).first():
+            username = f"{username}_{uuid.uuid4().hex[:6]}"
+        user = User(
+            username=username,
+            email=email,
+            password=None,
+            google_id=user_info.get('sub')
+        )
+        db.session.add(user)
+    elif not user.google_id:
+        user.google_id = user_info.get('sub')
+
+    login_user(user, remember=True)
+    session_id = str(uuid.uuid4())
+    session['session_id'] = session_id
+    session.permanent = True
+    user.active_session = session_id
+    db.session.commit()
+
+    is_admin = getattr(user, 'is_admin', False) or user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
+    if not is_admin and not user.is_subscribed:
+        flash("Please subscribe to access the trading dashboard.", "warning")
+        return redirect(url_for('subscribe'))
+    return redirect(url_for('index'))
 
 
 @app.route("/api/select_symbol", methods=["POST"])
@@ -885,14 +947,76 @@ def subscribe():
         flash("You have admin access with unlimited features.", "info")
         return redirect(url_for('index'))
         
-    return render_template('subscribe.html', user=current_user)
+    return render_template('subscribe.html', user=current_user, key_id=config.RAZORPAY_KEY_ID)
+
+@app.route('/create-subscription', methods=['POST'])
+@login_required
+def create_subscription():
+    """Create a Razorpay subscription for the checkout popup on subscribe.html"""
+    data = request.get_json(silent=True) or {}
+    plan_type = data.get('plan_type', 'monthly')
+    plan_id = RAZORPAY_YEARLY_PLAN_ID if plan_type == 'yearly' else RAZORPAY_MONTHLY_PLAN_ID
+
+    try:
+        subscription = razorpay_client.subscription.create({
+            'plan_id': plan_id,
+            'total_count': 1 if plan_type == 'yearly' else 12,
+            'customer_notify': 1,
+            'notes': {'user_id': str(current_user.id), 'plan_type': plan_type}
+        })
+        # Remember which plan this checkout is for, so /verify-subscription
+        # can set the right duration
+        session['pending_plan'] = plan_type
+        return jsonify({'subscription_id': subscription['id']})
+    except Exception as e:
+        print(f"❌ Razorpay subscription create failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/verify-subscription', methods=['POST'])
+@login_required
+def verify_subscription():
+    """Verify the Razorpay subscription payment signature and activate the plan"""
+    data = request.get_json(silent=True) or {}
+    try:
+        razorpay_client.utility.verify_subscription_payment_signature({
+            'razorpay_subscription_id': data['razorpay_subscription_id'],
+            'razorpay_payment_id': data['razorpay_payment_id'],
+            'razorpay_signature': data['razorpay_signature']
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Signature verification failed: {e}'}), 400
+
+    try:
+        plan_type = session.pop('pending_plan', 'monthly')
+        duration_days = 365 if plan_type == 'yearly' else 30
+
+        current_user.is_subscribed = True
+        current_user.subscription_status = 'active'
+        current_user.subscription_type = plan_type
+        current_user.subscription_id = data['razorpay_subscription_id']
+        current_user.subscription_start = datetime.utcnow()
+        current_user.subscription_end = datetime.utcnow() + timedelta(days=duration_days)
+
+        history = SubscriptionHistory(
+            user_id=current_user.id,
+            plan_type=plan_type,
+            start_date=current_user.subscription_start,
+            end_date=current_user.subscription_end,
+            status='active'
+        )
+        db.session.add(history)
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/payment/create', methods=['POST'])
 @login_required
 def create_payment():
     plan_type = request.form.get('plan') # monthly/yearly
-    
-    amount = 490000 if plan_type == 'monthly' else 4900000 # In paise (INR 4,900 or 49,000)
+
+    amount = 49900 if plan_type == 'monthly' else 500000 # In paise (INR 499 or 5,000)
     
     try:
         order = razorpay_client.order.create({
