@@ -20,8 +20,10 @@ RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET',  'y5QeUePyOVDeqN0fGOeH6FS
 RAZORPAY_MONTHLY_PLAN_ID = os.getenv('RAZORPAY_MONTHLY_PLAN_ID', "plan_SK10d2Fpo8noaR")
 RAZORPAY_YEARLY_PLAN_ID = os.getenv('RAZORPAY_YEARLY_PLAN_ID', "plan_SK12UnaDI5gGcd")
 
-GOOGLE_CLIENT_ID = 839932973310-n309g8i0p66c6akaila1fvbshgcrqqko.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRECT = 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
+# Google OAuth — set these in your environment (Render dashboard / .env).
+# Never hardcode the client secret here: it gets committed to git.
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '839932973310-n309g8i0p66c6akaila1fvbshgcrqqko.apps.googleusercontent.com')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')
 
 
 
