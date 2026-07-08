@@ -221,6 +221,7 @@ def get_user_exchange_client(user_id, include_disconnected=False):
     except BinanceAPIException as e:
         error_info = config.BINANCE_ERROR_CODES.get(e.code)
         error_title = error_info['title'] if error_info else f"Binance Error {e.code}"
+        error_msg = f"Binance Error {e.code}: {str(e)}"
         print(f"❌ BinanceAPIException for user {user_id}: code={e.code}, {error_title}: {str(e)}")
         
         # Only mark as disconnected if it's a permanent error (like -2015)
@@ -228,7 +229,7 @@ def get_user_exchange_client(user_id, include_disconnected=False):
             connection.is_connected = False
             from models import db
             db.session.commit()
-        return None
+        return {"error": error_msg}
         
     except Exception as e:
         print(f"❌ Unexpected error creating client for user {user_id}: {e}")
@@ -287,6 +288,7 @@ def get_client(user_id=None):
     if user_id:
         user_client = get_user_exchange_client(user_id)
         if user_client:
+            # If it's an error dict, we still return it so the caller can handle the error message
             return user_client
     
     # Fallback to default client
@@ -1986,10 +1988,14 @@ def get_trade_events(user_id=None):
 def get_wallet_balances(user_id=None):
     """Get detailed wallet balances for user"""
     try:
-        client = get_client(user_id)
-        if not client:
+        client_res = get_client(user_id)
+        if not client_res:
             return {"success": False, "error": "No Binance client"}
+        
+        if isinstance(client_res, dict) and "error" in client_res:
+            return {"success": False, "error": client_res["error"]}
             
+        client = client_res
         acc = client.futures_account(recvWindow=10000)
         assets = []
         for asset in acc.get('assets', []):
@@ -2046,8 +2052,9 @@ def get_live_price(symbol, user_id=None):
     
     # ✅ ATTEMPT 1: Try client API (if user has connected exchange)
     try:
-        client = get_client(user_id)
-        if client:
+        client_res = get_client(user_id)
+        if client_res and not isinstance(client_res, dict):
+            client = client_res
             print(f"   → Trying client API for {symbol}...")
             ticker = client.futures_symbol_ticker(symbol=symbol)
             price = float(ticker.get('price', 0))
@@ -2195,10 +2202,14 @@ def get_live_balance(user_id):
     Returns a tuple ((balance, margin_used), error_msg).
     """
     try:
-        client = get_user_exchange_client(user_id)
-        if not client:
+        client_res = get_user_exchange_client(user_id)
+        if not client_res:
             return ((0.0, 0.0), "Exchange not connected")
         
+        if isinstance(client_res, dict) and "error" in client_res:
+            return ((0.0, 0.0), client_res["error"])
+            
+        client = client_res
         acc = client.futures_account(recvWindow=10000)
         balance = float(acc.get('totalWalletBalance', 0.0))
         margin_used = float(acc.get('totalInitialMargin', 0.0))

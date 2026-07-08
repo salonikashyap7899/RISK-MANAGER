@@ -607,6 +607,10 @@ def api_wallet_balance():
             
         balance_data = logic.get_live_balance(current_user.id)
         if balance_data and isinstance(balance_data, tuple):
+            error_msg = balance_data[1]
+            if error_msg:
+                return jsonify({"success": False, "error": error_msg}), 400
+                
             inner_tuple = balance_data[0]
             if isinstance(inner_tuple, tuple) and len(inner_tuple) >= 2:
                 balance = float(inner_tuple[0] or 0.0)
@@ -619,7 +623,7 @@ def api_wallet_balance():
                     "unutilized": unutilized
                 })
         
-        return jsonify({"success": False, "error": "Failed to fetch balance"})
+        return jsonify({"success": False, "error": "Failed to fetch balance"}), 400
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
