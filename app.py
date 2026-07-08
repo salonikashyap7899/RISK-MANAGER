@@ -961,18 +961,15 @@ def add_exchange():
         # We need to capture the error if get_user_exchange_client fails
         try:
             # Pass include_disconnected=True because we just saved/updated it
-            client = logic.get_user_exchange_client(current_user.id, include_disconnected=True)
-            if client:
+            client_res = logic.get_user_exchange_client(current_user.id, include_disconnected=True)
+            if client_res and not isinstance(client_res, dict):
                 conn.is_connected = True
                 conn.last_verified = datetime.utcnow()
                 db.session.commit()
                 return jsonify({'success': True, 'message': f'Successfully connected to {exchange_type.capitalize()}!'})
             else:
-                # If it returned None, it might have been caught by logic.py's try-except
-                # We'll check if it was marked as disconnected
-                if not conn.is_connected:
-                    return jsonify({'success': False, 'message': 'Failed to verify API keys. Ensure "Enable Futures" is checked and IP is whitelisted.'})
-                return jsonify({'success': False, 'message': 'Connection failed. Please check your API keys.'})
+                error_msg = client_res.get('error') if isinstance(client_res, dict) else 'Connection failed. Please check your API keys.'
+                return jsonify({'success': False, 'message': f'Connection failed: {error_msg}'})
         except Exception as client_err:
             return jsonify({'success': False, 'message': f'Connection Error: {str(client_err)}'})
             
@@ -1212,10 +1209,14 @@ def create_admin():
 def test_binance():
     """Debug route to test Binance connectivity for current user"""
     try:
-        client = logic.get_user_exchange_client(current_user.id)
-        if not client:
+        client_res = logic.get_user_exchange_client(current_user.id)
+        if not client_res:
             return "❌ No Binance connection found for your account."
         
+        if isinstance(client_res, dict) and "error" in client_res:
+            return f"❌ Connection Error: {client_res['error']}"
+            
+        client = client_res
         acc = client.futures_account(recvWindow=10000)
         balance = acc.get('totalWalletBalance', '0')
         return f"✅ Successfully connected! Your Futures Wallet Balance: {balance} USDT"
@@ -1234,10 +1235,14 @@ def change_leverage():
         if not symbol or not leverage:
             return jsonify({"success": False, "error": "Missing symbol or leverage"}), 400
             
-        client = logic.get_user_exchange_client(current_user.id)
-        if not client:
+        client_res = logic.get_user_exchange_client(current_user.id)
+        if not client_res:
             return jsonify({"success": False, "error": "Exchange connection not found"}), 404
             
+        if isinstance(client_res, dict) and "error" in client_res:
+            return jsonify({"success": False, "error": client_res["error"]}), 400
+            
+        client = client_res
         # Change leverage on Binance
         client.futures_change_leverage(symbol=symbol, leverage=int(leverage))
         

@@ -340,10 +340,14 @@ def get_all_exchange_symbols(user_id=None):
     now = time.time()
     
     try:
-        client = get_client(user_id)
-        if not client:
+        client_res = get_client(user_id)
+        if not client_res:
             raise Exception("Binance client not initialized")
         
+        if isinstance(client_res, dict) and "error" in client_res:
+            raise Exception(client_res["error"])
+            
+        client = client_res
         info = client.futures_exchange_info()
         
         # ✅ FIXED: Validate symbols more strictly
