@@ -10,3 +10,6 @@ trades.json
 .env
 __pycache__/
 *.pyc
+# Never commit payment/API credentials
+static/rzp-key.csv
+*.key.csv

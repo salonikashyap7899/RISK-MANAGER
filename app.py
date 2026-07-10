@@ -595,16 +595,17 @@ def get_user_trade_positions_api():
 def api_wallet_balance():
     """Fetch user's live wallet balance from Binance"""
     try:
-        # Get user's exchange connection
+        # Only require that keys are SAVED — get_live_balance self-heals the
+        # is_connected flag when the keys verify, so a stale 'Disconnected'
+        # status can't permanently block the wallet
         connection = ExchangeConnection.query.filter_by(
-            user_id=current_user.id, 
-            exchange_type='binance', 
-            is_connected=True
+            user_id=current_user.id,
+            exchange_type='binance'
         ).first()
-        
+
         if not connection:
             return jsonify({"success": False, "error": "Exchange not connected"}), 400
-            
+
         balance_data = logic.get_live_balance(current_user.id)
         if balance_data and isinstance(balance_data, tuple):
             error_msg = balance_data[1]
@@ -699,13 +700,19 @@ def index():
     
     # Get wallet details for debug
     wallet_response = logic.get_wallet_balances(current_user.id)
+    # "Needs connection" = the user has never saved Binance API keys.
+    # If keys exist but the fetch failed, show the REAL error instead of
+    # the misleading "NO BINANCE CONNECTION" banner.
+    has_connection = ExchangeConnection.query.filter_by(
+        user_id=current_user.id, exchange_type='binance'
+    ).first() is not None
     wallet_debug = {
         'success': wallet_response.get('success', False),
         'error': wallet_response.get('error', ''),
         'debug_info': wallet_response.get('debug_info', {}),
         'total_assets': wallet_response.get('total_assets', 0),
         'unutilized': unutilized,
-        'needs_connection': not wallet_response.get('success') and 'client' in str(wallet_response.get('error', '')).lower()
+        'needs_connection': not has_connection
     }
     
     print(f"📊 /index wallet_debug: {wallet_debug}")
@@ -897,7 +904,19 @@ def last_error():
 def exchange_connections():
     # Get user's existing connections
     connections = ExchangeConnection.query.filter_by(user_id=current_user.id).all()
-    
+
+    # Self-heal: if a Binance connection is flagged Disconnected but has keys
+    # saved, re-verify it now. get_user_exchange_client updates is_connected
+    # and last_verified in the DB when the keys work.
+    for conn in connections:
+        if conn.exchange_type == 'binance' and not conn.is_connected and conn.api_key and conn.api_secret:
+            try:
+                logic.get_user_exchange_client(current_user.id, include_disconnected=True)
+                db.session.refresh(conn)
+            except Exception as e:
+                print(f"⚠️ Re-verify on /exchange-connections failed: {e}")
+            break
+
     # Format for UI
     formatted_connections = []
     for conn in connections:
@@ -923,15 +942,21 @@ def exchange_connections():
 @app.route('/add-exchange', methods=['POST'])
 @login_required
 def add_exchange():
-    data = request.get_json()
-    exchange_type = data.get('exchange_type')
-    api_key = data.get('api_key')
-    api_secret = data.get('api_secret')
-    connection_name = data.get('connection_name')
-    
+    data = request.get_json(silent=True) or {}
+    exchange_type = (data.get('exchange_type') or '').strip().lower()
+    # Strip whitespace/newlines — pasted keys with trailing spaces are the
+    # most common cause of -2014/-2015 "invalid key" errors
+    api_key = (data.get('api_key') or '').strip()
+    api_secret = (data.get('api_secret') or '').strip()
+    connection_name = (data.get('connection_name') or '').strip() or None
+
     if not exchange_type or not api_key or not api_secret:
         return jsonify({'success': False, 'message': 'Missing required fields'}), 400
-    
+
+    if exchange_type != 'binance':
+        return jsonify({'success': False,
+                        'message': f'{exchange_type.capitalize()} integration is coming soon. Only Binance Futures is supported right now.'}), 400
+
     # Check if connection already exists
     existing = ExchangeConnection.query.filter_by(user_id=current_user.id, exchange_type=exchange_type).first()
     
@@ -953,11 +978,11 @@ def add_exchange():
     
     try:
         db.session.commit()
-        
+
         # Verify connection immediately
         logic.clear_user_client(current_user.id)
         logic.invalidate_conditional_cache(current_user.id)
-        
+
         # We need to capture the error if get_user_exchange_client fails
         try:
             # Pass include_disconnected=True because we just saved/updated it
@@ -966,13 +991,13 @@ def add_exchange():
                 conn.is_connected = True
                 conn.last_verified = datetime.utcnow()
                 db.session.commit()
-                return jsonify({'success': True, 'message': f'Successfully connected to {exchange_type.capitalize()}!'})
+                return jsonify({'success': True, 'message': f'Successfully connected to {exchange_type.capitalize()}! Wallet, positions and TP/SL orders will now load on the dashboard.'})
             else:
                 error_msg = client_res.get('error') if isinstance(client_res, dict) else 'Connection failed. Please check your API keys.'
                 return jsonify({'success': False, 'message': f'Connection failed: {error_msg}'})
         except Exception as client_err:
             return jsonify({'success': False, 'message': f'Connection Error: {str(client_err)}'})
-            
+
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -993,16 +1018,53 @@ def disconnect_exchange(conn_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
 
+def _activate_subscription(user, plan_type, subscription_id=None):
+    """Mark a user's subscription active and log history. Shared by
+    verify routes, the webhook, and the self-heal check."""
+    duration_days = 365 if plan_type == 'yearly' else 30
+    user.is_subscribed = True
+    user.subscription_status = 'active'
+    user.subscription_type = plan_type
+    if subscription_id:
+        user.subscription_id = subscription_id
+    user.subscription_start = datetime.utcnow()
+    user.subscription_end = datetime.utcnow() + timedelta(days=duration_days)
+    db.session.add(SubscriptionHistory(
+        user_id=user.id,
+        plan_type=plan_type,
+        start_date=user.subscription_start,
+        end_date=user.subscription_end,
+        status='active'
+    ))
+    db.session.commit()
+
 @app.route('/subscribe')
 @login_required
 def subscribe():
     # If already subscribed and not expired, show status
     is_admin = getattr(current_user, 'is_admin', False) or current_user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
-    
+
     if is_admin:
         flash("You have admin access with unlimited features.", "info")
         return redirect(url_for('index'))
-        
+
+    # Self-heal: if a checkout was started but the browser never reached
+    # /verify-subscription (popup closed after paying, network drop, etc.),
+    # ask Razorpay for the real status and activate if it was paid.
+    pending_id = session.get('pending_subscription_id')
+    if pending_id and not current_user.is_subscribed:
+        try:
+            sub = razorpay_client.subscription.fetch(pending_id)
+            if sub.get('status') in ('authenticated', 'active', 'completed'):
+                plan_type = session.get('pending_plan') or (sub.get('notes') or {}).get('plan_type', 'monthly')
+                _activate_subscription(current_user, plan_type, subscription_id=pending_id)
+                session.pop('pending_subscription_id', None)
+                session.pop('pending_plan', None)
+                flash("Your payment was found and your subscription is now active!", "success")
+                return redirect(url_for('index'))
+        except Exception as e:
+            print(f"⚠️ Pending subscription check failed: {e}")
+
     return render_template('subscribe.html', user=current_user, key_id=config.RAZORPAY_KEY_ID)
 
 @app.route('/create-subscription', methods=['POST'])
@@ -1013,6 +1075,11 @@ def create_subscription():
     plan_type = data.get('plan_type', 'monthly')
     plan_id = RAZORPAY_YEARLY_PLAN_ID if plan_type == 'yearly' else RAZORPAY_MONTHLY_PLAN_ID
 
+    if not config.RAZORPAY_KEY_ID or not config.RAZORPAY_KEY_SECRET:
+        return jsonify({'error': 'Payments are not configured. Set RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET.'}), 500
+    if not plan_id:
+        return jsonify({'error': f'No Razorpay plan configured for {plan_type}. Set RAZORPAY_{plan_type.upper()}_PLAN_ID.'}), 500
+
     try:
         subscription = razorpay_client.subscription.create({
             'plan_id': plan_id,
@@ -1020,19 +1087,28 @@ def create_subscription():
             'customer_notify': 1,
             'notes': {'user_id': str(current_user.id), 'plan_type': plan_type}
         })
-        # Remember which plan this checkout is for, so /verify-subscription
-        # can set the right duration
+        # Remember which plan/subscription this checkout is for, so
+        # /verify-subscription and the self-heal check can finish the job
         session['pending_plan'] = plan_type
+        session['pending_subscription_id'] = subscription['id']
         return jsonify({'subscription_id': subscription['id']})
     except Exception as e:
-        print(f"❌ Razorpay subscription create failed: {e}")
-        return jsonify({'error': str(e)}), 500
+        # razorpay SDK errors carry the useful description in the message body
+        err = str(e)
+        print(f"❌ Razorpay subscription create failed: {err}")
+        if 'BadRequestError' in type(e).__name__ or 'does not exist' in err:
+            err = f"Razorpay rejected the request: {err}. Check that the plan IDs belong to this Razorpay account."
+        return jsonify({'error': err}), 500
 
 @app.route('/verify-subscription', methods=['POST'])
 @login_required
 def verify_subscription():
     """Verify the Razorpay subscription payment signature and activate the plan"""
     data = request.get_json(silent=True) or {}
+    missing = [f for f in ('razorpay_subscription_id', 'razorpay_payment_id', 'razorpay_signature') if not data.get(f)]
+    if missing:
+        return jsonify({'success': False, 'error': f'Missing fields from checkout: {", ".join(missing)}'}), 400
+
     try:
         razorpay_client.utility.verify_subscription_payment_signature({
             'razorpay_subscription_id': data['razorpay_subscription_id'],
@@ -1044,24 +1120,8 @@ def verify_subscription():
 
     try:
         plan_type = session.pop('pending_plan', 'monthly')
-        duration_days = 365 if plan_type == 'yearly' else 30
-
-        current_user.is_subscribed = True
-        current_user.subscription_status = 'active'
-        current_user.subscription_type = plan_type
-        current_user.subscription_id = data['razorpay_subscription_id']
-        current_user.subscription_start = datetime.utcnow()
-        current_user.subscription_end = datetime.utcnow() + timedelta(days=duration_days)
-
-        history = SubscriptionHistory(
-            user_id=current_user.id,
-            plan_type=plan_type,
-            start_date=current_user.subscription_start,
-            end_date=current_user.subscription_end,
-            status='active'
-        )
-        db.session.add(history)
-        db.session.commit()
+        session.pop('pending_subscription_id', None)
+        _activate_subscription(current_user, plan_type, subscription_id=data['razorpay_subscription_id'])
         return jsonify({'success': True})
     except Exception as e:
         db.session.rollback()
@@ -1087,8 +1147,11 @@ def create_payment():
 @app.route('/payment/verify', methods=['POST'])
 @login_required
 def verify_payment():
-    data = request.get_json()
-    
+    data = request.get_json(silent=True) or {}
+    missing = [f for f in ('razorpay_order_id', 'razorpay_payment_id', 'razorpay_signature') if not data.get(f)]
+    if missing:
+        return jsonify({'success': False, 'error': f'Missing fields from checkout: {", ".join(missing)}'}), 400
+
     # Verify signature
     try:
         razorpay_client.utility.verify_payment_signature({
@@ -1096,32 +1159,61 @@ def verify_payment():
             'razorpay_payment_id': data['razorpay_payment_id'],
             'razorpay_signature': data['razorpay_signature']
         })
-        
+
         # Payment successful - Update user subscription
         plan_type = data.get('plan', 'monthly')
-        duration_days = 30 if plan_type == 'monthly' else 365
-        
-        current_user.is_subscribed = True
-        current_user.subscription_status = 'active'
-        current_user.subscription_type = plan_type
-        current_user.subscription_start = datetime.utcnow()
-        current_user.subscription_end = datetime.utcnow() + timedelta(days=duration_days)
-        
-        # Log history
-        history = SubscriptionHistory(
-            user_id=current_user.id,
-            plan_type=plan_type,
-            start_date=current_user.subscription_start,
-            end_date=current_user.subscription_end,
-            status='active'
-        )
-        
-        db.session.add(history)
-        db.session.commit()
-        
+        _activate_subscription(current_user, plan_type)
         return jsonify({'success': True})
     except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/razorpay-webhook', methods=['POST'])
+def razorpay_webhook():
+    """Server-to-server payment confirmation from Razorpay.
+
+    This makes activation reliable even when the user's browser never
+    completes the /verify-subscription call (popup closed after paying,
+    flaky network, phone locked during UPI flow, ...).
+
+    Configure in the Razorpay dashboard: Settings → Webhooks →
+    https://<your-domain>/razorpay-webhook with events
+    'subscription.activated' and 'subscription.charged', and set the same
+    secret in the RAZORPAY_WEBHOOK_SECRET environment variable.
+    """
+    webhook_secret = os.getenv('RAZORPAY_WEBHOOK_SECRET')
+    if not webhook_secret:
+        # Refuse to process unauthenticated webhooks — otherwise anyone could
+        # POST here and grant themselves a subscription
+        print("⚠️ /razorpay-webhook called but RAZORPAY_WEBHOOK_SECRET is not set")
+        return jsonify({'error': 'webhook secret not configured'}), 503
+
+    payload = request.get_data(as_text=True)
+    signature = request.headers.get('X-Razorpay-Signature', '')
+    try:
+        razorpay_client.utility.verify_webhook_signature(payload, signature, webhook_secret)
+    except Exception:
+        return jsonify({'error': 'invalid signature'}), 400
+
+    event = request.get_json(silent=True) or {}
+    event_type = event.get('event', '')
+
+    if event_type in ('subscription.activated', 'subscription.charged', 'subscription.authenticated'):
+        try:
+            sub = event['payload']['subscription']['entity']
+            notes = sub.get('notes') or {}
+            user_id = notes.get('user_id')
+            plan_type = notes.get('plan_type', 'monthly')
+            user = User.query.get(int(user_id)) if user_id else None
+            if user and not user.is_subscribed:
+                _activate_subscription(user, plan_type, subscription_id=sub.get('id'))
+                print(f"✅ Webhook activated {plan_type} subscription for user {user_id}")
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Webhook processing failed: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    return jsonify({'status': 'ok'})
 
 @app.route('/close_position/<symbol>', methods=['POST'])
 @login_required
@@ -1247,7 +1339,7 @@ def change_leverage():
         client.futures_change_leverage(symbol=symbol, leverage=int(leverage))
         
         # Log the event
-        logic.log_trade_event(current_user.id, f"⚡ Leverage for {symbol} changed to {leverage}x", "LEVERAGE_CHANGE")
+        logic.log_trade_event("LEVERAGE_CHANGE", f"⚡ Leverage for {symbol} changed to {leverage}x", user_id=current_user.id)
         
         return jsonify({"success": True, "message": f"Leverage for {symbol} changed to {leverage}x"})
     except Exception as e:

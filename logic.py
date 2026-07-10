@@ -150,101 +150,181 @@ def select_symbol(user_id, symbol):
         "coin_analysis": analysis,
     }
 
-# User-specific client storage
+# User-specific client storage: {user_id: (client, last_verified_ts)}
 _user_clients = {}
+# Last connection error per user, so UI endpoints can show the REAL reason
+_last_client_error = {}
+# How long to trust a cached client before re-verifying with Binance.
+# The old code called futures_account() (weight 5) on EVERY request from every
+# poller, which is what triggered -1003 IP bans and killed the connection.
+CLIENT_REVERIFY_SECONDS = 120
+
+_public_ip_cache = {'ip': None, 'ts': 0}
+
+def get_last_client_error(user_id):
+    """Return the most recent connection error message for a user (or None)."""
+    return _last_client_error.get(user_id)
+
+def get_server_public_ip():
+    """Best-effort fetch of this server's public egress IP (cached 1h).
+    Shown to users so they know exactly which IP to whitelist on Binance."""
+    now = time.time()
+    if _public_ip_cache['ip'] and (now - _public_ip_cache['ts']) < 3600:
+        return _public_ip_cache['ip']
+    for url in ('https://api.ipify.org', 'https://checkip.amazonaws.com'):
+        try:
+            ip = requests.get(url, timeout=5).text.strip()
+            if ip and len(ip) <= 45:
+                _public_ip_cache['ip'] = ip
+                _public_ip_cache['ts'] = now
+                return ip
+        except Exception:
+            continue
+    return None
+
+def describe_binance_error(e):
+    """Turn a BinanceAPIException into an actionable, human-readable message."""
+    msg = str(e)
+    code = getattr(e, 'code', None)
+    status = getattr(e, 'status_code', None)
+    lower = msg.lower()
+
+    if status == 451 or 'restricted location' in lower or 'unavailable in your region' in lower:
+        return ("Binance blocks requests from this server's region (geo-restriction, HTTP 451). "
+                "Your API keys are fine. Fix: host the app in a non-restricted region "
+                "(e.g. Singapore/Frankfurt GCP region) or set PROXY_URL to a proxy in an allowed region.")
+    if code == -2015:
+        ip = get_server_public_ip()
+        ip_hint = f" This server's IP is {ip} — add it to the API key's IP whitelist." if ip else ""
+        return ("Binance error -2015: Invalid API key, IP not whitelisted, or missing permissions. "
+                "Check: 1) key/secret copied correctly, 2) 'Enable Futures' is ticked, "
+                f"3) the key's IP restriction allows this server.{ip_hint}")
+    if code == -2014:
+        return "Binance error -2014: API key format invalid. Re-copy the key without spaces."
+    if code == -1022:
+        return "Binance error -1022: Signature invalid. Re-copy the API secret without spaces."
+    if code == -1021:
+        return "Binance error -1021: Timestamp out of sync. Retried with server-time offset; refresh and try again."
+    if code == -1003:
+        return "Binance error -1003: Rate limit / temporary IP ban. Wait 1-2 minutes and retry."
+    return f"Binance error {code}: {msg}"
 
 def get_user_exchange_client(user_id, include_disconnected=False):
     """
-    Get Binance client for a specific user based on their connected exchange.
-    Returns the user's own API keys if connected, otherwise None.
+    Get Binance client for a specific user based on their saved exchange keys.
+    Returns a Client on success, {'error': msg} on failure, None if the user
+    has no saved connection at all.
+
+    Self-healing: the DB lookup does NOT filter on is_connected — a stale
+    'Disconnected' flag can never permanently block a working key. Whenever
+    verification succeeds, is_connected/last_verified are updated so the UI
+    shows Connected again.
     """
-    from models import ExchangeConnection
-    import config  
-    # Check if we already have a cached client for this user
+    from models import ExchangeConnection, db
+    import config
+    # Serve from cache; only re-verify after CLIENT_REVERIFY_SECONDS
+    now = time.time()
     if not include_disconnected and user_id in _user_clients:
+        client, verified_at = _user_clients[user_id]
+        if (now - verified_at) < CLIENT_REVERIFY_SECONDS:
+            return client
         try:
-            _user_clients[user_id].futures_account(recvWindow=5000)
-            return _user_clients[user_id]
+            client.futures_account(recvWindow=10000)
+            _user_clients[user_id] = (client, now)
+            return client
         except Exception as e:
             print(f"[CLIENT] Cached client invalid for user {user_id}: {e}, recreating...")
-            del _user_clients[user_id]
-    
-    # Get user's exchange connection from database
-    query = ExchangeConnection.query.filter_by(
-        user_id=user_id, 
+            _user_clients.pop(user_id, None)
+
+    # Get user's saved keys regardless of the is_connected flag (self-heal)
+    connection = ExchangeConnection.query.filter_by(
+        user_id=user_id,
         exchange_type='binance'
-    )
-    if not include_disconnected:
-        query = query.filter_by(is_connected=True)
-    
-    connection = query.first()
-    
+    ).first()
+
     if not connection or not connection.api_key or not connection.api_secret:
+        _last_client_error[user_id] = None  # no connection saved — not an error
         return None
-    
+
     try:
         # Sync timestamp BEFORE client creation
         time_offset = sync_time_with_binance()
-        
-        # CRITICAL FIX: Properly bundle parameters into requests_params
+
         req_params = {'timeout': 20}
-        
+
         # Proxy support for geo-restrictions
         if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
             req_params['proxies'] = {
-                'https': config.PROXY_URL, 
+                'https': config.PROXY_URL,
                 'http': config.PROXY_URL
             }
             print(f"🌐 Using proxy: {config.PROXY_URL}")
-        
-        # Create client safely using requests_params
+
+        # Stripped keys: trailing whitespace from copy-paste is the #1 cause
+        # of -2014/-2015 errors
         client = Client(
-            api_key=connection.api_key,
-            api_secret=connection.api_secret,
+            api_key=connection.api_key.strip(),
+            api_secret=connection.api_secret.strip(),
             requests_params=req_params
         )
-        
+
         # Apply timestamp offset (PERMANENT -1021 FIX)
         if abs(time_offset) > 100:
             client.timestamp_offset = time_offset
             print(f"✅ Applied user client offset: {time_offset}ms")
-        
-        # Verify the connection works with synced time
-        # This is the critical step that verifies the keys
+
+        # Verify the keys actually work
         client.futures_account(recvWindow=10000)
-        
+
         print(f"✅ User {user_id} Binance client created successfully")
-        # Cache the client
-        _user_clients[user_id] = client
-        return client
-        
-    except BinanceAPIException as e:
-        error_info = config.BINANCE_ERROR_CODES.get(e.code)
-        error_title = error_info['title'] if error_info else f"Binance Error {e.code}"
-        error_msg = f"Binance Error {e.code}: {str(e)}"
-        print(f"❌ BinanceAPIException for user {user_id}: code={e.code}, {error_title}: {str(e)}")
-        
-        # Only mark as disconnected if it's a permanent error (like -2015)
-        if e.code in [-2015, -2014, -1002, -1022]:
-            connection.is_connected = False
-            from models import db
+        # Self-heal the DB status so the UI shows Connected
+        try:
+            if not connection.is_connected:
+                print(f"🔄 Self-healing connection status for user {user_id}: Disconnected → Connected")
+            connection.is_connected = True
+            connection.last_verified = datetime.utcnow()
             db.session.commit()
+        except Exception as db_err:
+            db.session.rollback()
+            print(f"⚠️ Could not persist connection status: {db_err}")
+        _user_clients[user_id] = (client, time.time())
+        _last_client_error[user_id] = None
+        return client
+
+    except BinanceAPIException as e:
+        error_msg = describe_binance_error(e)
+        print(f"❌ BinanceAPIException for user {user_id}: code={e.code}: {error_msg}")
+        _last_client_error[user_id] = error_msg
+
+        # Only mark as disconnected for permanent key errors — NOT for
+        # transient ones (rate limits, timeouts), which self-heal above
+        if e.code in [-2015, -2014, -1022]:
+            try:
+                connection.is_connected = False
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
         return {"error": error_msg}
-        
+
     except Exception as e:
+        msg = str(e)
+        if '451' in msg or 'restricted location' in msg.lower():
+            error_msg = describe_binance_error(e)
+        else:
+            error_msg = f"Could not reach Binance: {msg}"
         print(f"❌ Unexpected error creating client for user {user_id}: {e}")
-        # For non-Binance errors (network, timeout), don't necessarily mark as disconnected
-        # but return None so the UI knows the current attempt failed
-        return None
+        _last_client_error[user_id] = error_msg
+        # Transient (network/timeout) — do not flip is_connected
+        return {"error": error_msg}
 
 def set_user_client(user_id, client):
     """Manually set the client for a user (for testing)"""
-    _user_clients[user_id] = client
+    _user_clients[user_id] = (client, time.time())
 
 def clear_user_client(user_id):
     """Clear cached client for a user (when they disconnect)"""
-    if user_id in _user_clients:
-        del _user_clients[user_id]
+    _user_clients.pop(user_id, None)
+    _last_client_error.pop(user_id, None)
 
 def sync_time_with_binance():
     """Sync local time with Binance server time - ROBUST VERSION"""
@@ -287,10 +367,15 @@ def get_client(user_id=None):
     # If user_id provided, try to get user's own exchange
     if user_id:
         user_client = get_user_exchange_client(user_id)
-        if user_client:
-            # If it's an error dict, we still return it so the caller can handle the error message
+        if user_client and not isinstance(user_client, dict):
             return user_client
-    
+        if isinstance(user_client, dict):
+            # User HAS a connection but it errored: return None instead of the
+            # error dict (callers expect a client object). The error is stored
+            # in get_last_client_error(user_id). Never silently fall back to
+            # the site-wide default account for a user with their own keys.
+            return None
+
     # Fallback to default client
     if _default_client is None:
         try:
@@ -340,15 +425,23 @@ def get_all_exchange_symbols(user_id=None):
     now = time.time()
     
     try:
+        # Serve cached symbols while fresh (avoids an exchangeInfo call per page load)
+        if _symbol_cache and (now - _symbol_cache_time) < config.SYMBOL_CACHE_DURATION:
+            return _symbol_cache
+
         client_res = get_client(user_id)
-        if not client_res:
-            raise Exception("Binance client not initialized")
-        
-        if isinstance(client_res, dict) and "error" in client_res:
-            raise Exception(client_res["error"])
-            
-        client = client_res
-        info = client.futures_exchange_info()
+        if not client_res or isinstance(client_res, dict):
+            # No client / connection errored — fetch symbols from the PUBLIC
+            # endpoint instead so the symbol list still populates
+            proxies = {}
+            if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
+                proxies = {'https': config.PROXY_URL, 'http': config.PROXY_URL}
+            resp = requests.get('https://fapi.binance.com/fapi/v1/exchangeInfo', timeout=10, proxies=proxies)
+            resp.raise_for_status()
+            info = resp.json()
+        else:
+            client = client_res
+            info = client.futures_exchange_info()
         
         # ✅ FIXED: Validate symbols more strictly
         symbols = sorted([
@@ -1638,6 +1731,8 @@ def close_position(symbol, user_id=None):
     from models import TradePosition, db
     try:
         client = get_client(user_id)
+        if client is None:
+            return {"success": False, "message": get_last_client_error(user_id) or "No Binance connection"}
         positions = client.futures_position_information(symbol=symbol)
         pos = next((p for p in positions if abs(float(p.get('positionAmt', 0))) > 0), None)
         if not pos: return {"success": False, "message": "No position"}
@@ -1784,6 +1879,8 @@ def get_trade_history(user_id=None, force_refresh=False):
     
     try:
         client = get_client(user_id)
+        if client is None:
+            return _trade_history_cache.get(cache_key, [])
         # Increase lookback to 7 days
         start_time = int((time.time() - 7 * 24 * 3600) * 1000)
         binance_trades = client.futures_account_trades(limit=1000, startTime=start_time)
@@ -1994,11 +2091,12 @@ def get_wallet_balances(user_id=None):
     try:
         client_res = get_client(user_id)
         if not client_res:
-            return {"success": False, "error": "No Binance client"}
-        
+            last_err = get_last_client_error(user_id) if user_id else None
+            return {"success": False, "error": last_err or "No Binance client"}
+
         if isinstance(client_res, dict) and "error" in client_res:
             return {"success": False, "error": client_res["error"]}
-            
+
         client = client_res
         acc = client.futures_account(recvWindow=10000)
         assets = []
@@ -2208,8 +2306,8 @@ def get_live_balance(user_id):
     try:
         client_res = get_user_exchange_client(user_id)
         if not client_res:
-            return ((0.0, 0.0), "Exchange not connected")
-        
+            return ((0.0, 0.0), "Exchange not connected - add your Binance API keys")
+
         if isinstance(client_res, dict) and "error" in client_res:
             return ((0.0, 0.0), client_res["error"])
             
