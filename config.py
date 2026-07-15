@@ -1,5 +1,12 @@
 # For Development/Testing - Remove these in production!
 import os
+from dotenv import load_dotenv
+
+# Load .env BEFORE reading any variables. app.py imports this module before
+# it calls load_dotenv() itself, so without this line every os.getenv()
+# below returns None when values live in the .env file (PROXY_URL silently
+# disabled -> Binance 451 geo-block even with a working proxy configured).
+load_dotenv()
 
 # This pulls the keys you typed into the Render Dashboard
 BINANCE_KEY = os.getenv('BINANCE_KEY')
