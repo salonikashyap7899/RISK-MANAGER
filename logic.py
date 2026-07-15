@@ -166,14 +166,18 @@ def get_last_client_error(user_id):
     return _last_client_error.get(user_id)
 
 def get_server_public_ip():
-    """Best-effort fetch of this server's public egress IP (cached 1h).
-    Shown to users so they know exactly which IP to whitelist on Binance."""
+    """Best-effort fetch of the public egress IP Binance sees (cached 1h).
+    Goes through PROXY_URL when configured, because that is the IP that
+    must be whitelisted on the Binance API key."""
     now = time.time()
     if _public_ip_cache['ip'] and (now - _public_ip_cache['ts']) < 3600:
         return _public_ip_cache['ip']
+    proxies = {}
+    if getattr(config, 'PROXY_URL', None):
+        proxies = {'https': config.PROXY_URL, 'http': config.PROXY_URL}
     for url in ('https://api.ipify.org', 'https://checkip.amazonaws.com'):
         try:
-            ip = requests.get(url, timeout=5).text.strip()
+            ip = requests.get(url, timeout=5, proxies=proxies).text.strip()
             if ip and len(ip) <= 45:
                 _public_ip_cache['ip'] = ip
                 _public_ip_cache['ts'] = now
@@ -190,9 +194,18 @@ def describe_binance_error(e):
     lower = msg.lower()
 
     if status == 451 or 'restricted location' in lower or 'unavailable in your region' in lower:
+        if getattr(config, 'PROXY_URL', None):
+            ip = get_server_public_ip()
+            ip_hint = f" Binance currently sees requests coming from IP {ip}." if ip else ""
+            return ("Binance geo-block (HTTP 451) even though PROXY_URL is set — the proxy's "
+                    "exit IP is itself in a restricted region, or the proxy is unreachable. "
+                    "Your API keys are fine. Verify the proxy's exit country is allowed "
+                    f"(e.g. Singapore) and that the proxy URL/credentials are correct.{ip_hint}")
         return ("Binance blocks requests from this server's region (geo-restriction, HTTP 451). "
-                "Your API keys are fine. Fix: host the app in a non-restricted region "
-                "(e.g. Singapore/Frankfurt GCP region) or set PROXY_URL to a proxy in an allowed region.")
+                "Your API keys are fine. PROXY_URL is NOT currently loaded by the app — set it "
+                "in the .env file (PROXY_URL=http://user:pass@host:port) and restart the app, "
+                "or host the app in a non-restricted region. Note: Google Cloud IPs often "
+                "geolocate to the US even for Singapore VMs, so a proxy is usually required on GCP.")
     if code == -2015:
         ip = get_server_public_ip()
         ip_hint = f" This server's IP is {ip} — add it to the API key's IP whitelist." if ip else ""
