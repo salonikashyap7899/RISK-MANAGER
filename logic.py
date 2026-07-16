@@ -321,8 +321,19 @@ def get_user_exchange_client(user_id, include_disconnected=False):
 
     except Exception as e:
         msg = str(e)
-        if '451' in msg or 'restricted location' in msg.lower():
+        lower = msg.lower()
+        if '451' in msg or 'restricted location' in lower:
             error_msg = describe_binance_error(e)
+        elif ('proxyerror' in lower or 'tunnel connection failed' in lower
+              or 'unable to connect to proxy' in lower):
+            error_msg = (
+                "The configured proxy rejected the connection before it ever reached "
+                "Binance (your API keys are fine). A '403 Forbidden' from the proxy "
+                "usually means the proxy subscription expired or its credentials/host "
+                "changed. Check your proxy provider's dashboard, update PROXY_URL in "
+                "the .env file with the current host:port and credentials, then "
+                f"restart the app. Raw error: {msg}"
+            )
         else:
             error_msg = f"Could not reach Binance: {msg}"
         print(f"❌ Unexpected error creating client for user {user_id}: {e}")
