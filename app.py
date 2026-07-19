@@ -1315,6 +1315,38 @@ def test_binance():
     except Exception as e:
         return f"❌ Connection Error: {str(e)}"
 
+@app.route('/test-proxy')
+@login_required
+def test_proxy():
+    """Admin only: Test outbound proxy connectivity directly"""
+    is_admin = getattr(current_user, 'is_admin', False) or current_user.email.lower() in ['admin@mindriskcontrol.com', 'test@test.com']
+    if not is_admin:
+        return "Not authorized", 403
+        
+    import requests
+    proxy_url = getattr(config, 'PROXY_URL', None)
+    if not proxy_url:
+        return "❌ PROXY_URL is not set in config."
+        
+    results = [f"Testing Proxy: {proxy_url}"]
+    proxies = {'http': proxy_url, 'https': proxy_url}
+    
+    # 1. Test IP
+    try:
+        ip = requests.get('https://api.ipify.org', proxies=proxies, timeout=10).text.strip()
+        results.append(f"✅ Proxy IP Check: {ip}")
+    except Exception as e:
+        results.append(f"❌ Proxy IP Check Failed: {str(e)}")
+        
+    # 2. Test Binance Ping
+    try:
+        resp = requests.get('https://fapi.binance.com/fapi/v1/ping', proxies=proxies, timeout=10)
+        results.append(f"✅ Binance Ping: HTTP {resp.status_code}")
+    except Exception as e:
+        results.append(f"❌ Binance Ping Failed: {str(e)}")
+        
+    return "<br>".join(results)
+
 @app.route('/api/change_leverage', methods=['POST'])
 @login_required
 def change_leverage():

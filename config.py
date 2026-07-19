@@ -12,6 +12,9 @@ load_dotenv()
 BINANCE_KEY = os.getenv('BINANCE_KEY')
 BINANCE_SECRET = os.getenv('BINANCE_SECRET')
 PROXY_URL = os.getenv('PROXY_URL')
+if PROXY_URL:
+    PROXY_URL = PROXY_URL.strip().strip('"').strip("'")
+
 
 # Troubleshooting print (Check your Render logs to see this)
 if not BINANCE_KEY or not BINANCE_SECRET:

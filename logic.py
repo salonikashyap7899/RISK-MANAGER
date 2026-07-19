@@ -325,14 +325,13 @@ def get_user_exchange_client(user_id, include_disconnected=False):
         if '451' in msg or 'restricted location' in lower:
             error_msg = describe_binance_error(e)
         elif ('proxyerror' in lower or 'tunnel connection failed' in lower
-              or 'unable to connect to proxy' in lower):
+              or 'unable to connect to proxy' in lower or '403 forbidden' in lower):
             error_msg = (
-                "The configured proxy rejected the connection before it ever reached "
-                "Binance (your API keys are fine). A '403 Forbidden' from the proxy "
-                "usually means the proxy subscription expired or its credentials/host "
-                "changed. Check your proxy provider's dashboard, update PROXY_URL in "
-                "the .env file with the current host:port and credentials, then "
-                f"restart the app. Raw error: {msg}"
+                "Proxy Error (403 Forbidden): The proxy rejected the connection. "
+                "This usually means: 1) Proxy credentials (user:pass) are wrong/expired, "
+                "2) Your Google Cloud IP is not whitelisted in the proxy dashboard, or "
+                "3) The proxy URL is malformed. Verify PROXY_URL in .env matches "
+                "http://user:pass@host:port and restart the app."
             )
         else:
             error_msg = f"Could not reach Binance: {msg}"
@@ -365,7 +364,13 @@ def sync_time_with_binance():
             if hasattr(config, 'PROXY_URL') and config.PROXY_URL:
                 proxies = {'https': config.PROXY_URL, 'http': config.PROXY_URL}
             
-            response = requests.get(endpoint, timeout=5, proxies=proxies)
+            try:
+                response = requests.get(endpoint, timeout=5, proxies=proxies)
+                response.raise_for_status()
+            except requests.exceptions.HTTPError as he:
+                if he.response.status_code == 403:
+                    print(f"❌ Proxy 403 Forbidden for {endpoint}. Check credentials/IP whitelist.")
+                raise
             server_time = int(response.json().get('serverTime', 0))
             if server_time > 0:
                 local_time = int(time.time() * 1000)
