@@ -7,7 +7,7 @@
     <meta name="description" content="Institutional-grade risk management for retail traders. Hard 1% risk caps, automated TP/SL, trailing stops and overtrade protection for Binance Futures.">
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&family=Orbitron:wght@600;700;800;900&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}?v=2">
     <link rel="icon" type="image/png" sizes="96x96" href="{{ url_for('static', filename='favicon-96x96.png') }}?v=2">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}?v=2">
@@ -18,92 +18,193 @@
         * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
         *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
         html { scroll-behavior: smooth; }
-        body { background-color: #05070d; overflow-x: hidden; }
+        :root {
+            --neon-cyan: #22d3ee;
+            --neon-blue: #3b82f6;
+            --neon-indigo: #818cf8;
+            --neon-violet: #a855f7;
+            --ink: #05070d;
+        }
+        body {
+            background-color: #05070d;
+            overflow-x: hidden;
+            perspective: 1400px;
+        }
 
-        /* Subtle engineering-grid backdrop */
+        /* ============ 3D WEBGL / CANVAS BACKGROUND ============ */
+        #bg-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 1.6s ease;
+        }
+        #bg-canvas.ready { opacity: 1; }
+
+        /* Animated aurora / plasma orbs behind everything (also the WebGL fallback look) */
+        .aurora {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+        }
+        .aurora span {
+            position: absolute; border-radius: 50%;
+            filter: blur(90px); opacity: 0.5; mix-blend-mode: screen;
+            animation: drift 22s ease-in-out infinite;
+        }
+        .aurora span:nth-child(1) { width: 620px; height: 620px; top: -14%; left: -6%; background: radial-gradient(circle, rgba(34,211,238,0.55), transparent 62%); animation-duration: 26s; }
+        .aurora span:nth-child(2) { width: 560px; height: 560px; top: 8%; right: -8%; background: radial-gradient(circle, rgba(129,140,248,0.5), transparent 62%); animation-duration: 30s; animation-delay: -6s; }
+        .aurora span:nth-child(3) { width: 520px; height: 520px; bottom: -12%; left: 22%; background: radial-gradient(circle, rgba(168,85,247,0.4), transparent 62%); animation-duration: 34s; animation-delay: -12s; }
+        .aurora span:nth-child(4) { width: 440px; height: 440px; bottom: 6%; right: 14%; background: radial-gradient(circle, rgba(16,185,129,0.32), transparent 62%); animation-duration: 28s; animation-delay: -3s; }
+        @keyframes drift {
+            0%, 100% { transform: translate3d(0,0,0) scale(1); }
+            25% { transform: translate3d(60px,-40px,0) scale(1.12); }
+            50% { transform: translate3d(-40px,50px,0) scale(0.95); }
+            75% { transform: translate3d(30px,20px,0) scale(1.06); }
+        }
+
+        /* Engineering grid backdrop with perspective sweep */
         .grid-bg {
             background-image:
-                linear-gradient(rgba(148,163,184,0.045) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(148,163,184,0.045) 1px, transparent 1px);
-            background-size: 44px 44px;
+                linear-gradient(rgba(56,189,248,0.06) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(56,189,248,0.06) 1px, transparent 1px);
+            background-size: 46px 46px;
             mask-image: radial-gradient(ellipse 90% 65% at 50% 0%, black 55%, transparent 100%);
             -webkit-mask-image: radial-gradient(ellipse 90% 65% at 50% 0%, black 55%, transparent 100%);
         }
 
+        /* Faint scanline noise overlay for a "terminal" feel */
+        .scanlines {
+            position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.35;
+            background: repeating-linear-gradient(0deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 2px, transparent 3px);
+        }
+
+        /* Mouse-follow glow */
+        #cursor-glow {
+            position: fixed; z-index: 2; pointer-events: none; width: 460px; height: 460px;
+            border-radius: 50%; transform: translate(-50%, -50%);
+            background: radial-gradient(circle, rgba(34,211,238,0.12), transparent 60%);
+            transition: opacity .4s ease; opacity: 0;
+        }
+
+        /* Keep all real content above the background layers */
+        nav, section, footer, .modal, #signed-banner { position: relative; z-index: 10; }
+
         .gradient-text {
-            background: linear-gradient(120deg, #67e8f9 0%, #38bdf8 55%, #818cf8 100%);
+            background: linear-gradient(120deg, #67e8f9 0%, #38bdf8 45%, #818cf8 80%, #c084fc 100%);
+            background-size: 200% auto;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+            animation: shine 6s linear infinite;
         }
+        @keyframes shine { to { background-position: 200% center; } }
 
+        /* ============ 3D GLASS CARDS ============ */
         .card {
-            background: linear-gradient(180deg, rgba(17,24,39,0.55), rgba(11,16,28,0.85));
+            background: linear-gradient(180deg, rgba(17,24,39,0.55), rgba(11,16,28,0.82));
             border: 1px solid rgba(148,163,184,0.12);
-            backdrop-filter: blur(10px);
-            transition: border-color .25s ease, transform .25s ease, box-shadow .25s ease;
+            backdrop-filter: blur(12px);
+            transition: border-color .3s ease, transform .3s cubic-bezier(.2,.7,.2,1), box-shadow .3s ease;
+            transform-style: preserve-3d;
+            will-change: transform;
+        }
+        .card::before {
+            content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+            background: linear-gradient(135deg, rgba(34,211,238,0.0), rgba(34,211,238,0.0));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor; mask-composite: exclude;
+            opacity: 0; transition: opacity .3s ease, background .3s ease;
+            pointer-events: none;
         }
         .card:hover {
-            border-color: rgba(34,211,238,0.35);
-            transform: translateY(-3px);
-            box-shadow: 0 18px 45px -18px rgba(2,132,199,0.35);
+            border-color: rgba(34,211,238,0.4);
+            box-shadow: 0 30px 70px -28px rgba(2,132,199,0.5), 0 0 40px -18px rgba(34,211,238,0.35);
         }
+        .card:hover::before {
+            opacity: 1;
+            background: linear-gradient(135deg, rgba(34,211,238,0.55), rgba(129,140,248,0.35), transparent 70%);
+        }
+        /* Inner content lifts on 3D tilt */
+        .card > * { transform: translateZ(24px); }
 
         .btn-primary {
+            position: relative;
             background: linear-gradient(120deg, #06b6d4, #2563eb);
-            box-shadow: 0 8px 24px -8px rgba(6,182,212,0.55);
+            box-shadow: 0 8px 24px -8px rgba(6,182,212,0.6), 0 0 0 1px rgba(34,211,238,0.25) inset;
             transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+            overflow: hidden;
         }
-        .btn-primary:hover { transform: translateY(-2px); filter: brightness(1.08); box-shadow: 0 14px 34px -10px rgba(6,182,212,0.65); }
+        .btn-primary::after {
+            content: ""; position: absolute; top: 0; left: -120%; width: 60%; height: 100%;
+            background: linear-gradient(120deg, transparent, rgba(255,255,255,0.35), transparent);
+            transform: skewX(-20deg); transition: none;
+        }
+        .btn-primary:hover { transform: translateY(-2px); filter: brightness(1.1); box-shadow: 0 16px 40px -10px rgba(6,182,212,0.7), 0 0 30px -6px rgba(34,211,238,0.5); }
+        .btn-primary:hover::after { animation: sweep .8s ease; }
+        @keyframes sweep { to { left: 130%; } }
 
         .btn-ghost {
             border: 1px solid rgba(148,163,184,0.25);
-            transition: border-color .2s ease, background .2s ease, transform .2s ease;
+            transition: border-color .2s ease, background .2s ease, transform .2s ease, box-shadow .2s ease;
         }
-        .btn-ghost:hover { border-color: rgba(34,211,238,0.6); background: rgba(34,211,238,0.06); transform: translateY(-2px); }
+        .btn-ghost:hover { border-color: rgba(34,211,238,0.6); background: rgba(34,211,238,0.06); transform: translateY(-2px); box-shadow: 0 0 24px -8px rgba(34,211,238,0.45); }
 
-        .chip {
-            border: 1px solid rgba(34,211,238,0.25);
-            background: rgba(34,211,238,0.06);
-        }
+        .chip { border: 1px solid rgba(34,211,238,0.25); background: rgba(34,211,238,0.06); box-shadow: 0 0 24px -10px rgba(34,211,238,0.5) inset; }
 
         .icon-tile {
-            width: 44px; height: 44px; border-radius: 12px;
+            width: 46px; height: 46px; border-radius: 13px;
             display: flex; align-items: center; justify-content: center;
-            background: rgba(34,211,238,0.08);
-            border: 1px solid rgba(34,211,238,0.2);
+            background: linear-gradient(140deg, rgba(34,211,238,0.16), rgba(129,140,248,0.1));
+            border: 1px solid rgba(34,211,238,0.28);
             color: #67e8f9;
+            box-shadow: 0 0 26px -12px rgba(34,211,238,0.7);
+            transition: transform .3s ease, box-shadow .3s ease;
         }
+        .card:hover .icon-tile { transform: translateZ(38px) scale(1.06); box-shadow: 0 0 34px -8px rgba(34,211,238,0.8); }
 
-        .nav-blur { background: rgba(5,7,13,0.72); backdrop-filter: blur(14px); border-bottom: 1px solid rgba(148,163,184,0.1); }
-        .nav-logo img { height: 44px; width: auto; object-fit: contain; }
+        .nav-blur { background: rgba(5,7,13,0.66); backdrop-filter: blur(16px); border-bottom: 1px solid rgba(148,163,184,0.1); }
+        .nav-logo img { height: 44px; width: auto; object-fit: contain; filter: drop-shadow(0 0 10px rgba(34,211,238,0.35)); }
 
         .mobile-menu { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
-        .mobile-menu.active { max-height: 500px; }
+        .mobile-menu.active { max-height: 520px; }
 
-        /* Mock terminal card */
+        /* ============ 3D HERO TERMINAL ============ */
+        .terminal-3d { transform-style: preserve-3d; transition: transform .2s cubic-bezier(.2,.7,.2,1); }
         .terminal {
-            background: linear-gradient(165deg, rgba(15,23,42,0.92), rgba(8,13,24,0.96));
-            border: 1px solid rgba(148,163,184,0.16);
-            box-shadow: 0 40px 90px -40px rgba(2,132,199,0.45), inset 0 1px 0 rgba(255,255,255,0.04);
+            position: relative;
+            background: linear-gradient(165deg, rgba(15,23,42,0.9), rgba(8,13,24,0.96));
+            border: 1px solid rgba(34,211,238,0.2);
+            box-shadow: 0 50px 110px -40px rgba(2,132,199,0.6), inset 0 1px 0 rgba(255,255,255,0.05), 0 0 60px -30px rgba(34,211,238,0.5);
+        }
+        .terminal::before {
+            content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; pointer-events: none;
+            background: linear-gradient(130deg, rgba(34,211,238,0.6), transparent 35%, transparent 65%, rgba(129,140,248,0.6));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor; mask-composite: exclude;
+            opacity: .8;
         }
         .terminal-row { border-bottom: 1px dashed rgba(148,163,184,0.1); }
-        .tick { color: #34d399; }
+        .tick { color: #34d399; text-shadow: 0 0 12px rgba(52,211,153,0.5); }
         .tick-bad { color: #f87171; }
 
-        .divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(148,163,184,0.25), transparent); }
+        /* Live sparkline in terminal */
+        #spark { display:block; width:100%; height:46px; }
 
-        .modal { position: fixed; inset: 0; background: rgba(2,4,10,0.78); backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; z-index: 1000; }
+        .divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(34,211,238,0.35), transparent); }
+
+        .modal { position: fixed; inset: 0; background: rgba(2,4,10,0.8); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 1000; }
         .modal.active { display: flex; }
         .modal-content {
-            background: #0b101c;
-            border: 1px solid rgba(148,163,184,0.18);
+            background: linear-gradient(180deg, #0d1424, #080d18);
+            border: 1px solid rgba(34,211,238,0.22);
             border-radius: 1.25rem; padding: 2rem; max-width: 430px; width: 90%;
             max-height: 90vh; overflow-y: auto; position: relative;
-            animation: slideUp 0.28s ease-out;
-            box-shadow: 0 40px 90px -30px rgba(0,0,0,0.8);
+            animation: slideUp 0.32s cubic-bezier(.2,.8,.2,1);
+            box-shadow: 0 50px 110px -30px rgba(0,0,0,0.85), 0 0 60px -22px rgba(34,211,238,0.4);
         }
-        @keyframes slideUp { from { transform: translateY(26px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(30px) scale(.97); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
         .modal-close {
             position: absolute; top: 1rem; right: 1rem; width: 2rem; height: 2rem;
             background: rgba(148,163,184,0.1); border: none; border-radius: 0.5rem; cursor: pointer;
@@ -119,14 +220,57 @@
         }
         .field:focus { border-color: rgba(34,211,238,0.55); box-shadow: 0 0 0 3px rgba(34,211,238,0.12); }
 
-        .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
-        .reveal.in { opacity: 1; transform: translateY(0); }
+        /* Scroll reveal with 3D */
+        .reveal { opacity: 0; transform: translateY(26px) rotateX(6deg); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1); transform-origin: bottom; }
+        .reveal.in { opacity: 1; transform: translateY(0) rotateX(0); }
 
-        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52,211,153,0.6); } 50% { opacity: 0.4; box-shadow: 0 0 0 6px rgba(52,211,153,0); } }
         .live-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+
+        /* Floating 3D badge chips near hero */
+        .float-badge { animation: floaty 6s ease-in-out infinite; }
+        .float-badge.delay { animation-delay: -3s; }
+        @keyframes floaty { 0%,100% { transform: translateY(0) translateZ(60px); } 50% { transform: translateY(-14px) translateZ(60px); } }
+
+        /* Section heading underline glow */
+        .kicker { position: relative; display: inline-block; }
+        .kicker::after { content:""; position:absolute; left:50%; bottom:-6px; width:0; height:2px; background:linear-gradient(90deg,transparent,#22d3ee,transparent); transform:translateX(-50%); transition:width .6s ease; }
+        .reveal.in .kicker::after { width: 120%; }
+
+        /* Marquee exchange strip */
+        .marquee { display:flex; gap:3rem; white-space:nowrap; animation: marquee 26s linear infinite; }
+        .marquee-wrap:hover .marquee { animation-play-state: paused; }
+        @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+        /* Animated gradient border for the "most popular" pricing card.
+           Animate the conic-gradient ANGLE (not the box) so the border sweeps
+           cleanly around the card instead of rotating the whole rectangle. */
+        @property --ang { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+        .glow-border { position: relative; }
+        .glow-border::before {
+            content:""; position:absolute; inset:-1.5px; border-radius:inherit; padding:1.5px; z-index:-1;
+            background: conic-gradient(from var(--ang), #22d3ee, #3b82f6, #a855f7, #22d3ee);
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor; mask-composite: exclude;
+            animation: rotate-ang 6s linear infinite; opacity:.9;
+        }
+        @keyframes rotate-ang { to { --ang: 360deg; } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (prefers-reduced-motion: reduce) {
+            .aurora span, .marquee, .glow-border::before, .float-badge, .gradient-text, .live-dot { animation: none !important; }
+            #bg-canvas { display: none; }
+            .reveal { transition: opacity .4s ease; transform: none; }
+        }
     </style>
 </head>
 <body class="font-sans text-slate-200 antialiased">
+
+    <!-- 3D animated background layers -->
+    <canvas id="bg-canvas"></canvas>
+    <div class="aurora" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    <div class="scanlines" aria-hidden="true"></div>
+    <div id="cursor-glow" aria-hidden="true"></div>
 
     <!-- Navbar -->
     <nav id="navbar" class="fixed w-full top-0 z-50 nav-blur">
@@ -175,7 +319,7 @@
 
     {% if current_user.is_authenticated %}
     <!-- Signed-in banner -->
-    <div class="pt-24 px-4">
+    <div id="signed-banner" class="pt-24 px-4">
         <div class="max-w-7xl mx-auto">
             <div class="card rounded-2xl p-6 md:p-7">
                 <div class="flex flex-col md:flex-row items-center justify-between gap-6">
@@ -222,7 +366,6 @@
     <!-- Hero -->
     <section id="hero" class="relative {% if current_user.is_authenticated %}pt-14{% else %}pt-36{% endif %} pb-24 overflow-hidden">
         <div class="absolute inset-0 grid-bg"></div>
-        <div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-cyan-500/10 rounded-full blur-[140px] pointer-events-none"></div>
 
         <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="grid lg:grid-cols-2 gap-16 items-center">
@@ -250,11 +393,11 @@
                     </div>
                     <div class="grid grid-cols-3 gap-6 max-w-lg">
                         <div>
-                            <div class="text-2xl font-bold text-white font-mono">1%</div>
+                            <div class="text-2xl font-bold text-white font-mono"><span class="counter" data-to="1" data-suffix="%">0%</span></div>
                             <div class="text-xs text-slate-500 mt-1">Hard risk cap<br>per trade</div>
                         </div>
                         <div>
-                            <div class="text-2xl font-bold text-white font-mono">4<span class="text-slate-500 text-lg">/day</span></div>
+                            <div class="text-2xl font-bold text-white font-mono"><span class="counter" data-to="4">0</span><span class="text-slate-500 text-lg">/day</span></div>
                             <div class="text-xs text-slate-500 mt-1">Overtrade<br>protection</div>
                         </div>
                         <div>
@@ -264,10 +407,10 @@
                     </div>
                 </div>
 
-                <!-- Mock risk terminal -->
-                <div class="relative">
+                <!-- Mock risk terminal with live 3D tilt + sparkline -->
+                <div class="relative terminal-3d" id="terminalTilt">
                     <div class="terminal rounded-2xl p-6">
-                        <div class="flex items-center justify-between mb-5">
+                        <div class="flex items-center justify-between mb-4">
                             <div class="flex items-center gap-2">
                                 <span class="w-3 h-3 rounded-full bg-rose-500/70"></span>
                                 <span class="w-3 h-3 rounded-full bg-amber-400/70"></span>
@@ -277,28 +420,36 @@
                                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 live-dot"></span> RISK ENGINE ACTIVE
                             </div>
                         </div>
+                        <!-- Live animated sparkline -->
+                        <div class="mb-2 rounded-lg overflow-hidden bg-slate-950/40 border border-cyan-500/10 px-2 py-1">
+                            <div class="flex items-center justify-between font-mono text-xs mb-1">
+                                <span class="text-slate-400">BTCUSDT</span>
+                                <span id="sparkPrice" class="tick">67,420.00</span>
+                            </div>
+                            <canvas id="spark" width="520" height="46"></canvas>
+                        </div>
                         <div class="font-mono text-sm">
-                            <div class="terminal-row flex justify-between py-3">
+                            <div class="terminal-row flex justify-between py-2.5">
                                 <span class="text-slate-400">BTCUSDT · LONG</span>
                                 <span class="tick">+2.41%</span>
                             </div>
-                            <div class="terminal-row flex justify-between py-3">
+                            <div class="terminal-row flex justify-between py-2.5">
                                 <span class="text-slate-500 text-xs self-center">ENTRY 67,420.00</span>
                                 <span class="text-slate-500 text-xs self-center">QTY 0.042</span>
                             </div>
-                            <div class="terminal-row flex justify-between py-3">
+                            <div class="terminal-row flex justify-between py-2.5">
                                 <span class="text-slate-400">STOP LOSS</span>
                                 <span class="text-cyan-300">66,745.80 <span class="text-slate-500">· risk 1.00%</span></span>
                             </div>
-                            <div class="terminal-row flex justify-between py-3">
+                            <div class="terminal-row flex justify-between py-2.5">
                                 <span class="text-slate-400">TP1 · 50%</span>
                                 <span class="tick">68,768.40 ✓ FILLED</span>
                             </div>
-                            <div class="terminal-row flex justify-between py-3">
+                            <div class="terminal-row flex justify-between py-2.5">
                                 <span class="text-slate-400">TP2 · TRAILING</span>
                                 <span class="text-amber-300">SL → 67,420.00 (breakeven)</span>
                             </div>
-                            <div class="flex justify-between py-3">
+                            <div class="flex justify-between py-2.5">
                                 <span class="text-slate-400">DAILY TRADES</span>
                                 <span class="text-slate-200">2 <span class="text-slate-500">of 4</span></span>
                             </div>
@@ -309,24 +460,35 @@
                             <span class="text-xs font-mono text-emerald-300">CONTAINED · ≤ 4.0%</span>
                         </div>
                     </div>
-                    <div class="absolute -bottom-5 -left-5 card rounded-xl px-5 py-4 hidden md:block">
+                    <div class="absolute -bottom-5 -left-5 card rounded-xl px-5 py-4 hidden md:block float-badge">
                         <div class="text-xs text-slate-500 mb-1">If this trade fails</div>
                         <div class="font-mono font-bold text-white">You lose 1% <span class="text-slate-500 font-normal">— never more</span></div>
+                    </div>
+                    <div class="absolute -top-5 -right-4 card rounded-xl px-4 py-3 hidden lg:block float-badge delay">
+                        <div class="text-[10px] uppercase tracking-wider text-slate-500">Auto SL/TP</div>
+                        <div class="font-mono font-bold text-cyan-300 text-sm">ARMED</div>
                     </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Exchange strip -->
-    <section class="py-10 border-y border-line bg-panel/40">
+    <!-- Exchange strip (marquee) -->
+    <section class="py-10 border-y border-line bg-panel/40 overflow-hidden">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex flex-wrap items-center justify-center gap-x-12 gap-y-4 text-sm font-semibold tracking-wide">
-                <span class="text-slate-500 uppercase text-xs">Built for</span>
-                <span class="text-slate-200">Binance Futures</span>
-                <span class="text-slate-600">Bybit <span class="text-xs text-slate-600 font-normal">— coming soon</span></span>
-                <span class="text-slate-600">OKX <span class="text-xs text-slate-600 font-normal">— coming soon</span></span>
-                <span class="text-slate-600">MetaTrader <span class="text-xs text-slate-600 font-normal">— coming soon</span></span>
+            <div class="marquee-wrap overflow-hidden">
+                <div class="marquee text-sm font-semibold tracking-wide items-center">
+                    <span class="text-slate-500 uppercase text-xs">Built for</span>
+                    <span class="text-slate-200">Binance Futures</span>
+                    <span class="text-slate-600">Bybit — coming soon</span>
+                    <span class="text-slate-600">OKX — coming soon</span>
+                    <span class="text-slate-600">MetaTrader — coming soon</span>
+                    <span class="text-slate-500 uppercase text-xs">Built for</span>
+                    <span class="text-slate-200">Binance Futures</span>
+                    <span class="text-slate-600">Bybit — coming soon</span>
+                    <span class="text-slate-600">OKX — coming soon</span>
+                    <span class="text-slate-600">MetaTrader — coming soon</span>
+                </div>
             </div>
         </div>
     </section>
@@ -335,47 +497,47 @@
     <section id="features" class="py-24 px-4 sm:px-6 lg:px-8">
         <div class="max-w-7xl mx-auto">
             <div class="text-center mb-16 reveal">
-                <p class="text-sm font-semibold tracking-widest text-cyan-300 uppercase mb-3">Why traders lose — solved</p>
+                <p class="kicker text-sm font-semibold tracking-widest text-cyan-300 uppercase mb-3">Why traders lose — solved</p>
                 <h2 class="text-3xl md:text-5xl font-extrabold tracking-tight text-white mb-4">Guardrails that execute<br class="hidden md:block"> faster than emotion</h2>
                 <p class="text-slate-400 text-lg max-w-2xl mx-auto">Every order you place passes through a rules engine before it reaches the exchange.</p>
             </div>
-            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div class="card rounded-2xl p-8 reveal">
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6" data-tilt-group>
+                <div class="card rounded-2xl p-8 reveal" data-tilt>
                     <div class="icon-tile mb-6">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
                     </div>
                     <h3 class="text-xl font-bold text-white mb-3">Hard 1% Risk Cap</h3>
                     <p class="text-slate-400 leading-relaxed">Position size is computed from your stop distance automatically. No trade can ever risk more than 1% of your account — the platform won't allow it.</p>
                 </div>
-                <div class="card rounded-2xl p-8 reveal">
+                <div class="card rounded-2xl p-8 reveal" data-tilt>
                     <div class="icon-tile mb-6">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                     </div>
                     <h3 class="text-xl font-bold text-white mb-3">Automated TP & SL</h3>
                     <p class="text-slate-400 leading-relaxed">TP1, TP2 and stop-loss orders are placed on the exchange the instant your entry fills. Partial profit-taking runs on autopilot, even while you sleep.</p>
                 </div>
-                <div class="card rounded-2xl p-8 reveal">
+                <div class="card rounded-2xl p-8 reveal" data-tilt>
                     <div class="icon-tile mb-6">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
                     </div>
                     <h3 class="text-xl font-bold text-white mb-3">Trailing Stop Engine</h3>
                     <p class="text-slate-400 leading-relaxed">As price moves your way, the stop follows — locking in profit and moving to breakeven after TP1. Winners run; losers get cut mechanically.</p>
                 </div>
-                <div class="card rounded-2xl p-8 reveal">
+                <div class="card rounded-2xl p-8 reveal" data-tilt>
                     <div class="icon-tile mb-6">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
                     </div>
                     <h3 class="text-xl font-bold text-white mb-3">Overtrade Protection</h3>
                     <p class="text-slate-400 leading-relaxed">A maximum of 4 trades per day and 2 per symbol. When you hit the limit, the platform locks new entries — revenge trading ends here.</p>
                 </div>
-                <div class="card rounded-2xl p-8 reveal">
+                <div class="card rounded-2xl p-8 reveal" data-tilt>
                     <div class="icon-tile mb-6">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
                     </div>
                     <h3 class="text-xl font-bold text-white mb-3">Live P&L Dashboard</h3>
                     <p class="text-slate-400 leading-relaxed">Real-time positions, wallet balance, realized P&L and a full trade journal with CSV export. Know exactly where you stand, always.</p>
                 </div>
-                <div class="card rounded-2xl p-8 reveal">
+                <div class="card rounded-2xl p-8 reveal" data-tilt>
                     <div class="icon-tile mb-6">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
                     </div>
@@ -390,21 +552,21 @@
     <section id="how-it-works" class="py-24 px-4 sm:px-6 lg:px-8 bg-panel/40 border-y border-line">
         <div class="max-w-6xl mx-auto">
             <div class="text-center mb-16 reveal">
-                <p class="text-sm font-semibold tracking-widest text-cyan-300 uppercase mb-3">How it works</p>
+                <p class="kicker text-sm font-semibold tracking-widest text-cyan-300 uppercase mb-3">How it works</p>
                 <h2 class="text-3xl md:text-5xl font-extrabold tracking-tight text-white mb-4">Protected in three steps</h2>
             </div>
-            <div class="grid md:grid-cols-3 gap-6">
-                <div class="card rounded-2xl p-8 reveal">
+            <div class="grid md:grid-cols-3 gap-6" data-tilt-group>
+                <div class="card rounded-2xl p-8 reveal" data-tilt>
                     <div class="font-mono text-sm text-cyan-300 mb-4">01</div>
                     <h3 class="text-xl font-bold text-white mb-3">Connect your exchange</h3>
                     <p class="text-slate-400 leading-relaxed">Link your Binance Futures account with trade-only API keys in under two minutes. Funds never leave your exchange.</p>
                 </div>
-                <div class="card rounded-2xl p-8 reveal">
+                <div class="card rounded-2xl p-8 reveal" data-tilt>
                     <div class="font-mono text-sm text-cyan-300 mb-4">02</div>
                     <h3 class="text-xl font-bold text-white mb-3">Set your trade plan</h3>
                     <p class="text-slate-400 leading-relaxed">Pick a symbol, direction and stop level. The engine sizes the position to exactly 1% risk and stages your TP1 / TP2 exits.</p>
                 </div>
-                <div class="card rounded-2xl p-8 reveal">
+                <div class="card rounded-2xl p-8 reveal" data-tilt>
                     <div class="font-mono text-sm text-cyan-300 mb-4">03</div>
                     <h3 class="text-xl font-bold text-white mb-3">Trade inside guardrails</h3>
                     <p class="text-slate-400 leading-relaxed">Orders execute with protection attached. Trailing stops, breakeven moves and daily limits run automatically, 24/7.</p>
@@ -424,13 +586,13 @@
     <section id="pricing" class="py-24 px-4 sm:px-6 lg:px-8">
         <div class="max-w-6xl mx-auto">
             <div class="text-center mb-16 reveal">
-                <p class="text-sm font-semibold tracking-widest text-cyan-300 uppercase mb-3">Pricing</p>
+                <p class="kicker text-sm font-semibold tracking-widest text-cyan-300 uppercase mb-3">Pricing</p>
                 <h2 class="text-3xl md:text-5xl font-extrabold tracking-tight text-white mb-4">Less than one bad trade</h2>
                 <p class="text-slate-400 text-lg max-w-2xl mx-auto">One prevented mistake pays for a year of protection.</p>
             </div>
             <div class="grid md:grid-cols-3 gap-6 items-stretch">
                 <!-- Free -->
-                <div class="card rounded-2xl p-8 flex flex-col reveal">
+                <div class="card rounded-2xl p-8 flex flex-col reveal" data-tilt>
                     <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest mb-5">Starter</h3>
                     <div class="mb-2"><span class="text-4xl font-extrabold text-white">Free</span></div>
                     <p class="text-sm text-slate-500 mb-7">Explore the platform</p>
@@ -446,8 +608,8 @@
                     {% endif %}
                 </div>
                 <!-- Monthly -->
-                <div class="card rounded-2xl p-8 flex flex-col relative reveal" style="border-color: rgba(34,211,238,0.45);">
-                    <div class="absolute -top-3.5 left-1/2 -translate-x-1/2"><span class="bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-4 py-1 rounded-full text-xs font-bold tracking-wide">MOST POPULAR</span></div>
+                <div class="card glow-border rounded-2xl p-8 flex flex-col relative reveal" data-tilt>
+                    <div class="absolute -top-3.5 left-1/2 -translate-x-1/2 z-20"><span class="bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-4 py-1 rounded-full text-xs font-bold tracking-wide">MOST POPULAR</span></div>
                     <h3 class="text-sm font-semibold text-cyan-300 uppercase tracking-widest mb-5">Pro Monthly</h3>
                     <div class="mb-2"><span class="text-4xl font-extrabold text-white">₹499</span><span class="text-slate-500 font-medium">/month</span></div>
                     <p class="text-sm text-slate-500 mb-7">Flexible, cancel anytime</p>
@@ -460,7 +622,7 @@
                     <a href="/subscribe" class="btn-primary text-white px-6 py-3 rounded-xl font-semibold text-center">Activate Pro</a>
                 </div>
                 <!-- Yearly -->
-                <div class="card rounded-2xl p-8 flex flex-col relative reveal">
+                <div class="card rounded-2xl p-8 flex flex-col relative reveal" data-tilt>
                     <div class="absolute -top-3.5 left-1/2 -translate-x-1/2"><span class="bg-emerald-500 text-white px-4 py-1 rounded-full text-xs font-bold tracking-wide">SAVE ₹1,000</span></div>
                     <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest mb-5">Pro Yearly</h3>
                     <div class="mb-2"><span class="text-4xl font-extrabold text-white">₹5,000</span><span class="text-slate-500 font-medium">/year</span></div>
@@ -483,7 +645,7 @@
         <div class="max-w-7xl mx-auto">
             <div class="grid md:grid-cols-2 gap-14">
                 <div class="reveal">
-                    <p class="text-sm font-semibold tracking-widest text-cyan-300 uppercase mb-3">Contact</p>
+                    <p class="kicker text-sm font-semibold tracking-widest text-cyan-300 uppercase mb-3">Contact</p>
                     <h2 class="text-3xl md:text-5xl font-extrabold tracking-tight text-white mb-6">Talk to us</h2>
                     <p class="text-slate-400 text-lg mb-10">Questions about setup, exchanges or Pro plans? We usually reply within a business day.</p>
                     <div class="space-y-6">
@@ -601,120 +763,380 @@
         </div>
     </div>
 
+    <!-- Three.js (WebGL 3D background) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        // Mobile menu
-        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
-        const mobileMenu = document.getElementById('mobile-menu');
-        mobileMenuBtn.addEventListener('click', () => { mobileMenu.classList.toggle('active'); });
-        mobileMenu.querySelectorAll('a, button').forEach(link => { link.addEventListener('click', () => { mobileMenu.classList.remove('active'); }); });
+    /* =====================================================================
+       3D WEBGL BACKGROUND — particle globe + orbiting network + candlesticks
+       Degrades gracefully: if Three.js / WebGL is unavailable, the CSS aurora
+       layer alone still looks great.
+    ===================================================================== */
+    (function () {
+        const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const canvas = document.getElementById('bg-canvas');
+        if (prefersReduced || !canvas || typeof THREE === 'undefined') return;
 
-        // Active nav link on scroll
-        const sections = document.querySelectorAll('section[id]');
-        const navLinks = document.querySelectorAll('.nav-link');
-        window.addEventListener('scroll', () => {
-            let current = '';
-            sections.forEach(section => { if (pageYOffset >= section.offsetTop - 200) current = section.getAttribute('id'); });
-            navLinks.forEach(link => {
-                link.classList.remove('text-cyan-300'); link.classList.add('text-slate-400');
-                if (link.getAttribute('href') === `#${current}`) { link.classList.remove('text-slate-400'); link.classList.add('text-cyan-300'); }
+        let renderer;
+        try {
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
+        } catch (e) { return; }
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 62;
+
+        const root = new THREE.Group();
+        scene.add(root);
+
+        // ---- Particle globe (dotted world-map feel) ----
+        const R = 26, COUNT = 1400;
+        const gPos = new Float32Array(COUNT * 3);
+        const gCol = new Float32Array(COUNT * 3);
+        const cA = new THREE.Color(0x22d3ee), cB = new THREE.Color(0x818cf8), cHot = new THREE.Color(0xffab40);
+        for (let i = 0; i < COUNT; i++) {
+            // fibonacci sphere for even distribution
+            const y = 1 - (i / (COUNT - 1)) * 2;
+            const r = Math.sqrt(1 - y * y);
+            const phi = i * Math.PI * (3 - Math.sqrt(5));
+            const x = Math.cos(phi) * r, z = Math.sin(phi) * r;
+            gPos[i*3] = x * R; gPos[i*3+1] = y * R; gPos[i*3+2] = z * R;
+            const t = (y + 1) / 2;
+            const c = Math.random() < 0.06 ? cHot : cA.clone().lerp(cB, t);
+            gCol[i*3] = c.r; gCol[i*3+1] = c.g; gCol[i*3+2] = c.b;
+        }
+        const gGeo = new THREE.BufferGeometry();
+        gGeo.setAttribute('position', new THREE.BufferAttribute(gPos, 3));
+        gGeo.setAttribute('color', new THREE.BufferAttribute(gCol, 3));
+        const gMat = new THREE.PointsMaterial({ size: 0.55, vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
+        const globe = new THREE.Points(gGeo, gMat);
+        root.add(globe);
+
+        // faint wireframe shell
+        const shell = new THREE.Mesh(
+            new THREE.SphereGeometry(R * 0.985, 30, 30),
+            new THREE.MeshBasicMaterial({ color: 0x0e2a3a, wireframe: true, transparent: true, opacity: 0.12 })
+        );
+        root.add(shell);
+
+        // ---- Orbiting connection arcs (network lines) ----
+        const arcs = new THREE.Group(); root.add(arcs);
+        function surf() {
+            const u = Math.random(), v = Math.random();
+            const theta = 2 * Math.PI * u, phi = Math.acos(2 * v - 1);
+            return new THREE.Vector3(
+                R * Math.sin(phi) * Math.cos(theta),
+                R * Math.sin(phi) * Math.sin(theta),
+                R * Math.cos(phi)
+            );
+        }
+        for (let i = 0; i < 16; i++) {
+            const a = surf(), b = surf();
+            const mid = a.clone().add(b).multiplyScalar(0.5).setLength(R * (1.25 + Math.random() * 0.25));
+            const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
+            const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(40));
+            const mat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending });
+            arcs.add(new THREE.Line(geo, mat));
+        }
+
+        // ---- Floating 3D candlesticks orbiting the globe ----
+        const sticks = new THREE.Group(); scene.add(sticks);
+        const up = 0x22d3ee, down = 0xf472b6;
+        for (let i = 0; i < 26; i++) {
+            const bull = Math.random() > 0.5;
+            const h = 2 + Math.random() * 7;
+            const body = new THREE.Mesh(
+                new THREE.BoxGeometry(1.1, h, 1.1),
+                new THREE.MeshBasicMaterial({ color: bull ? up : down, transparent: true, opacity: 0.55 })
+            );
+            const wick = new THREE.Mesh(
+                new THREE.BoxGeometry(0.18, h + 3, 0.18),
+                new THREE.MeshBasicMaterial({ color: bull ? up : down, transparent: true, opacity: 0.4 })
+            );
+            const g = new THREE.Group(); g.add(body); g.add(wick);
+            const ang = Math.random() * Math.PI * 2, rad = 40 + Math.random() * 26;
+            g.position.set(Math.cos(ang) * rad, (Math.random() - 0.5) * 46, Math.sin(ang) * rad - 20);
+            g.userData = { sp: 0.15 + Math.random() * 0.35, ph: Math.random() * Math.PI * 2 };
+            sticks.add(g);
+        }
+
+        // ---- Starfield ----
+        const sCount = 700, sPos = new Float32Array(sCount * 3);
+        for (let i = 0; i < sCount; i++) {
+            sPos[i*3] = (Math.random() - 0.5) * 320;
+            sPos[i*3+1] = (Math.random() - 0.5) * 320;
+            sPos[i*3+2] = (Math.random() - 0.5) * 320 - 60;
+        }
+        const sGeo = new THREE.BufferGeometry();
+        sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+        const stars = new THREE.Points(sGeo, new THREE.PointsMaterial({ color: 0x93c5fd, size: 0.5, transparent: true, opacity: 0.5 }));
+        scene.add(stars);
+
+        // ---- Interaction: mouse + scroll parallax ----
+        let mx = 0, my = 0, tx = 0, ty = 0, scrollY = 0;
+        window.addEventListener('mousemove', (e) => {
+            tx = (e.clientX / window.innerWidth - 0.5);
+            ty = (e.clientY / window.innerHeight - 0.5);
+        }, { passive: true });
+        window.addEventListener('scroll', () => { scrollY = window.pageYOffset; }, { passive: true });
+
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+            mx += (tx - mx) * 0.05; my += (ty - my) * 0.05;
+
+            root.rotation.y = t * 0.06 + mx * 0.6;
+            root.rotation.x = -0.15 + my * 0.4;
+            arcs.rotation.y = -t * 0.12;
+            sticks.rotation.y = t * 0.03;
+            stars.rotation.y = t * 0.01;
+
+            sticks.children.forEach((g) => {
+                g.rotation.y += 0.006;
+                g.position.y += Math.sin(t * g.userData.sp + g.userData.ph) * 0.02;
             });
+
+            // gentle vertical drift as the user scrolls
+            root.position.y = scrollY * 0.006;
+            camera.position.y = -scrollY * 0.004;
+
+            renderer.render(scene, camera);
+        }
+        animate();
+        requestAnimationFrame(() => canvas.classList.add('ready'));
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // Contact form
-        document.getElementById('contact-form').addEventListener('submit', (e) => {
-            e.preventDefault();
-            alert('Thank you for your message! We will get back to you soon.');
-            document.getElementById('contact-form').reset();
+        // Pause rendering when tab hidden (save battery)
+        document.addEventListener('visibilitychange', () => {
+            renderer.setAnimationLoop(document.hidden ? null : null);
         });
+    })();
+    </script>
 
-        // Scroll reveal
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('in'); });
-        }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
-        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+    <script>
+    /* ================= UI behaviour ================= */
+    // Mobile menu
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+    const mobileMenu = document.getElementById('mobile-menu');
+    mobileMenuBtn.addEventListener('click', () => { mobileMenu.classList.toggle('active'); });
+    mobileMenu.querySelectorAll('a, button').forEach(link => { link.addEventListener('click', () => { mobileMenu.classList.remove('active'); }); });
 
-        // Modal management
-        function openLoginModal() { document.getElementById('loginModal').classList.add('active'); document.body.style.overflow = 'hidden'; }
-        function closeLoginModal() { document.getElementById('loginModal').classList.remove('active'); document.body.style.overflow = 'auto'; }
-        function openRegisterModal() { document.getElementById('registerModal').classList.add('active'); document.body.style.overflow = 'hidden'; }
-        function closeRegisterModal() { document.getElementById('registerModal').classList.remove('active'); document.body.style.overflow = 'auto'; }
-        function switchToLogin() { closeRegisterModal(); openLoginModal(); }
-        function switchToRegister() { closeLoginModal(); openRegisterModal(); }
-        function handleLogout() { window.location.href = '/logout'; }
+    // Active nav link on scroll
+    const sections = document.querySelectorAll('section[id]');
+    const navLinks = document.querySelectorAll('.nav-link');
+    window.addEventListener('scroll', () => {
+        let current = '';
+        sections.forEach(section => { if (pageYOffset >= section.offsetTop - 200) current = section.getAttribute('id'); });
+        navLinks.forEach(link => {
+            link.classList.remove('text-cyan-300'); link.classList.add('text-slate-400');
+            if (link.getAttribute('href') === `#${current}`) { link.classList.remove('text-slate-400'); link.classList.add('text-cyan-300'); }
+        });
+    });
 
-        document.getElementById('loginModal').addEventListener('click', (e) => { if (e.target.id === 'loginModal') closeLoginModal(); });
-        document.getElementById('registerModal').addEventListener('click', (e) => { if (e.target.id === 'registerModal') closeRegisterModal(); });
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeLoginModal(); closeRegisterModal(); } });
+    // Cursor glow follow
+    const glow = document.getElementById('cursor-glow');
+    if (glow && window.matchMedia('(pointer:fine)').matches) {
+        window.addEventListener('mousemove', (e) => {
+            glow.style.opacity = '1';
+            glow.style.left = e.clientX + 'px';
+            glow.style.top = e.clientY + 'px';
+        }, { passive: true });
+    }
 
-        // Login form submission
-        document.getElementById('loginForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const submitBtn = e.target.querySelector('button[type="submit"]');
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Logging in...';
+    // Contact form
+    document.getElementById('contact-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        alert('Thank you for your message! We will get back to you soon.');
+        document.getElementById('contact-form').reset();
+    });
 
-            fetch('/login', {
-                method: 'POST',
-                body: new URLSearchParams(formData),
-                headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                credentials: 'same-origin'
-            })
-            .then(res => res.json().then(data => ({status: res.status, data: data})))
-            .then(({status, data}) => {
-                if (data.success) {
-                    closeLoginModal();
-                    setTimeout(() => { window.location.href = data.redirect || '/index'; }, 300);
-                } else {
-                    throw new Error(data.message || 'Login failed');
-                }
-            })
-            .catch(err => {
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Log in';
-                alert('Login failed: ' + err.message);
+    // Scroll reveal
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('in'); });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+    // Animated counters
+    const counterObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            const el = entry.target;
+            counterObserver.unobserve(el);
+            const to = parseFloat(el.dataset.to || '0');
+            const suffix = el.dataset.suffix || '';
+            const dur = 1100; const start = performance.now();
+            function step(now) {
+                const p = Math.min((now - start) / dur, 1);
+                const eased = 1 - Math.pow(1 - p, 3);
+                el.textContent = Math.round(to * eased) + suffix;
+                if (p < 1) requestAnimationFrame(step);
+                else el.textContent = to + suffix;
+            }
+            requestAnimationFrame(step);
+        });
+    }, { threshold: 0.5 });
+    document.querySelectorAll('.counter').forEach(el => counterObserver.observe(el));
+
+    // 3D tilt on cards (pointer-fine only)
+    if (window.matchMedia('(pointer:fine)').matches && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.querySelectorAll('[data-tilt]').forEach(card => {
+            const MAX = 8;
+            card.addEventListener('mousemove', (e) => {
+                const r = card.getBoundingClientRect();
+                const px = (e.clientX - r.left) / r.width - 0.5;
+                const py = (e.clientY - r.top) / r.height - 0.5;
+                card.style.transform = `perspective(900px) rotateY(${px * MAX}deg) rotateX(${-py * MAX}deg) translateY(-4px)`;
             });
+            card.addEventListener('mouseleave', () => { card.style.transform = ''; });
         });
 
-        // Register form submission
-        document.getElementById('registerForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            const password = e.target.querySelector('input[name="password"]').value;
-            const confirmPassword = e.target.querySelector('input[name="confirm_password"]').value;
+        // Hero terminal tilt (stronger)
+        const term = document.getElementById('terminalTilt');
+        if (term) {
+            term.addEventListener('mousemove', (e) => {
+                const r = term.getBoundingClientRect();
+                const px = (e.clientX - r.left) / r.width - 0.5;
+                const py = (e.clientY - r.top) / r.height - 0.5;
+                term.style.transform = `perspective(1100px) rotateY(${px * 10}deg) rotateX(${-py * 10}deg)`;
+            });
+            term.addEventListener('mouseleave', () => { term.style.transform = 'perspective(1100px) rotateY(0) rotateX(0)'; });
+        }
+    }
 
-            if (password !== confirmPassword) { alert('Passwords do not match!'); return; }
-            if (password.length < 6) { alert('Password must be at least 6 characters!'); return; }
+    // Live sparkline in the hero terminal
+    (function () {
+        const cv = document.getElementById('spark');
+        const priceEl = document.getElementById('sparkPrice');
+        if (!cv) return;
+        const ctx = cv.getContext('2d');
+        const W = cv.width, H = cv.height;
+        let data = [];
+        let price = 67420;
+        for (let i = 0; i < 60; i++) { price += (Math.random() - 0.48) * 60; data.push(price); }
+        function draw() {
+            price += (Math.random() - 0.48) * 60;
+            data.push(price); if (data.length > 60) data.shift();
+            const min = Math.min(...data), max = Math.max(...data), span = (max - min) || 1;
+            ctx.clearRect(0, 0, W, H);
+            const grad = ctx.createLinearGradient(0, 0, 0, H);
+            grad.addColorStop(0, 'rgba(34,211,238,0.35)');
+            grad.addColorStop(1, 'rgba(34,211,238,0)');
+            // area
+            ctx.beginPath();
+            data.forEach((v, i) => {
+                const x = (i / (data.length - 1)) * W;
+                const y = H - ((v - min) / span) * (H - 8) - 4;
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            });
+            ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+            ctx.fillStyle = grad; ctx.fill();
+            // line
+            ctx.beginPath();
+            data.forEach((v, i) => {
+                const x = (i / (data.length - 1)) * W;
+                const y = H - ((v - min) / span) * (H - 8) - 4;
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            });
+            ctx.strokeStyle = '#34d399'; ctx.lineWidth = 1.6; ctx.shadowColor = 'rgba(52,211,153,0.6)'; ctx.shadowBlur = 6; ctx.stroke(); ctx.shadowBlur = 0;
+            if (priceEl) {
+                priceEl.textContent = price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                priceEl.className = data[data.length-1] >= data[data.length-2] ? 'tick' : 'tick-bad';
+            }
+        }
+        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            draw(); setInterval(draw, 900);
+        } else { draw(); }
+    })();
 
-            const formData = new FormData(e.target);
-            const submitBtn = e.target.querySelector('button[type="submit"]');
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Creating account...';
+    // Modal management
+    function openLoginModal() { document.getElementById('loginModal').classList.add('active'); document.body.style.overflow = 'hidden'; }
+    function closeLoginModal() { document.getElementById('loginModal').classList.remove('active'); document.body.style.overflow = 'auto'; }
+    function openRegisterModal() { document.getElementById('registerModal').classList.add('active'); document.body.style.overflow = 'hidden'; }
+    function closeRegisterModal() { document.getElementById('registerModal').classList.remove('active'); document.body.style.overflow = 'auto'; }
+    function switchToLogin() { closeRegisterModal(); openLoginModal(); }
+    function switchToRegister() { closeLoginModal(); openRegisterModal(); }
+    function handleLogout() { window.location.href = '/logout'; }
 
-            fetch('/register', {
-                method: 'POST',
-                body: new URLSearchParams(formData),
-                headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                credentials: 'same-origin'
-            })
-            .then(res => res.json().then(data => ({status: res.status, data: data})))
-            .then(({status, data}) => {
-                if (data.success) {
-                    alert(data.message);
-                    e.target.reset();
-                    switchToLogin();
-                    document.getElementById('loginForm').reset();
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Create account';
-                } else {
-                    throw new Error(data.message || 'Registration failed');
-                }
-            })
-            .catch(err => {
+    document.getElementById('loginModal').addEventListener('click', (e) => { if (e.target.id === 'loginModal') closeLoginModal(); });
+    document.getElementById('registerModal').addEventListener('click', (e) => { if (e.target.id === 'registerModal') closeRegisterModal(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeLoginModal(); closeRegisterModal(); } });
+
+    // Login form submission
+    document.getElementById('loginForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Logging in...';
+
+        fetch('/login', {
+            method: 'POST',
+            body: new URLSearchParams(formData),
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin'
+        })
+        .then(res => res.json().then(data => ({status: res.status, data: data})))
+        .then(({status, data}) => {
+            if (data.success) {
+                closeLoginModal();
+                setTimeout(() => { window.location.href = data.redirect || '/index'; }, 300);
+            } else {
+                throw new Error(data.message || 'Login failed');
+            }
+        })
+        .catch(err => {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Log in';
+            alert('Login failed: ' + err.message);
+        });
+    });
+
+    // Register form submission
+    document.getElementById('registerForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const password = e.target.querySelector('input[name="password"]').value;
+        const confirmPassword = e.target.querySelector('input[name="confirm_password"]').value;
+
+        if (password !== confirmPassword) { alert('Passwords do not match!'); return; }
+        if (password.length < 6) { alert('Password must be at least 6 characters!'); return; }
+
+        const formData = new FormData(e.target);
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Creating account...';
+
+        fetch('/register', {
+            method: 'POST',
+            body: new URLSearchParams(formData),
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin'
+        })
+        .then(res => res.json().then(data => ({status: res.status, data: data})))
+        .then(({status, data}) => {
+            if (data.success) {
+                alert(data.message);
+                e.target.reset();
+                switchToLogin();
+                document.getElementById('loginForm').reset();
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Create account';
-                alert('Error: ' + err.message);
-            });
+            } else {
+                throw new Error(data.message || 'Registration failed');
+            }
+        })
+        .catch(err => {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Create account';
+            alert('Error: ' + err.message);
         });
+    });
     </script>
     <script>
 (function(){if(!window.chatbase||window.chatbase("getState")!=="initialized"){window.chatbase=(...arguments)=>{if(!window.chatbase.q){window.chatbase.q=[]}window.chatbase.q.push(arguments)};window.chatbase=new Proxy(window.chatbase,{get(target,prop){if(prop==="q"){return target.q}return(...args)=>target(prop,...args)}})}const onLoad=function(){const script=document.createElement("script");script.src="https://www.chatbase.co/embed.min.js";script.id="pLc3jMAGYgcU-_iIwhJlJ";script.domain="www.chatbase.co";document.body.appendChild(script)};if(document.readyState==="complete"){onLoad()}else{window.addEventListener("load",onLoad)}})();
