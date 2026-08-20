@@ -34,18 +34,21 @@
                Card 3D tilt uses its own per-element perspective() instead. */
         }
 
-        /* ============ 3D WEBGL / CANVAS BACKGROUND ============ */
-        #bg-canvas {
-            position: fixed;
-            inset: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 0;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 1.6s ease;
+        /* ============ VIDEO / GIF BACKGROUND ============ */
+        /* Drop a clip into static/ as market-bg.mp4 (preferred) or
+           market-bg.gif and it plays full-page behind everything. If neither
+           file exists, both elements hide and the CSS aurora shows instead. */
+        .bg-media {
+            position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
         }
-        #bg-canvas.ready { opacity: 1; }
+        .bg-media-el {
+            position: absolute; top: 0; left: 0;
+            /* Overscan anchored to the top-left so the extra size is trimmed
+               off the RIGHT and BOTTOM — where the source clip's corner
+               watermark sits — while still covering the viewport. */
+            width: 114%; height: 114%;
+            object-fit: cover; object-position: left top;
+        }
 
         /* Animated aurora / plasma orbs behind everything (also the WebGL fallback look) */
         .aurora {
@@ -271,16 +274,27 @@
 
         @media (prefers-reduced-motion: reduce) {
             .aurora span, .marquee, .glow-border::before, .float-badge, .gradient-text, .live-dot { animation: none !important; }
-            #bg-canvas { display: none; }
+            .bg-media { display: none; }
             .reveal { transition: opacity .4s ease; transform: none; }
         }
     </style>
 </head>
 <body class="font-sans text-slate-200 antialiased">
 
-    <!-- 3D animated background layers -->
-    <canvas id="bg-canvas"></canvas>
+    <!-- Full-page background: aurora fallback, then the video/GIF clip on top -->
     <div class="aurora" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    <div class="bg-media" aria-hidden="true">
+        <!-- GIF fallback (shown if the mp4 is missing). Upload static/market-bg.gif -->
+        <img class="bg-media-el" id="bg-gif"
+             src="{{ url_for('static', filename='market-bg.gif') }}" alt=""
+             onerror="this.style.display='none'">
+        <!-- Preferred: static/market-bg.mp4 (smaller + smoother than a GIF) -->
+        <video class="bg-media-el" id="bg-video" autoplay muted loop playsinline preload="auto"
+               onloadeddata="var g=document.getElementById('bg-gif'); if(g) g.style.display='none';"
+               onerror="this.style.display='none'">
+            <source src="{{ url_for('static', filename='market-bg.mp4') }}" type="video/mp4">
+        </video>
+    </div>
     <div class="bg-scrim" aria-hidden="true"></div>
     <div class="scanlines" aria-hidden="true"></div>
     <div id="cursor-glow" aria-hidden="true"></div>
@@ -775,179 +789,6 @@
             </div>
         </div>
     </div>
-
-    <!-- 3D WebGL background (Three.js loaded resiliently from multiple CDNs) -->
-    <script>
-    /* =====================================================================
-       3D WEBGL BACKGROUND — particle globe + orbiting network + candlesticks
-       Degrades gracefully: if Three.js / WebGL is unavailable (blocked CDN,
-       old GPU, reduced-motion), the CSS aurora layer alone still looks great.
-    ===================================================================== */
-    function initBgScene() {
-        const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        const canvas = document.getElementById('bg-canvas');
-        if (prefersReduced || !canvas || typeof THREE === 'undefined') return;
-
-        let renderer;
-        try {
-            renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
-        } catch (e) { return; }
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.setSize(window.innerWidth, window.innerHeight);
-
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 62;
-
-        const root = new THREE.Group();
-        scene.add(root);
-
-        // (The dotted globe / wireframe sphere / orbiting arcs were removed on
-        //  request — the background is now candlesticks + dust + bottom bars.)
-
-        // ---- Floating 3D candlesticks — a dense field that FILLS the viewport ----
-        // Candles are spread across the whole visible box (not a thin ring) and
-        // drift upward on a loop, so every section of the page has live 3D
-        // candlesticks moving behind it, not just the hero.
-        const FIELD_Y = 52;                     // half-height of the candle field
-        const sticks = new THREE.Group(); scene.add(sticks);
-        const up = 0x60a5fa, down = 0x2563eb;   // blue histogram tones (match reference)
-        const STICKS = window.innerWidth < 640 ? 54 : 100;
-        for (let i = 0; i < STICKS; i++) {
-            const bull = Math.random() > 0.5;
-            const h = 2.5 + Math.random() * 8;
-            const body = new THREE.Mesh(
-                new THREE.BoxGeometry(1.4, h, 1.4),
-                new THREE.MeshBasicMaterial({ color: bull ? up : down, transparent: true, opacity: 0.5 })
-            );
-            const wick = new THREE.Mesh(
-                new THREE.BoxGeometry(0.22, h + 3.5, 0.22),
-                new THREE.MeshBasicMaterial({ color: bull ? up : down, transparent: true, opacity: 0.3 })
-            );
-            const g = new THREE.Group(); g.add(body); g.add(wick);
-            const x = (Math.random() - 0.5) * 180;          // full width
-            const y = (Math.random() - 0.5) * 2 * FIELD_Y;   // full height
-            const z = -55 + Math.random() * 70;              // varied depth (parallax)
-            g.position.set(x, y, z);
-            g.userData = { vy: 0.03 + Math.random() * 0.06, rot: 0.003 + Math.random() * 0.006 };
-            sticks.add(g);
-        }
-
-        // ---- Particle dust — a dense box of glowing motes that fills the frame ----
-        const sCount = 2400, sPos = new Float32Array(sCount * 3), sCol = new Float32Array(sCount * 3);
-        const dA = new THREE.Color(0x3b82f6), dB = new THREE.Color(0x93c5fd), dC = new THREE.Color(0x60a5fa);
-        for (let i = 0; i < sCount; i++) {
-            sPos[i*3]   = (Math.random() - 0.5) * 300;
-            sPos[i*3+1] = (Math.random() - 0.5) * 200;
-            sPos[i*3+2] = (Math.random() - 0.5) * 200 - 20;
-            const r = Math.random();
-            const c = r < 0.4 ? dA : (r < 0.7 ? dB : dC);
-            sCol[i*3] = c.r; sCol[i*3+1] = c.g; sCol[i*3+2] = c.b;
-        }
-        const sGeo = new THREE.BufferGeometry();
-        sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
-        sGeo.setAttribute('color', new THREE.BufferAttribute(sCol, 3));
-        const stars = new THREE.Points(sGeo, new THREE.PointsMaterial({ size: 0.7, vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending }));
-        scene.add(stars);
-
-        // ---- Rising bar-chart histogram along the bottom (reference look) ----
-        // A row of vertical bars whose heights animate like a live volume chart.
-        // Bars grow from a fixed baseline (geometry pivot moved to the base).
-        const bars = new THREE.Group();
-        bars.position.set(0, -40, -6);          // anchored to the lower band
-        scene.add(bars);
-        const BAR_N = window.innerWidth < 640 ? 34 : 64;
-        const barW = 1.7, barGap = 2.6;
-        const barStartX = -((BAR_N - 1) * barGap) / 2;
-        for (let i = 0; i < BAR_N; i++) {
-            const geo = new THREE.BoxGeometry(barW, 1, barW);
-            geo.translate(0, 0.5, 0);           // pivot at the base so it grows upward
-            const col = i % 7 === 0 ? 0x93c5fd : (i % 2 ? 0x3b82f6 : 0x2563eb);
-            const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.5 }));
-            m.position.x = barStartX + i * barGap;
-            m.userData = { sp: 0.6 + Math.random() * 1.4, ph: Math.random() * Math.PI * 2, base: 6 + Math.random() * 20 };
-            bars.add(m);
-        }
-
-        // ---- Interaction: mouse parallax + scroll (fixed camera) ----
-        let mx = 0, my = 0, tx = 0, ty = 0, progress = 0, targetProgress = 0;
-        function maxScroll() { return Math.max(1, document.documentElement.scrollHeight - window.innerHeight); }
-        window.addEventListener('mousemove', (e) => {
-            tx = (e.clientX / window.innerWidth - 0.5);
-            ty = (e.clientY / window.innerHeight - 0.5);
-        }, { passive: true });
-        function onScroll() { targetProgress = Math.min(1, Math.max(0, window.pageYOffset / maxScroll())); }
-        window.addEventListener('scroll', onScroll, { passive: true });
-        onScroll();
-
-        const clock = new THREE.Clock();
-        function animate() {
-            requestAnimationFrame(animate);
-            const t = clock.getElapsedTime();
-            mx += (tx - mx) * 0.05; my += (ty - my) * 0.05;
-            progress += (targetProgress - progress) * 0.06;   // smoothed scroll
-
-            // Dust drifts and rotates — always filling the frame.
-            stars.rotation.y = t * 0.02 + progress * 0.6;
-            stars.rotation.x = my * 0.15;
-
-            // Candles: perpetual upward ticker + slow spin. Wrapping keeps the
-            // field full at all times, so every section has motion behind it.
-            sticks.children.forEach((g) => {
-                g.rotation.y += g.userData.rot;
-                g.position.y += g.userData.vy;
-                if (g.position.y > FIELD_Y) g.position.y = -FIELD_Y;
-            });
-            sticks.rotation.y = mx * 0.25 + progress * 0.5;
-
-            // Bar histogram: live rising/falling heights (scale grows from base).
-            bars.children.forEach((m) => {
-                m.scale.y = m.userData.base * (0.55 + 0.45 * (0.5 + 0.5 * Math.sin(t * m.userData.sp + m.userData.ph)));
-            });
-
-            // Camera stays put (with a little mouse parallax) so the dense field
-            // fills the viewport behind EVERY section — no empty gaps.
-            camera.position.x += (mx * 10 - camera.position.x) * 0.05;
-            camera.position.y += (-my * 8 - camera.position.y) * 0.05;
-            camera.lookAt(0, 0, 0);
-
-            renderer.render(scene, camera);
-        }
-        animate();
-        requestAnimationFrame(() => canvas.classList.add('ready'));
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-    }
-
-    /* Resilient loader: try several CDNs in turn so a single blocked/slow host
-       (common on corporate or regional networks) doesn't kill the 3D scene.
-       If every source fails, the CSS aurora background remains. */
-    (function loadThree() {
-        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-        const SOURCES = [
-            'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
-            'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js',
-            'https://unpkg.com/three@0.128.0/build/three.min.js'
-        ];
-        let i = 0;
-        function tryNext() {
-            if (typeof THREE !== 'undefined') { initBgScene(); return; }
-            if (i >= SOURCES.length) return;               // all failed — keep CSS fallback
-            const s = document.createElement('script');
-            s.src = SOURCES[i++];
-            s.async = true;
-            s.onload = () => initBgScene();
-            s.onerror = tryNext;
-            document.head.appendChild(s);
-        }
-        tryNext();
-    })();
-    </script>
 
     <script>
     /* ================= UI behaviour ================= */
