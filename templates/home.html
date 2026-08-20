@@ -802,55 +802,8 @@
         const root = new THREE.Group();
         scene.add(root);
 
-        // ---- Particle globe (dotted world-map feel) ----
-        const R = 26, COUNT = 1400;
-        const gPos = new Float32Array(COUNT * 3);
-        const gCol = new Float32Array(COUNT * 3);
-        const cA = new THREE.Color(0x3b82f6), cB = new THREE.Color(0x93c5fd), cHot = new THREE.Color(0xdbeafe);
-        for (let i = 0; i < COUNT; i++) {
-            // fibonacci sphere for even distribution
-            const y = 1 - (i / (COUNT - 1)) * 2;
-            const r = Math.sqrt(1 - y * y);
-            const phi = i * Math.PI * (3 - Math.sqrt(5));
-            const x = Math.cos(phi) * r, z = Math.sin(phi) * r;
-            gPos[i*3] = x * R; gPos[i*3+1] = y * R; gPos[i*3+2] = z * R;
-            const t = (y + 1) / 2;
-            const c = Math.random() < 0.06 ? cHot : cA.clone().lerp(cB, t);
-            gCol[i*3] = c.r; gCol[i*3+1] = c.g; gCol[i*3+2] = c.b;
-        }
-        const gGeo = new THREE.BufferGeometry();
-        gGeo.setAttribute('position', new THREE.BufferAttribute(gPos, 3));
-        gGeo.setAttribute('color', new THREE.BufferAttribute(gCol, 3));
-        const gMat = new THREE.PointsMaterial({ size: 0.55, vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
-        const globe = new THREE.Points(gGeo, gMat);
-        root.add(globe);
-
-        // faint wireframe shell
-        const shell = new THREE.Mesh(
-            new THREE.SphereGeometry(R * 0.985, 30, 30),
-            new THREE.MeshBasicMaterial({ color: 0x0e2a3a, wireframe: true, transparent: true, opacity: 0.12 })
-        );
-        root.add(shell);
-
-        // ---- Orbiting connection arcs (network lines) ----
-        const arcs = new THREE.Group(); root.add(arcs);
-        function surf() {
-            const u = Math.random(), v = Math.random();
-            const theta = 2 * Math.PI * u, phi = Math.acos(2 * v - 1);
-            return new THREE.Vector3(
-                R * Math.sin(phi) * Math.cos(theta),
-                R * Math.sin(phi) * Math.sin(theta),
-                R * Math.cos(phi)
-            );
-        }
-        for (let i = 0; i < 16; i++) {
-            const a = surf(), b = surf();
-            const mid = a.clone().add(b).multiplyScalar(0.5).setLength(R * (1.25 + Math.random() * 0.25));
-            const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
-            const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(40));
-            const mat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending });
-            arcs.add(new THREE.Line(geo, mat));
-        }
+        // (The dotted globe / wireframe sphere / orbiting arcs were removed on
+        //  request — the background is now candlesticks + dust + bottom bars.)
 
         // ---- Floating 3D candlesticks — a dense field that FILLS the viewport ----
         // Candles are spread across the whole visible box (not a thin ring) and
@@ -933,12 +886,6 @@
             const t = clock.getElapsedTime();
             mx += (tx - mx) * 0.05; my += (ty - my) * 0.05;
             progress += (targetProgress - progress) * 0.06;   // smoothed scroll
-
-            // Globe: gentle spin; scroll adds rotation so the hero centrepiece
-            // keeps turning as you move down.
-            root.rotation.y = t * 0.06 + mx * 0.6 + progress * 1.2;
-            root.rotation.x = -0.15 + my * 0.4;
-            arcs.rotation.y = -t * 0.12;
 
             // Dust drifts and rotates — always filling the frame.
             stars.rotation.y = t * 0.02 + progress * 0.6;
