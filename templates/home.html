@@ -214,11 +214,23 @@
         .modal-content {
             background: linear-gradient(180deg, #0d1424, #080d18);
             border: 1px solid rgba(34,211,238,0.22);
-            border-radius: 1.25rem; padding: 2rem; max-width: 430px; width: 90%;
-            max-height: 90vh; overflow-y: auto; position: relative;
+            border-radius: 1.1rem; padding: 1.5rem 1.6rem; max-width: 400px; width: 90%;
+            max-height: 92vh; overflow-y: auto; position: relative;
             animation: slideUp 0.32s cubic-bezier(.2,.8,.2,1);
             box-shadow: 0 50px 110px -30px rgba(0,0,0,0.85), 0 0 60px -22px rgba(34,211,238,0.4);
         }
+        /* Compact fields + Google button inside modals so the card fits with no scrollbar */
+        .modal .field { padding: 0.55rem 0.85rem; }
+        .modal label { margin-bottom: 0.3rem !important; }
+        .gbtn {
+            width: 100%; padding: 0.62rem; border-radius: 0.7rem; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 0.55rem;
+            background: #fff; color: #1f2937; font-weight: 600; font-size: 0.9rem; text-decoration: none;
+            border: 1px solid rgba(255,255,255,0.2); transition: transform .2s, box-shadow .2s;
+        }
+        .gbtn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px -12px rgba(0,0,0,.6); }
+        .modal-divider { display: flex; align-items: center; gap: .6rem; color: #64748b; font-size: .72rem; margin: .8rem 0; }
+        .modal-divider::before, .modal-divider::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, rgba(148,163,184,.25), transparent); }
         @keyframes slideUp { from { transform: translateY(30px) scale(.97); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
         .modal-close {
             position: absolute; top: 1rem; right: 1rem; width: 2rem; height: 2rem;
@@ -737,8 +749,13 @@
         <div class="modal-content">
             <button class="modal-close" onclick="closeLoginModal()">&times;</button>
             <h2 class="text-2xl font-bold text-white mb-1">Welcome back</h2>
-            <p class="text-sm text-slate-500 mb-6">Log in to your trading dashboard</p>
-            <form id="loginForm" class="space-y-4">
+            <p class="text-sm text-slate-500 mb-4">Log in to your trading dashboard</p>
+            <a href="{{ url_for('google_login') }}" class="gbtn">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18" alt="">
+                Continue with Google
+            </a>
+            <div class="modal-divider">or</div>
+            <form id="loginForm" class="space-y-3">
                 <div>
                     <label class="block text-sm font-medium text-slate-300 mb-2">Email</label>
                     <input type="email" name="email" required class="field" placeholder="you@email.com">
@@ -751,9 +768,9 @@
                     <input type="checkbox" id="remember" name="remember" class="w-4 h-4 accent-cyan-500">
                     <label for="remember" class="text-sm text-slate-400">Remember me</label>
                 </div>
-                <button type="submit" class="w-full btn-primary text-white px-4 py-3 rounded-xl font-semibold cursor-pointer">Log in</button>
+                <button type="submit" class="w-full btn-primary text-white px-4 py-2.5 rounded-xl font-semibold cursor-pointer">Log in</button>
             </form>
-            <div class="mt-6 text-center">
+            <div class="mt-4 text-center">
                 <p class="text-sm text-slate-400">Don't have an account? <button onclick="switchToRegister()" class="text-cyan-300 hover:text-cyan-200 font-semibold bg-transparent border-none cursor-pointer">Create one</button></p>
             </div>
         </div>
@@ -764,8 +781,13 @@
         <div class="modal-content">
             <button class="modal-close" onclick="closeRegisterModal()">&times;</button>
             <h2 class="text-2xl font-bold text-white mb-1">Create your account</h2>
-            <p class="text-sm text-slate-500 mb-6">Start trading with guardrails in minutes</p>
-            <form id="registerForm" class="space-y-4">
+            <p class="text-sm text-slate-500 mb-4">Start trading with guardrails in minutes</p>
+            <a href="{{ url_for('google_login') }}" class="gbtn">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18" alt="">
+                Sign up with Google
+            </a>
+            <div class="modal-divider">or</div>
+            <form id="registerForm" class="space-y-3">
                 <div>
                     <label class="block text-sm font-medium text-slate-300 mb-2">Username</label>
                     <input type="text" name="username" required class="field" placeholder="Choose a username">
@@ -782,9 +804,9 @@
                     <label class="block text-sm font-medium text-slate-300 mb-2">Confirm password</label>
                     <input type="password" name="confirm_password" required class="field" placeholder="Confirm password">
                 </div>
-                <button type="submit" class="w-full btn-primary text-white px-4 py-3 rounded-xl font-semibold cursor-pointer">Create account</button>
+                <button type="submit" class="w-full btn-primary text-white px-4 py-2.5 rounded-xl font-semibold cursor-pointer">Create account</button>
             </form>
-            <div class="mt-6 text-center">
+            <div class="mt-4 text-center">
                 <p class="text-sm text-slate-400">Already have an account? <button onclick="switchToLogin()" class="text-cyan-300 hover:text-cyan-200 font-semibold bg-transparent border-none cursor-pointer">Log in</button></p>
             </div>
         </div>
