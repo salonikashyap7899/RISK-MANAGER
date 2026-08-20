@@ -679,7 +679,7 @@
     </section>
 
     <!-- Footer -->
-    <footer class="border-t border-line py-16 px-4 sm:px-6 lg:px-8 bg-ink">
+    <footer class="border-t border-line py-16 px-4 sm:px-6 lg:px-8" style="background: rgba(3,5,11,0.55); backdrop-filter: blur(10px);">
         <div class="max-w-7xl mx-auto">
             <div class="grid md:grid-cols-4 gap-12 mb-14">
                 <div class="md:col-span-1">
@@ -763,15 +763,14 @@
         </div>
     </div>
 
-    <!-- Three.js (WebGL 3D background) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- 3D WebGL background (Three.js loaded resiliently from multiple CDNs) -->
     <script>
     /* =====================================================================
        3D WEBGL BACKGROUND — particle globe + orbiting network + candlesticks
-       Degrades gracefully: if Three.js / WebGL is unavailable, the CSS aurora
-       layer alone still looks great.
+       Degrades gracefully: if Three.js / WebGL is unavailable (blocked CDN,
+       old GPU, reduced-motion), the CSS aurora layer alone still looks great.
     ===================================================================== */
-    (function () {
+    function initBgScene() {
         const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         const canvas = document.getElementById('bg-canvas');
         if (prefersReduced || !canvas || typeof THREE === 'undefined') return;
@@ -841,9 +840,12 @@
         }
 
         // ---- Floating 3D candlesticks orbiting the globe ----
+        // Spread over a tall vertical range so the field stays alive behind
+        // every section as the visitor scrolls the whole page.
         const sticks = new THREE.Group(); scene.add(sticks);
         const up = 0x22d3ee, down = 0xf472b6;
-        for (let i = 0; i < 26; i++) {
+        const STICKS = window.innerWidth < 640 ? 26 : 46;
+        for (let i = 0; i < STICKS; i++) {
             const bull = Math.random() > 0.5;
             const h = 2 + Math.random() * 7;
             const body = new THREE.Mesh(
@@ -855,8 +857,8 @@
                 new THREE.MeshBasicMaterial({ color: bull ? up : down, transparent: true, opacity: 0.4 })
             );
             const g = new THREE.Group(); g.add(body); g.add(wick);
-            const ang = Math.random() * Math.PI * 2, rad = 40 + Math.random() * 26;
-            g.position.set(Math.cos(ang) * rad, (Math.random() - 0.5) * 46, Math.sin(ang) * rad - 20);
+            const ang = Math.random() * Math.PI * 2, rad = 38 + Math.random() * 30;
+            g.position.set(Math.cos(ang) * rad, (Math.random() - 0.5) * 90, Math.sin(ang) * rad - 20);
             g.userData = { sp: 0.15 + Math.random() * 0.35, ph: Math.random() * Math.PI * 2 };
             sticks.add(g);
         }
@@ -898,8 +900,11 @@
                 g.position.y += Math.sin(t * g.userData.sp + g.userData.ph) * 0.02;
             });
 
-            // gentle vertical drift as the user scrolls
+            // Scroll parallax: drift the globe and pan the candlestick field so
+            // the 3D scene stays alive behind every section top-to-bottom.
             root.position.y = scrollY * 0.006;
+            root.rotation.z = scrollY * 0.00015;
+            sticks.position.y = scrollY * 0.03;      // fresh candles scroll into frame
             camera.position.y = -scrollY * 0.004;
 
             renderer.render(scene, camera);
@@ -913,10 +918,30 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // Pause rendering when tab hidden (save battery)
-        document.addEventListener('visibilitychange', () => {
-            renderer.setAnimationLoop(document.hidden ? null : null);
-        });
+    }
+
+    /* Resilient loader: try several CDNs in turn so a single blocked/slow host
+       (common on corporate or regional networks) doesn't kill the 3D scene.
+       If every source fails, the CSS aurora background remains. */
+    (function loadThree() {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const SOURCES = [
+            'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
+            'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js',
+            'https://unpkg.com/three@0.128.0/build/three.min.js'
+        ];
+        let i = 0;
+        function tryNext() {
+            if (typeof THREE !== 'undefined') { initBgScene(); return; }
+            if (i >= SOURCES.length) return;               // all failed — keep CSS fallback
+            const s = document.createElement('script');
+            s.src = SOURCES[i++];
+            s.async = true;
+            s.onload = () => initBgScene();
+            s.onerror = tryNext;
+            document.head.appendChild(s);
+        }
+        tryNext();
     })();
     </script>
 
