@@ -858,7 +858,7 @@
             );
             const g = new THREE.Group(); g.add(body); g.add(wick);
             const ang = Math.random() * Math.PI * 2, rad = 38 + Math.random() * 30;
-            g.position.set(Math.cos(ang) * rad, (Math.random() - 0.5) * 90, Math.sin(ang) * rad - 20);
+            g.position.set(Math.cos(ang) * rad, (Math.random() - 0.5) * 60, Math.sin(ang) * rad - 20);
             g.userData = { sp: 0.15 + Math.random() * 0.35, ph: Math.random() * Math.PI * 2 };
             sticks.add(g);
         }
@@ -889,10 +889,11 @@
             const t = clock.getElapsedTime();
             mx += (tx - mx) * 0.05; my += (ty - my) * 0.05;
 
-            root.rotation.y = t * 0.06 + mx * 0.6;
+            // Scroll adds a subtle spin as a fixed offset (not accumulating).
+            root.rotation.y = t * 0.06 + mx * 0.6 + scrollY * 0.0002;
             root.rotation.x = -0.15 + my * 0.4;
             arcs.rotation.y = -t * 0.12;
-            sticks.rotation.y = t * 0.03;
+            sticks.rotation.y = t * 0.03 + scrollY * 0.00012;
             stars.rotation.y = t * 0.01;
 
             sticks.children.forEach((g) => {
@@ -900,12 +901,10 @@
                 g.position.y += Math.sin(t * g.userData.sp + g.userData.ph) * 0.02;
             });
 
-            // Scroll parallax: drift the globe and pan the candlestick field so
-            // the 3D scene stays alive behind every section top-to-bottom.
-            root.position.y = scrollY * 0.006;
-            root.rotation.z = scrollY * 0.00015;
-            sticks.position.y = scrollY * 0.03;      // fresh candles scroll into frame
-            camera.position.y = -scrollY * 0.004;
+            // The canvas is a FIXED full-viewport layer, so the scene already
+            // sits behind every section at any scroll position. We deliberately
+            // do NOT translate it on scroll — doing so slid it off-screen and
+            // left the lower sections with an empty background.
 
             renderer.render(scene, camera);
         }
