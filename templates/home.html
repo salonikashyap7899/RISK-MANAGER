@@ -28,7 +28,10 @@
         body {
             background-color: #05070d;
             overflow-x: hidden;
-            perspective: 1400px;
+            /* NOTE: do not set `perspective`/`transform`/`filter` on <body> —
+               it makes the fixed #bg-canvas be contained by the body box and
+               scroll away, leaving lower sections with no animated background.
+               Card 3D tilt uses its own per-element perspective() instead. */
         }
 
         /* ============ 3D WEBGL / CANVAS BACKGROUND ============ */
@@ -62,6 +65,15 @@
             25% { transform: translate3d(60px,-40px,0) scale(1.12); }
             50% { transform: translate3d(-40px,50px,0) scale(0.95); }
             75% { transform: translate3d(30px,20px,0) scale(1.06); }
+        }
+
+        /* Readability scrim over the animated background so text stays crisp
+           while the 3D scene still shows through everywhere. */
+        .bg-scrim {
+            position: fixed; inset: 0; z-index: 1; pointer-events: none;
+            background:
+                radial-gradient(ellipse 70% 55% at 30% 40%, rgba(5,7,13,0.55), transparent 70%),
+                linear-gradient(180deg, rgba(5,7,13,0.30), rgba(5,7,13,0.12) 40%, rgba(5,7,13,0.30));
         }
 
         /* Engineering grid backdrop with perspective sweep */
@@ -269,6 +281,7 @@
     <!-- 3D animated background layers -->
     <canvas id="bg-canvas"></canvas>
     <div class="aurora" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    <div class="bg-scrim" aria-hidden="true"></div>
     <div class="scanlines" aria-hidden="true"></div>
     <div id="cursor-glow" aria-hidden="true"></div>
 
@@ -839,72 +852,93 @@
             arcs.add(new THREE.Line(geo, mat));
         }
 
-        // ---- Floating 3D candlesticks orbiting the globe ----
-        // Spread over a tall vertical range so the field stays alive behind
-        // every section as the visitor scrolls the whole page.
+        // ---- Floating 3D candlesticks — a dense field that FILLS the viewport ----
+        // Candles are spread across the whole visible box (not a thin ring) and
+        // drift upward on a loop, so every section of the page has live 3D
+        // candlesticks moving behind it, not just the hero.
+        const FIELD_Y = 52;                     // half-height of the candle field
         const sticks = new THREE.Group(); scene.add(sticks);
         const up = 0x22d3ee, down = 0xf472b6;
-        const STICKS = window.innerWidth < 640 ? 26 : 46;
+        const STICKS = window.innerWidth < 640 ? 54 : 100;
         for (let i = 0; i < STICKS; i++) {
             const bull = Math.random() > 0.5;
-            const h = 2 + Math.random() * 7;
+            const h = 2.5 + Math.random() * 8;
             const body = new THREE.Mesh(
-                new THREE.BoxGeometry(1.1, h, 1.1),
-                new THREE.MeshBasicMaterial({ color: bull ? up : down, transparent: true, opacity: 0.55 })
+                new THREE.BoxGeometry(1.4, h, 1.4),
+                new THREE.MeshBasicMaterial({ color: bull ? up : down, transparent: true, opacity: 0.5 })
             );
             const wick = new THREE.Mesh(
-                new THREE.BoxGeometry(0.18, h + 3, 0.18),
-                new THREE.MeshBasicMaterial({ color: bull ? up : down, transparent: true, opacity: 0.4 })
+                new THREE.BoxGeometry(0.22, h + 3.5, 0.22),
+                new THREE.MeshBasicMaterial({ color: bull ? up : down, transparent: true, opacity: 0.3 })
             );
             const g = new THREE.Group(); g.add(body); g.add(wick);
-            const ang = Math.random() * Math.PI * 2, rad = 38 + Math.random() * 30;
-            g.position.set(Math.cos(ang) * rad, (Math.random() - 0.5) * 60, Math.sin(ang) * rad - 20);
-            g.userData = { sp: 0.15 + Math.random() * 0.35, ph: Math.random() * Math.PI * 2 };
+            const x = (Math.random() - 0.5) * 180;          // full width
+            const y = (Math.random() - 0.5) * 2 * FIELD_Y;   // full height
+            const z = -55 + Math.random() * 70;              // varied depth (parallax)
+            g.position.set(x, y, z);
+            g.userData = { vy: 0.03 + Math.random() * 0.06, rot: 0.003 + Math.random() * 0.006 };
             sticks.add(g);
         }
 
-        // ---- Starfield ----
-        const sCount = 700, sPos = new Float32Array(sCount * 3);
+        // ---- Particle dust — a dense box of glowing motes that fills the frame ----
+        const sCount = 2400, sPos = new Float32Array(sCount * 3), sCol = new Float32Array(sCount * 3);
+        const dA = new THREE.Color(0x22d3ee), dB = new THREE.Color(0x93c5fd), dC = new THREE.Color(0x818cf8);
         for (let i = 0; i < sCount; i++) {
-            sPos[i*3] = (Math.random() - 0.5) * 320;
-            sPos[i*3+1] = (Math.random() - 0.5) * 320;
-            sPos[i*3+2] = (Math.random() - 0.5) * 320 - 60;
+            sPos[i*3]   = (Math.random() - 0.5) * 300;
+            sPos[i*3+1] = (Math.random() - 0.5) * 200;
+            sPos[i*3+2] = (Math.random() - 0.5) * 200 - 20;
+            const r = Math.random();
+            const c = r < 0.4 ? dA : (r < 0.7 ? dB : dC);
+            sCol[i*3] = c.r; sCol[i*3+1] = c.g; sCol[i*3+2] = c.b;
         }
         const sGeo = new THREE.BufferGeometry();
         sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
-        const stars = new THREE.Points(sGeo, new THREE.PointsMaterial({ color: 0x93c5fd, size: 0.5, transparent: true, opacity: 0.5 }));
+        sGeo.setAttribute('color', new THREE.BufferAttribute(sCol, 3));
+        const stars = new THREE.Points(sGeo, new THREE.PointsMaterial({ size: 0.7, vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending }));
         scene.add(stars);
 
-        // ---- Interaction: mouse + scroll parallax ----
-        let mx = 0, my = 0, tx = 0, ty = 0, scrollY = 0;
+        // ---- Interaction: mouse parallax + scroll (fixed camera) ----
+        let mx = 0, my = 0, tx = 0, ty = 0, progress = 0, targetProgress = 0;
+        function maxScroll() { return Math.max(1, document.documentElement.scrollHeight - window.innerHeight); }
         window.addEventListener('mousemove', (e) => {
             tx = (e.clientX / window.innerWidth - 0.5);
             ty = (e.clientY / window.innerHeight - 0.5);
         }, { passive: true });
-        window.addEventListener('scroll', () => { scrollY = window.pageYOffset; }, { passive: true });
+        function onScroll() { targetProgress = Math.min(1, Math.max(0, window.pageYOffset / maxScroll())); }
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
 
         const clock = new THREE.Clock();
         function animate() {
             requestAnimationFrame(animate);
             const t = clock.getElapsedTime();
             mx += (tx - mx) * 0.05; my += (ty - my) * 0.05;
+            progress += (targetProgress - progress) * 0.06;   // smoothed scroll
 
-            // Scroll adds a subtle spin as a fixed offset (not accumulating).
-            root.rotation.y = t * 0.06 + mx * 0.6 + scrollY * 0.0002;
+            // Globe: gentle spin; scroll adds rotation so the hero centrepiece
+            // keeps turning as you move down.
+            root.rotation.y = t * 0.06 + mx * 0.6 + progress * 1.2;
             root.rotation.x = -0.15 + my * 0.4;
             arcs.rotation.y = -t * 0.12;
-            sticks.rotation.y = t * 0.03 + scrollY * 0.00012;
-            stars.rotation.y = t * 0.01;
 
+            // Dust drifts and rotates — always filling the frame.
+            stars.rotation.y = t * 0.02 + progress * 0.6;
+            stars.rotation.x = my * 0.15;
+
+            // Candles: perpetual upward ticker + slow spin. Wrapping keeps the
+            // field full at all times, so every section has motion behind it.
             sticks.children.forEach((g) => {
-                g.rotation.y += 0.006;
-                g.position.y += Math.sin(t * g.userData.sp + g.userData.ph) * 0.02;
+                g.rotation.y += g.userData.rot;
+                g.position.y += g.userData.vy;
+                if (g.position.y > FIELD_Y) g.position.y = -FIELD_Y;
             });
+            sticks.rotation.y = mx * 0.25 + progress * 0.5;
 
-            // The canvas is a FIXED full-viewport layer, so the scene already
-            // sits behind every section at any scroll position. We deliberately
-            // do NOT translate it on scroll — doing so slid it off-screen and
-            // left the lower sections with an empty background.
+            // Camera stays put (with a little mouse parallax) so the dense field
+            // fills the viewport behind EVERY section — no empty gaps.
+            camera.position.x += (mx * 10 - camera.position.x) * 0.05;
+            camera.position.y += (-my * 8 - camera.position.y) * 0.05;
+            camera.lookAt(0, 0, 0);
 
             renderer.render(scene, camera);
         }
