@@ -56,10 +56,10 @@
             filter: blur(90px); opacity: 0.5; mix-blend-mode: screen;
             animation: drift 22s ease-in-out infinite;
         }
-        .aurora span:nth-child(1) { width: 620px; height: 620px; top: -14%; left: -6%; background: radial-gradient(circle, rgba(34,211,238,0.55), transparent 62%); animation-duration: 26s; }
-        .aurora span:nth-child(2) { width: 560px; height: 560px; top: 8%; right: -8%; background: radial-gradient(circle, rgba(129,140,248,0.5), transparent 62%); animation-duration: 30s; animation-delay: -6s; }
-        .aurora span:nth-child(3) { width: 520px; height: 520px; bottom: -12%; left: 22%; background: radial-gradient(circle, rgba(168,85,247,0.4), transparent 62%); animation-duration: 34s; animation-delay: -12s; }
-        .aurora span:nth-child(4) { width: 440px; height: 440px; bottom: 6%; right: 14%; background: radial-gradient(circle, rgba(16,185,129,0.32), transparent 62%); animation-duration: 28s; animation-delay: -3s; }
+        .aurora span:nth-child(1) { width: 620px; height: 620px; top: -14%; left: -6%; background: radial-gradient(circle, rgba(59,130,246,0.55), transparent 62%); animation-duration: 26s; }
+        .aurora span:nth-child(2) { width: 560px; height: 560px; top: 8%; right: -8%; background: radial-gradient(circle, rgba(96,165,250,0.5), transparent 62%); animation-duration: 30s; animation-delay: -6s; }
+        .aurora span:nth-child(3) { width: 520px; height: 520px; bottom: -12%; left: 22%; background: radial-gradient(circle, rgba(37,99,235,0.42), transparent 62%); animation-duration: 34s; animation-delay: -12s; }
+        .aurora span:nth-child(4) { width: 440px; height: 440px; bottom: 6%; right: 14%; background: radial-gradient(circle, rgba(147,197,253,0.32), transparent 62%); animation-duration: 28s; animation-delay: -3s; }
         @keyframes drift {
             0%, 100% { transform: translate3d(0,0,0) scale(1); }
             25% { transform: translate3d(60px,-40px,0) scale(1.12); }
@@ -806,7 +806,7 @@
         const R = 26, COUNT = 1400;
         const gPos = new Float32Array(COUNT * 3);
         const gCol = new Float32Array(COUNT * 3);
-        const cA = new THREE.Color(0x22d3ee), cB = new THREE.Color(0x818cf8), cHot = new THREE.Color(0xffab40);
+        const cA = new THREE.Color(0x3b82f6), cB = new THREE.Color(0x93c5fd), cHot = new THREE.Color(0xdbeafe);
         for (let i = 0; i < COUNT; i++) {
             // fibonacci sphere for even distribution
             const y = 1 - (i / (COUNT - 1)) * 2;
@@ -858,7 +858,7 @@
         // candlesticks moving behind it, not just the hero.
         const FIELD_Y = 52;                     // half-height of the candle field
         const sticks = new THREE.Group(); scene.add(sticks);
-        const up = 0x22d3ee, down = 0xf472b6;
+        const up = 0x60a5fa, down = 0x2563eb;   // blue histogram tones (match reference)
         const STICKS = window.innerWidth < 640 ? 54 : 100;
         for (let i = 0; i < STICKS; i++) {
             const bull = Math.random() > 0.5;
@@ -882,7 +882,7 @@
 
         // ---- Particle dust — a dense box of glowing motes that fills the frame ----
         const sCount = 2400, sPos = new Float32Array(sCount * 3), sCol = new Float32Array(sCount * 3);
-        const dA = new THREE.Color(0x22d3ee), dB = new THREE.Color(0x93c5fd), dC = new THREE.Color(0x818cf8);
+        const dA = new THREE.Color(0x3b82f6), dB = new THREE.Color(0x93c5fd), dC = new THREE.Color(0x60a5fa);
         for (let i = 0; i < sCount; i++) {
             sPos[i*3]   = (Math.random() - 0.5) * 300;
             sPos[i*3+1] = (Math.random() - 0.5) * 200;
@@ -896,6 +896,25 @@
         sGeo.setAttribute('color', new THREE.BufferAttribute(sCol, 3));
         const stars = new THREE.Points(sGeo, new THREE.PointsMaterial({ size: 0.7, vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending }));
         scene.add(stars);
+
+        // ---- Rising bar-chart histogram along the bottom (reference look) ----
+        // A row of vertical bars whose heights animate like a live volume chart.
+        // Bars grow from a fixed baseline (geometry pivot moved to the base).
+        const bars = new THREE.Group();
+        bars.position.set(0, -40, -6);          // anchored to the lower band
+        scene.add(bars);
+        const BAR_N = window.innerWidth < 640 ? 34 : 64;
+        const barW = 1.7, barGap = 2.6;
+        const barStartX = -((BAR_N - 1) * barGap) / 2;
+        for (let i = 0; i < BAR_N; i++) {
+            const geo = new THREE.BoxGeometry(barW, 1, barW);
+            geo.translate(0, 0.5, 0);           // pivot at the base so it grows upward
+            const col = i % 7 === 0 ? 0x93c5fd : (i % 2 ? 0x3b82f6 : 0x2563eb);
+            const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.5 }));
+            m.position.x = barStartX + i * barGap;
+            m.userData = { sp: 0.6 + Math.random() * 1.4, ph: Math.random() * Math.PI * 2, base: 6 + Math.random() * 20 };
+            bars.add(m);
+        }
 
         // ---- Interaction: mouse parallax + scroll (fixed camera) ----
         let mx = 0, my = 0, tx = 0, ty = 0, progress = 0, targetProgress = 0;
@@ -933,6 +952,11 @@
                 if (g.position.y > FIELD_Y) g.position.y = -FIELD_Y;
             });
             sticks.rotation.y = mx * 0.25 + progress * 0.5;
+
+            // Bar histogram: live rising/falling heights (scale grows from base).
+            bars.children.forEach((m) => {
+                m.scale.y = m.userData.base * (0.55 + 0.45 * (0.5 + 0.5 * Math.sin(t * m.userData.sp + m.userData.ph)));
+            });
 
             // Camera stays put (with a little mouse parallax) so the dense field
             // fills the viewport behind EVERY section — no empty gaps.
