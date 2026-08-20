@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for, Response, flash
+from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from authlib.integrations.flask_client import OAuth
@@ -22,6 +23,12 @@ import traceback
 load_dotenv()
 
 app = Flask(__name__)
+
+# Behind nginx (which terminates TLS and forwards http to gunicorn), trust the
+# X-Forwarded-* headers so Flask knows the real scheme/host. Without this,
+# url_for(..., _external=True) builds http:// URLs, which breaks the Google
+# OAuth redirect_uri (redirect_uri_mismatch) and makes https cookies misbehave.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 # Secure secret key - use environment variable, or persist a generated one so
 # sessions survive restarts/redeploys (a new random key on every boot logs
@@ -239,8 +246,11 @@ def login():
 
         if not is_admin:
             if not user.is_subscribed:
+                # The user IS logged in at this point — send them straight to the
+                # subscribe page instead of returning a "login failed" error.
                 if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return jsonify({'success': False, 'message': 'Please subscribe to access the dashboard'}), 200
+                    return jsonify({'success': True, 'redirect': url_for('subscribe'),
+                                    'message': 'Please subscribe to access the dashboard'}), 200
                 flash("Please subscribe to access the trading dashboard.", "warning")
                 return redirect(url_for('subscribe'))
 
@@ -251,7 +261,8 @@ def login():
                     user.subscription_status = 'expired'
                     db.session.commit()
                     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                        return jsonify({'success': False, 'message': 'Your subscription has expired'}), 200
+                        return jsonify({'success': True, 'redirect': url_for('subscribe'),
+                                        'message': 'Your subscription has expired'}), 200
                     flash("Your subscription has expired. Please renew to access the dashboard.", "warning")
                     return redirect(url_for('subscribe'))
 
