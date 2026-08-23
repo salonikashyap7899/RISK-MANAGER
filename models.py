@@ -89,9 +89,18 @@ class TradeDailyStats(db.Model):
     def get_for_user(cls, user_id, date_str):
         stat = cls.query.filter_by(user_id=user_id, trade_date=date_str).first()
         if not stat:
-            stat = cls(user_id=user_id, trade_date=date_str)
-            db.session.add(stat)
-            db.session.commit()
+            stat = cls(user_id=user_id, trade_date=date_str, total_trades=0, symbol_trades='{}')
+            try:
+                db.session.add(stat)
+                db.session.commit()
+            except Exception as e:
+                # Don't let a DB write hiccup (e.g. a read-only database file
+                # from wrong file permissions) take the whole dashboard down.
+                # Roll back and return an in-memory default row so the page
+                # still renders; the underlying cause should still be fixed.
+                db.session.rollback()
+                print(f"⚠️ TradeDailyStats.get_for_user write failed: {e}")
+                stat = cls(user_id=user_id, trade_date=date_str, total_trades=0, symbol_trades='{}')
         return stat
 
 # NEW: Live Trade Logs for PnL/events
