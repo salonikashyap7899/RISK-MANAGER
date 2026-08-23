@@ -21,6 +21,16 @@ _trade_history_cache = {}
 _trade_history_cache_time = {}
 _leverage_cache = {}
 _leverage_cache_time = {}
+# Cache the full futures exchange-info (symbol filters) — it changes very
+# rarely, and fetching it on every round_qty/round_price/etc. call was
+# hammering Binance and getting the server IP rate-limit-banned (-1003).
+_exchange_info_cache = None
+_exchange_info_cache_time = 0
+_EXCHANGE_INFO_TTL = 3600  # seconds (1 hour)
+# When Binance IP-bans us (-1003) it says "banned until <epoch_ms>". Record it
+# and STOP sending requests until it passes — otherwise every retry while
+# banned makes Binance extend the ban, so it never clears.
+_ip_ban_until = 0  # epoch milliseconds
 _last_call_time = 0
 CACHE_DURATION = 5
 _virtual_guard_last_run = {}
@@ -219,8 +229,27 @@ def describe_binance_error(e):
     if code == -1021:
         return "Binance error -1021: Timestamp out of sync. Retried with server-time offset; refresh and try again."
     if code == -1003:
+        # Record the ban window so we can stop hitting Binance until it lifts.
+        global _ip_ban_until
+        import re
+        m = re.search(r'banned until (\d+)', msg)
+        if m:
+            try:
+                _ip_ban_until = int(m.group(1))
+            except Exception:
+                pass
+        if _ip_ban_until and _ip_ban_until > time.time() * 1000:
+            import datetime
+            lift_ist = datetime.datetime.utcfromtimestamp(_ip_ban_until / 1000) + datetime.timedelta(hours=5, minutes=30)
+            return (f"Binance error -1003: too many requests — this server's IP is temporarily "
+                    f"banned. It lifts around {lift_ist.strftime('%H:%M IST')}. Stop retrying until then.")
         return "Binance error -1003: Rate limit / temporary IP ban. Wait 1-2 minutes and retry."
     return f"Binance error {code}: {msg}"
+
+def binance_ban_remaining_ms():
+    """Milliseconds remaining on a Binance -1003 IP ban, else 0."""
+    remaining = _ip_ban_until - (time.time() * 1000)
+    return int(remaining) if remaining > 0 else 0
 
 def get_user_exchange_client(user_id, include_disconnected=False):
     """
@@ -235,6 +264,24 @@ def get_user_exchange_client(user_id, include_disconnected=False):
     """
     from models import ExchangeConnection, db
     import config
+
+    # Circuit breaker: if Binance has IP-banned us (-1003), do NOT send any
+    # request until the ban window passes. Serve a cached client for read-only
+    # use if we have one; otherwise report the ban instead of hammering (which
+    # would make Binance extend the ban). Covers the dashboard, order placement,
+    # wallet fetch, and the Connect-Exchange verification path.
+    ban_ms = binance_ban_remaining_ms()
+    if ban_ms > 0:
+        import datetime
+        lift_ist = datetime.datetime.utcfromtimestamp(_ip_ban_until / 1000) + datetime.timedelta(hours=5, minutes=30)
+        msg = (f"Binance rate-limit ban active — no requests sent (avoids extending the ban). "
+               f"Lifts around {lift_ist.strftime('%H:%M IST')}.")
+        _last_client_error[user_id] = msg
+        cached = _user_clients.get(user_id)
+        if cached and not include_disconnected:
+            return cached[0]
+        return {'error': msg}
+
     # Serve from cache; only re-verify after CLIENT_REVERIFY_SECONDS
     now = time.time()
     if not include_disconnected and user_id in _user_clients:
@@ -2172,7 +2219,7 @@ def get_live_price(symbol, user_id=None):
     # ✅ Check cache with per-symbol expiration (10 second TTL)
     if cache_key in _price_cache and cache_key in _price_cache_time:
         cache_age = current_time - _price_cache_time[cache_key]
-        if cache_age < 2:
+        if cache_age < 5:
             cached_price = _price_cache[cache_key]
             print(f"✓ PRICE CACHE HIT [{cache_age:.1f}s old]: {symbol} = ${cached_price}")
             return cached_price
@@ -2267,15 +2314,25 @@ def get_symbol_filters(symbol, user_id=None):
         {'filterType': 'LOT_SIZE', 'stepSize': '0.001', 'minQty': '0.001'},
         {'filterType': 'MIN_NOTIONAL', 'minNotional': '5'}
     ]
+    global _exchange_info_cache, _exchange_info_cache_time
     try:
-        client = get_client(user_id)
-        if client:
-            info = client.futures_exchange_info()
+        now = time.time()
+        info = None
+        # Serve cached exchange-info while fresh (avoids an API call per lookup)
+        if _exchange_info_cache and (now - _exchange_info_cache_time) < _EXCHANGE_INFO_TTL:
+            info = _exchange_info_cache
+        else:
+            client = get_client(user_id)
+            if client:
+                info = client.futures_exchange_info()
+                _exchange_info_cache = info
+                _exchange_info_cache_time = now
+        if info:
             for s in info.get("symbols", []):
-                if s.get("symbol") == symbol: 
+                if s.get("symbol") == symbol:
                     return s.get("filters", DEFAULT_FILTERS)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ get_symbol_filters failed for {symbol}: {e}")
     return DEFAULT_FILTERS
 
 def get_min_qty(symbol, user_id=None):
