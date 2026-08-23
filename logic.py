@@ -2308,14 +2308,28 @@ def get_lot_step(symbol, user_id=None):
     return 0.001
 
 def round_qty(symbol, qty, user_id=None):
-    if qty <= 0:
+    # Floor the quantity to the symbol's LOT_SIZE step using Decimal so the
+    # result matches Binance's allowed precision exactly. Float math here used
+    # to emit values like 5.0 (1 decimal) for whole-number symbols or tiny
+    # artifacts (0.042000000001), both of which Binance rejects with
+    # APIError -1111 "Precision is over the maximum defined for this asset".
+    from decimal import Decimal, ROUND_DOWN
+    if qty is None or float(qty) <= 0:
         return 0
     step = get_lot_step(symbol, user_id)
-    if step == 0: 
+    if not step or step <= 0:
         step = 0.001
-    precision = abs(int(round(-math.log10(step))))
-    rounded = math.floor(qty / step) * step
-    return round(rounded, precision) if rounded > 0 else 0
+    d_step = Decimal(str(step))
+    d_qty = Decimal(str(qty))
+    steps = (d_qty / d_step).to_integral_value(rounding=ROUND_DOWN)
+    rounded = steps * d_step
+    if rounded <= 0:
+        return 0
+    # Whole-number step (e.g. stepSize "1") → return an int so we never send "5.0".
+    if d_step == d_step.to_integral_value():
+        return int(rounded)
+    # Otherwise return a float carrying exactly the step's decimal places.
+    return float(rounded.normalize())
 
 def round_price(symbol, price, user_id=None):
     for f in get_symbol_filters(symbol, user_id):
