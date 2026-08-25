@@ -51,8 +51,10 @@ def get_tp1_and_sl_orders(user_id):
             elif is_sl:
                 sl_orders.append(context)
 
-        # Fallback 1: direct futures_get_open_orders fetch
-        if not tp1_orders and not sl_orders:
+        # Fallback 1: direct futures_get_open_orders fetch.
+        # Run if EITHER TP1 or SL is missing (not only when both are) so a found
+        # SL doesn't block recovering TP1, and vice-versa.
+        if not tp1_orders or not sl_orders:
             client = logic.get_client(user_id)
             if client:
                 try:
@@ -92,7 +94,7 @@ def get_tp1_and_sl_orders(user_id):
                     print(f"[fallback] direct fetch failed: {fe}")
 
         # Fallback 2: papi endpoint (Portfolio Margin accounts)
-        if not tp1_orders and not sl_orders:
+        if not tp1_orders or not sl_orders:
             try:
                 papi_client = logic.get_client(user_id)
                 if not papi_client:
@@ -184,7 +186,23 @@ def get_tp1_and_sl_orders(user_id):
             except Exception as algo_fe:
                 print(f"[fallback-algo] direct algo fetch failed: {algo_fe}")
 
-        return {"success": True, "tp1_orders": tp1_orders, "tp2_orders": tp2_orders, "sl_orders": sl_orders}
+        # Dedup each list by orderId (the fallbacks can re-add an order the
+        # primary source already returned).
+        def _dedup(lst):
+            seen, out = set(), []
+            for x in lst:
+                oid = str(x.get('orderId') or '')
+                if oid and oid in seen:
+                    continue
+                if oid:
+                    seen.add(oid)
+                out.append(x)
+            return out
+
+        return {"success": True,
+                "tp1_orders": _dedup(tp1_orders),
+                "tp2_orders": _dedup(tp2_orders),
+                "sl_orders": _dedup(sl_orders)}
     except Exception as e:
         import traceback
         traceback.print_exc()

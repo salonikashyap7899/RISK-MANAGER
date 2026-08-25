@@ -878,21 +878,32 @@
     }
     
     // Render positions with current data
+    let lastPositionSymbols = '';
     function renderPositions() {
         const container = document.getElementById('live_positions');
         const header = document.getElementById('position_header');
         const positions = Object.values(currentPositions);
-        
+
         if (positions.length > 0) {
             let totalOrders = 0;
+            positions.forEach(p => { totalOrders += p.open_orders ? p.open_orders.length : 0; });
+            header.textContent = `📍 LIVE POSITIONS (${positions.length}) | ${totalOrders} Open Orders`;
+            // Only rebuild the DOM when the SET of positions changes. On routine
+            // polls (same positions, fresh numbers) update the values in place —
+            // this stops the whole panel from blinking/flashing every few seconds.
+            const symbolsKey = positions.map(p => p.symbol).sort().join(',');
+            if (symbolsKey === lastPositionSymbols && container.querySelector('[data-live-panel]')) {
+                updatePositionNumbers(positions);
+                return;
+            }
+            lastPositionSymbols = symbolsKey;
             let html = '';
             positions.forEach(pos => {
                 const pnlColor = pos.unrealized_pnl >= 0 ? '#00ff88' : '#ff4d4d';
                 const roiPercent = (pos.dashboard_roi_percent ?? pos.roi_percent).toFixed(1);
                 const marginRatio = (pos.dashboard_margin_ratio ?? pos.margin_ratio).toFixed(2);
-                totalOrders += pos.open_orders ? pos.open_orders.length : 0;
                 html += `
-                    <div style="border: 1px solid #333; padding: 12px; margin-bottom: 10px; border-radius: 6px; background: rgba(10, 10, 10, 0.5);">
+                    <div data-live-panel style="border: 1px solid #333; padding: 12px; margin-bottom: 10px; border-radius: 6px; background: rgba(10, 10, 10, 0.5);">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 8px;">
                             <span style="font-weight: bold; color: ${pos.side === 'LONG' ? '#00ff88' : '#ff4444'}; font-size: 12px;">${pos.symbol} <span style="font-size: 10px; color: #888;">${pos.side}</span></span>
                             <div style="display: flex; align-items: center; gap: 6px;">
@@ -908,11 +919,11 @@
                             </div>
                             <div style="background: rgba(100, 200, 255, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid #64c8ff;">
                                 <div style="color: #666; margin-bottom: 2px;">Mark</div>
-                                <div style="color: #64c8ff; font-weight: bold; font-size: 10px;">$${pos.mark_price.toFixed(4)}</div>
+                                <div id="mark_${pos.symbol}" style="color: #64c8ff; font-weight: bold; font-size: 10px;">$${pos.mark_price.toFixed(4)}</div>
                             </div>
                             <div style="background: rgba(255, 100, 100, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid #ff6464;">
                                 <div style="color: #666; margin-bottom: 2px;">Liq.</div>
-                                <div style="color: #ff6464; font-weight: bold; font-size: 10px;">$${pos.liquidation_price.toFixed(4)}</div>
+                                <div id="liq_${pos.symbol}" style="color: #ff6464; font-weight: bold; font-size: 10px;">$${pos.liquidation_price.toFixed(4)}</div>
                             </div>
                         </div>
                         
@@ -930,15 +941,15 @@
                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px; font-size: 9px;">
                             <div style="background: rgba(${pnlColor.includes('88') ? '0,255,136' : '255,77,77'}, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid ${pnlColor};">
                                 <div style="color: #666; margin-bottom: 2px;">PnL</div>
-                                <div style="color: ${pnlColor}; font-weight: bold; font-size: 10px;">$${pos.unrealized_pnl.toFixed(2)}</div>
+                                <div id="pnl_${pos.symbol}" style="color: ${pnlColor}; font-weight: bold; font-size: 10px;">$${pos.unrealized_pnl.toFixed(2)}</div>
                             </div>
                             <div style="background: rgba(${pnlColor.includes('88') ? '0,255,136' : '255,77,77'}, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid ${pnlColor};">
                                 <div style="color: #666; margin-bottom: 2px;">ROI</div>
-                                <div style="color: ${pnlColor}; font-weight: bold; font-size: 10px;">${roiPercent}%</div>
+                                <div id="roi_${pos.symbol}" style="color: ${pnlColor}; font-weight: bold; font-size: 10px;">${roiPercent}%</div>
                             </div>
                             <div style="background: rgba(${marginRatio < 5 ? '255,100,100' : '255,170,0'}, 0.05); padding: 6px; border-radius: 4px; border-left: 2px solid ${marginRatio < 5 ? '#ff6464' : '#ffaa00'};">
                                 <div style="color: #666; margin-bottom: 2px;">Margin Ratio</div>
-                                <div style="color: ${marginRatio < 5 ? '#ff6464' : '#ffaa00'}; font-weight: bold; font-size: 10px;">${marginRatio}%</div>
+                                <div id="mr_${pos.symbol}" style="color: ${marginRatio < 5 ? '#ff6464' : '#ffaa00'}; font-weight: bold; font-size: 10px;">${marginRatio}%</div>
                             </div>
                         </div>
                         
@@ -966,7 +977,32 @@
         // Fetch and display TP/SL data from database
         fetchAndDisplayTPSLData();
     }
-    
+
+    // Update only the live number fields in place (no DOM rebuild → no blink).
+    function updatePositionNumbers(positions) {
+        positions.forEach(pos => {
+            const s = pos.symbol;
+            const num = (v, d) => (typeof v === 'number' && isFinite(v)) ? v.toFixed(d) : null;
+            const set = (prefix, text, color) => {
+                if (text === null) return; // keep last good value instead of showing "undefined"
+                const el = document.getElementById(prefix + '_' + s);
+                if (el) { el.textContent = text; if (color) el.style.color = color; }
+            };
+            const pnlColor = pos.unrealized_pnl >= 0 ? '#00ff88' : '#ff4d4d';
+            const roi = pos.dashboard_roi_percent ?? pos.roi_percent;
+            const mr  = pos.dashboard_margin_ratio ?? pos.margin_ratio;
+            const markN = num(pos.mark_price, 4); if (markN !== null) set('mark', '$' + markN);
+            const liqN = num(pos.liquidation_price, 4); if (liqN !== null) set('liq', '$' + liqN);
+            const pnlN = num(pos.unrealized_pnl, 2); if (pnlN !== null) set('pnl', '$' + pnlN, pnlColor);
+            const roiN = num(roi, 1); if (roiN !== null) set('roi', roiN + '%', pnlColor);
+            const mrN = num(mr, 2); if (mrN !== null) set('mr', mrN + '%', (mr < 5 ? '#ff6464' : '#ffaa00'));
+            const lev = document.getElementById('lev_val_' + s);
+            if (lev && pos.leverage > 0) lev.textContent = pos.leverage;
+        });
+        // Keep the TP/SL detail lines fresh without rebuilding the cards
+        fetchAndDisplayTPSLData();
+    }
+
     // Fetch TP/SL data from database and display it
     function fetchAndDisplayTPSLData() {
         fetch('/get_user_trade_positions')
@@ -1122,7 +1158,12 @@ function updateTP1SLOrders() {
             html += '<div style="border-top:1px dashed #333;margin:4px 0 8px;"></div>';
         }
         slOrders.forEach(function(o) { html += buildCard(o, 'SL'); });
-        container.innerHTML = html;
+        // Skip the DOM rewrite when nothing changed — stops this panel blinking
+        // on every poll (only re-renders when an order is added/removed/changed).
+        if (container.getAttribute('data-sig') !== html) {
+            container.setAttribute('data-sig', html);
+            container.innerHTML = html;
+        }
     })
     .catch(function(err) {
         console.error('[TP1SL] Fetch error:', err);
