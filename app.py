@@ -881,6 +881,21 @@ def sync_sqlite_schema():
 with app.app_context():
     sync_sqlite_schema()
 
+@app.after_request
+def _no_cache_html(response):
+    """Never let browsers/CDNs cache rendered HTML pages. The dashboard's
+    JavaScript is inline in the template, so a cached page meant code updates
+    (e.g. the anti-blink fix) silently didn't reach the browser after a deploy.
+    Static assets (JS/CSS/images) keep their own long-lived caching."""
+    try:
+        if (response.mimetype or '').startswith('text/html'):
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+    except Exception:
+        pass
+    return response
+
 @app.errorhandler(Exception)
 def handle_unexpected_error(e):
     """Log full tracebacks of 500s to instance/last_error.log so they can be

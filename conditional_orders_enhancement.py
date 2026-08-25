@@ -186,6 +186,39 @@ def get_tp1_and_sl_orders(user_id):
             except Exception as algo_fe:
                 print(f"[fallback-algo] direct algo fetch failed: {algo_fe}")
 
+        # Fallback 4: DB-planned TP1/SL for open positions. If the exchange
+        # fetches didn't surface a TP1 or SL for an open position (e.g. it's
+        # managed server-side / "virtual guard"), show the planned level from
+        # the DB so the user always sees their TP1 and SL, not just TP2.
+        try:
+            have_tp1 = {o.get('symbol') for o in tp1_orders}
+            have_sl = {o.get('symbol') for o in sl_orders}
+            for p in db_positions:
+                if getattr(p, 'status', '') != 'open':
+                    continue
+                side_close = 'SELL' if (p.side or '').upper() == 'LONG' else 'BUY'
+                base = {
+                    'symbol': p.symbol, 'side': side_close, 'price': 0,
+                    'time': 'Virtual', 'source': 'virtual',
+                    'position_entry': float(p.entry_price) if p.entry_price else None,
+                    'position_sl': float(p.sl_price) if p.sl_price else None,
+                    'position_tp1': float(p.tp1_price) if p.tp1_price else None,
+                    'position_status': 'open',
+                }
+                if p.tp1_price and float(p.tp1_price) > 0 and p.symbol not in have_tp1:
+                    tp1_orders.append({**base, 'orderId': 'virtual-tp1-' + str(p.symbol),
+                                       'type': 'VIRTUAL_TAKE_PROFIT', 'label': 'TP1',
+                                       'triggerPrice': float(p.tp1_price),
+                                       'qty': float(p.initial_qty or 0) * (float(p.tp1_qty_pct or 0) / 100.0)})
+                sl_val = p.current_sl or p.sl_price
+                if sl_val and float(sl_val) > 0 and p.symbol not in have_sl:
+                    sl_orders.append({**base, 'orderId': 'virtual-sl-' + str(p.symbol),
+                                      'type': 'VIRTUAL_STOP', 'label': 'SL',
+                                      'triggerPrice': float(sl_val),
+                                      'qty': float(p.initial_qty or 0)})
+        except Exception as db_fe:
+            print(f"[fallback-db] virtual TP1/SL fill failed: {db_fe}")
+
         # Dedup each list by orderId (the fallbacks can re-add an order the
         # primary source already returned).
         def _dedup(lst):

@@ -1129,7 +1129,12 @@ function updateTP1SLOrders() {
             c += '<span style="font-weight:bold;color:#e9fbff;font-size:10px;">' + (o.symbol || '\u2014') + ' <span style="color:#888;font-weight:normal;font-size:8px;">Perp</span></span>';
             c += '<div style="display:flex;gap:5px;align-items:center;">';
             c += '<span style="background:' + sourceColor + '22;color:' + sourceColor + ';border:1px solid ' + sourceColor + '44;padding:0px 4px;border-radius:2px;font-size:7px;font-weight:bold;">' + sourceLabel + '</span>';
-            c += '<button onclick="cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')" style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
+            // Virtual (server-managed) levels have no exchange order to cancel.
+            if (source === 'virtual') {
+                c += '<span style="color:#f0b90b;border:1px solid #f0b90b44;padding:1px 6px;border-radius:3px;font-size:8px;">Auto</span>';
+            } else {
+                c += '<button onclick="cancelOrder(\'' + o.symbol + '\',\'' + o.orderId + '\')" style="background:transparent;color:#aaa;border:1px solid #444;padding:1px 7px;border-radius:3px;cursor:pointer;font-size:8px;">Cancel</button>';
+            }
             c += '</div>';
             c += '</div>';
             c += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">';
