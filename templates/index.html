@@ -1117,7 +1117,11 @@ function updateTP1SLOrders() {
                 }
             }
             var isTP = (orderTypeLabel === 'TP1' || orderTypeLabel === 'TP2');
-            var condSymbol = isTP ? '\u2265' : '\u2264';
+            // Trigger direction depends on the CLOSE side, not just TP vs SL:
+            //   closing a LONG  (SELL order): TP triggers above (>=), SL below (<=)
+            //   closing a SHORT (BUY order):  TP triggers below (<=), SL above (>=)
+            var closeSell = (side === 'SELL');
+            var condSymbol = (isTP === closeSell) ? '\u2265' : '\u2264';
             var triggerStr = trigger > 0 ? '$' + trigger.toFixed(trigger < 1 ? 7 : 2) : 'Market';
             var amtStr = qty > 0 ? qty.toFixed(qty < 1 ? 5 : 4) : 'Close All';
             var borderColor = isTP ? '#1a7a4a' : '#7a1a1a';
