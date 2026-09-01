@@ -821,29 +821,41 @@
     });
     
     // Live Updates - Enhanced with real-time liquidation prices
+    var _emptyPosCount = 0;   // consecutive empty responses (guards against blink)
     function updateLivePositions() {
         const container = document.getElementById('live_positions');
         // Fetch main positions data (5-second cache)
         fetch('/get_open_positions')
         .then(r => r.json())
         .then(data => {
-            if (data.positions) {
+            if (data.positions && data.positions.length > 0) {
+                // Got real positions — refresh the map.
+                _emptyPosCount = 0;
                 currentPositions = {};
                 data.positions.forEach(pos => {
-                    // ✅ Ensure leverage is correctly typed, fallback to 0/null for loading state
                     pos.leverage = pos.leverage ? parseFloat(pos.leverage) : 0;
                     currentPositions[pos.symbol] = pos;
                 });
-                
-                // Also fetch LIVE liquidation prices (no cache) every 2 seconds for real-time updates
                 updateLiveDataOnly();
-                // ✅ Auto-refresh TP1/SL orders when positions update
                 updateTP1SLOrders();
+            } else if (data.positions) {
+                // Empty response. A single empty is often just a transient
+                // Binance hiccup/rate-limit — if we clear immediately the panel
+                // flips to "No open positions" and back (the blink). Only clear
+                // after several consecutive empties confirm the positions are
+                // really gone; otherwise keep showing the last known ones.
+                _emptyPosCount++;
+                if (_emptyPosCount >= 3) {
+                    currentPositions = {};
+                } else {
+                    return; // keep current panel as-is, no re-render, no blink
+                }
             }
             renderPositions();
         }).catch(() => {
-            if (!container || container.innerHTML.trim() === '' || container.innerHTML.includes('No open positions')) {
-                document.getElementById('live_positions').innerHTML = '<div style="text-align: center; color: #ff4444; padding: 24px 12px; font-size: 10px;">Connection Error</div>';
+            // Network error — never wipe the panel; keep the last good data.
+            if (container && (container.innerHTML.trim() === '' || container.innerHTML.includes('No open positions'))) {
+                container.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 24px 12px; font-size: 10px;">Connection Error</div>';
             }
         });
     }
@@ -2552,15 +2564,11 @@ function updateTP1SLOrders() {
     }
 
     // ✅ AUTO-REFRESH TIMERS (Background updates while user trades)
-    // Refresh positions every 5 seconds
-    setInterval(() => {
-        updateLivePositions();
-    }, 5000);
-
-    // Refresh price every 10 seconds only if the current feed has gone stale
-    setInterval(() => {
-        updateLivePrice();
-    }, 10000);
+    // NOTE: positions (updateLivePositions), price (updateLivePrice) and
+    // updateTP1SLOrders already have their own setInterval timers above — do
+    // NOT start them again here. Duplicate pollers doubled the Binance request
+    // rate and made the panels flip/blink. Only the 30s coin-details refresh
+    // (not scheduled elsewhere) is kept.
 
     // Refresh coin details (leverage, etc) every 30 seconds
     setInterval(() => {
@@ -2569,7 +2577,10 @@ function updateTP1SLOrders() {
         updateTradeHistory();
     }, 30000);
 
-    // Refresh TP1 and SL orders every 5 seconds
+    // Refresh the TP1/TP2/SL conditional-orders panel on its own timer so it
+    // keeps updating even when there is no open position — this is what lets
+    // orphaned conditional orders (left after a manual close) show on the
+    // dashboard so they can be cancelled here instead of on the exchange.
     setInterval(updateTP1SLOrders, 5000);
     
     // Also refresh all conditional orders for backup
