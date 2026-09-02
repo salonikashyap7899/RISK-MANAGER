@@ -1580,7 +1580,12 @@ function updateTP1SLOrders() {
     }
     // Auto refresh intervals - OPTIMIZED for performance
     setInterval(updateLivePrice, 5000);     // Price 5s (was 1s - too frequent for external API)
-    setInterval(updateLivePositions, 5000); // Positions 5s (was 10s - user wants faster refresh)
+    // Call by name each tick (arrow wrapper) so we always use the FINAL, fixed
+    // updateLivePositions — the function name is reassigned later in the file,
+    // and passing the bare reference here captured an older, buggy version that
+    // rebuilt the whole panel every poll (the blink) and rendered
+    // "undefined @ undefined". The arrow defers the lookup to call time.
+    setInterval(() => updateLivePositions(), 5000); // Positions every 5s
     // setInterval(updateConditionalOrders) removed — updateTP1SLOrders handles the panel
     setInterval(updateLiveDataOnly, 2000);  // ✅ LIVE Liquidation Prices: 2s (real-time updates)
     setInterval(updateTradeHistory, 10000);  // History 10s (was 30s - user wants faster refresh)
@@ -2500,23 +2505,29 @@ function updateTP1SLOrders() {
             });
 
             if (positions.length > 0) {
+                _emptyPosCount = 0;
                 renderPositions();
                 updateLiveDataOnly();
                 updateTP1SLOrders();
             } else {
-                currentPositions = {};
-                if (headerEl) {
-                    headerEl.textContent = 'LIVE POSITIONS (0)';
+                // Empty response is usually a transient Binance hiccup / rate
+                // limit. Wiping the panel on a single empty makes it flip to
+                // "No open positions" and back every few seconds (the blink).
+                // Only clear after 3 consecutive empties confirm it's really
+                // gone; otherwise keep the last known panel untouched.
+                _emptyPosCount++;
+                if (_emptyPosCount >= 3) {
+                    currentPositions = {};
+                    lastPositionSymbols = '';
+                    if (headerEl) headerEl.textContent = '📍 LIVE POSITIONS (0)';
+                    container.innerHTML = '<div style="text-align: center; color: #81b8c5; padding: 20px 12px; font-size: 9px;">No open positions</div>';
                 }
-                container.innerHTML = `<div style="text-align: center; color: #81b8c5; padding: 20px 12px; font-size: 9px;">No open positions for ${targetSymbol}</div>`;
+                // else: leave the panel exactly as-is — no re-render, no blink.
             }
         }).catch(err => {
             console.error('Failed to fetch positions:', err);
-            currentPositions = {};
-            if (headerEl) {
-                headerEl.textContent = 'LIVE POSITIONS (0)';
-            }
-            container.innerHTML = '<div style="color: #ff6b6b; font-size: 9px; text-align: center; padding: 20px 12px;">Error loading positions</div>';
+            // Network error — keep the last good panel on screen; never wipe it
+            // (that was another source of the blink).
         });
     };
 
