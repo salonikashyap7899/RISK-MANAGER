@@ -6,7 +6,7 @@ from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from functools import wraps
-from models import db, User, ExchangeConnection, SubscriptionHistory, TradeDailyStats, TradeLog
+from models import db, User, ExchangeConnection, SubscriptionHistory, TradeDailyStats, TradeLog, TradePosition
 from flask import jsonify, request, session
 from logic import select_symbol
 import logic
@@ -50,6 +50,30 @@ def _load_secret_key():
     return key
 
 app.secret_key = _load_secret_key()
+
+# --- Privileged roles (admin / founder) -----------------------------------
+# Admins and founders share the same elevated access used throughout the app.
+# "Founder" is the top authority: founder accounts cannot be deleted, and the
+# list is configurable via the FOUNDER_EMAILS env var (comma-separated).
+ADMIN_EMAILS = ['admin@mindriskcontrol.com', 'test@test.com']
+FOUNDER_EMAILS = [
+    e.strip().lower()
+    for e in os.getenv('FOUNDER_EMAILS', 'admin@mindriskcontrol.com').split(',')
+    if e.strip()
+]
+
+def is_founder(user):
+    """True if the user is a founder (top authority)."""
+    return bool(user) and getattr(user, 'email', '').lower() in FOUNDER_EMAILS
+
+def is_privileged(user):
+    """True if the user is an admin or a founder (can access admin tools)."""
+    if not user:
+        return False
+    if getattr(user, 'is_admin', False):
+        return True
+    email = getattr(user, 'email', '').lower()
+    return email in [e.lower() for e in ADMIN_EMAILS] or email in FOUNDER_EMAILS
 
 # Session configuration for persistent login
 app.config['SESSION_PERMANENT'] = True
@@ -839,7 +863,8 @@ def index():
         default_tp1_value=raw_tp1,
         default_tp1_mode=tp1_mode,
         today_stats=today_stats,
-        wallet_debug=wallet_debug
+        wallet_debug=wallet_debug,
+        is_privileged=is_privileged(current_user)
     )
 
 def sync_sqlite_schema():
@@ -1321,6 +1346,84 @@ def create_admin():
             return f"✅ User {admin_email} already exists. Updated to Admin status. You can login with your password."
     except Exception as e:
         return f"❌ Error: {str(e)}"
+
+@app.route('/admin/users')
+@login_required
+def admin_users():
+    """Admin/Founder only: list every user account with management controls."""
+    if not is_privileged(current_user):
+        flash("You don't have permission to access the admin area.", "error")
+        return redirect(url_for('index'))
+
+    users = User.query.order_by(User.created_at.desc()).all()
+    rows = []
+    for u in users:
+        rows.append({
+            'id': u.id,
+            'username': u.username,
+            'email': u.email,
+            'is_admin': bool(getattr(u, 'is_admin', False)),
+            'is_founder': is_founder(u),
+            'is_subscribed': bool(getattr(u, 'is_subscribed', False)),
+            'subscription_status': u.subscription_status,
+            'subscription_type': u.subscription_type,
+            'subscription_end': u.subscription_end.strftime('%Y-%m-%d') if u.subscription_end else '—',
+            'created_at': u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '—',
+            'is_self': (u.id == current_user.id),
+            'has_google': bool(getattr(u, 'google_id', None)),
+        })
+    return render_template('admin_users.html',
+                           users=rows,
+                           viewer_is_founder=is_founder(current_user),
+                           total_users=len(rows))
+
+@app.route('/admin/users/<int:user_id>/delete', methods=['POST'])
+@login_required
+def admin_delete_user(user_id):
+    """Admin/Founder only: permanently delete a user account and all of its
+    related data (exchange connections, subscription history, trade stats,
+    trade logs, trade positions). This is irreversible."""
+    if not is_privileged(current_user):
+        flash("You don't have permission to delete accounts.", "error")
+        return redirect(url_for('index'))
+
+    target = User.query.get(user_id)
+    if not target:
+        flash("That user no longer exists.", "error")
+        return redirect(url_for('admin_users'))
+
+    # Safeguards -----------------------------------------------------------
+    # 1) Never delete your own account from here (prevents self lock-out).
+    if target.id == current_user.id:
+        flash("You can't delete your own account from the admin panel.", "error")
+        return redirect(url_for('admin_users'))
+    # 2) Founder accounts are protected — only a founder may delete an admin,
+    #    and nobody may delete a founder.
+    if is_founder(target):
+        flash("Founder accounts are protected and cannot be deleted.", "error")
+        return redirect(url_for('admin_users'))
+    if getattr(target, 'is_admin', False) and not is_founder(current_user):
+        flash("Only a founder can delete an admin account.", "error")
+        return redirect(url_for('admin_users'))
+
+    deleted_email = target.email
+    try:
+        # Remove all dependent rows first (no DB-level cascade is defined on
+        # these foreign keys, so delete them explicitly to avoid orphans).
+        ExchangeConnection.query.filter_by(user_id=target.id).delete(synchronize_session=False)
+        SubscriptionHistory.query.filter_by(user_id=target.id).delete(synchronize_session=False)
+        TradeDailyStats.query.filter_by(user_id=target.id).delete(synchronize_session=False)
+        TradeLog.query.filter_by(user_id=target.id).delete(synchronize_session=False)
+        TradePosition.query.filter_by(user_id=target.id).delete(synchronize_session=False)
+        db.session.delete(target)
+        db.session.commit()
+        flash(f"Account '{deleted_email}' and all its data were permanently deleted.", "success")
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ admin_delete_user failed for {user_id}: {e}")
+        flash(f"Failed to delete account: {e}", "error")
+
+    return redirect(url_for('admin_users'))
 
 @app.route('/test-binance')
 @login_required
