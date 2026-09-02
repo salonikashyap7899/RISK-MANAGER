@@ -2131,55 +2131,14 @@ function updateTP1SLOrders() {
         });
     }
 
-    // ✅ UPDATED: updateLivePositions NOW ACCEPTS OPTIONAL SYMBOL PARAMETER
-    function updateLivePositions(symbol = null, forceFresh = false) {
-        const targetSymbol = (symbol || getSelectedSymbol() || '{{ selected_symbol or "BTCUSDT" }}').trim().toUpperCase();
-        const container = document.getElementById('live_positions');
-        
-        if (!container) return;
-        
-        console.log(`📍 Fetching positions for: ${targetSymbol || 'all'}`);
-        
-        // Construct URL with optional symbol filter
-        let url = '/get_open_positions';
-        const qp = [];
-        if (forceFresh) qp.push('fresh=1');
-        qp.push(`_t=${Date.now()}`);
-        url += '?' + qp.join('&');
-        
-        fetch(url)
-        .then(r => r.json())
-        .then(data => {
-            const positions = data.positions || [];
-            if (positions && positions.length > 0) {
-                let html = '';
-                positions.forEach(pos => {
-                    const pnlColor = parseFloat(pos.unrealizedPnL || pos.unrealized_pnl || 0) >= 0 ? '#00ff88' : '#ff6b6b';
-                    const pnlAmount = parseFloat(pos.unrealizedPnL || pos.unrealized_pnl || 0);
-                    html += `
-                        <div style="padding: 6px; background: rgba(0,212,255,0.05); border: 1px solid rgba(0,212,255,0.2); border-radius: 4px; margin-bottom: 4px; cursor: pointer;" onclick="showCoinDetails('${pos.symbol}')">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="color: #00ffcc; font-weight: bold; font-size: 10px;">${pos.symbol}</span>
-                                <span style="color: ${pnlColor}; font-size: 10px; font-weight: bold;">$${pnlAmount.toFixed(2)}</span>
-                            </div>
-                            <div style="font-size: 8px; color: #81b8c5; margin-top: 2px;">
-                                ${pos.side} | ${pos.quantity} @ ${pos.entryPrice}
-                            </div>
-                        </div>
-                    `;
-                });
-                container.innerHTML = html;
-            } else {
-                container.innerHTML = '<div style="color: #81b8c5; font-size: 9px; text-align: center; padding: 20px;">✅ No open positions' + (targetSymbol ? ' for ' + targetSymbol : '') + '</div>';
-            }
-        }).catch(err => {
-            console.error(`❌ Failed to fetch positions:`, err);
-            if (container) {
-                container.innerHTML = '<div style="color: #ff6b6b; font-size: 9px;">❌ Error loading positions</div>';
-            }
-        });
-    }
-
+    // NOTE: the old compact updateLivePositions() that rebuilt the panel with
+    // container.innerHTML on every 5s poll used to live here. That full rebuild
+    // was the real cause of the "jhap jhap" blink (and it also printed
+    // "undefined @ undefined" cards). It has been removed. The live version is
+    // the assignment further down (updateLivePositions = function ...), which
+    // updates numbers in place via renderPositions()/updatePositionNumbers()
+    // and never wipes the panel. The hoisted fallback near the top of the
+    // script also uses the no-blink renderPositions() path.
 
     // ✅ SHOW COIN DETAILS IN MODAL (WITH REAL-TIME DATA)
     function showCoinDetails() {
